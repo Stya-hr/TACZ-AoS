@@ -15,6 +15,7 @@ tasks.named('wrapper', Wrapper).configure {
 }
 
 repositories {
+    mavenCentral()
     maven {
         name = 'Modrinth'
         url = 'https://api.modrinth.com/maven'
@@ -27,8 +28,18 @@ sourceSets.main.resources {
     exclude '**/*.bbmodel', '**/.cache/**'
 }
 
+// Kept out of the published JAR; included only in development runs.
+sourceSets {
+    gameTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+configurations.gameTestImplementation.extendsFrom configurations.implementation
+
 neoForge {
     version = project.neo_version
+    addModdingDependenciesTo sourceSets.gameTest
     parchment {
         mappingsVersion = project.parchment_mappings_version
         minecraftVersion = project.parchment_minecraft_version
@@ -39,7 +50,10 @@ neoForge {
             server()
             programArgument '--nogui'
         }
-        gameTestServer { type = 'gameTestServer' }
+        gameTestServer {
+            type = 'gameTestServer'
+            gameDirectory = file('build/gametest')
+        }
         data {
             data()
             programArguments.addAll '--mod', project.mod_id, '--all', '--output',
@@ -53,7 +67,10 @@ neoForge {
         }
     }
     mods {
-        "${mod_id}" { sourceSet(sourceSets.main) }
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+            sourceSet(sourceSets.gameTest)
+        }
     }
 }
 
@@ -63,6 +80,9 @@ configurations {
 }
 
 dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'com.google.code.gson:gson:2.11.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     implementation "maven.modrinth:tacz-1.21.1:${tacz_version}"
     compileOnly files("libs/${voxy_jar}")
     // NeoVoxy also requires Sodium on the client; see libs/README.md.
@@ -73,6 +93,8 @@ dependencies {
         localRuntime files("libs/${voxy_jar}")
     }
 }
+
+tasks.named('test', Test).configure { useJUnitPlatform() }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
     var replaceProperties = [

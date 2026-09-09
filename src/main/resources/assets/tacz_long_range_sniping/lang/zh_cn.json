@@ -1,0 +1,19 @@
+{
+  "tacz_long_range_sniping.status": "远距狙击资格：%s；枪械：%s；瞄准镜：%s；档位：%s；倍率：%s",
+  "tacz_long_range_sniping.stage_one": "当前仅实现配置与接口层，尚未启用远距弹道。预留最大距离：%s 格。",
+  "tacz_long_range_sniping.reason.eligible": "符合条件",
+  "tacz_long_range_sniping.reason.config_unavailable": "配置未加载或存在错误",
+  "tacz_long_range_sniping.reason.disabled": "服务端已禁用",
+  "tacz_long_range_sniping.reason.inactive_player": "玩家已死亡、离开世界或处于旁观模式",
+  "tacz_long_range_sniping.reason.not_a_gun": "主手未持有 TACZ 枪械",
+  "tacz_long_range_sniping.reason.gun_not_allowed": "枪械不在白名单",
+  "tacz_long_range_sniping.reason.gun_data_unavailable": "枪械数据未加载",
+  "tacz_long_range_sniping.reason.no_scope": "未安装瞄准镜",
+  "tacz_long_range_sniping.reason.scope_not_allowed": "瞄准镜不在白名单",
+  "tacz_long_range_sniping.reason.scope_data_unavailable": "配件数据未加载或不是瞄准镜",
+  "tacz_long_range_sniping.reason.invalid_zoom_number": "变倍序号无效",
+  "tacz_long_range_sniping.reason.zoom_not_allowed": "当前倍率未获允许",
+  "tacz_long_range_sniping.reason.not_aiming": "当前未开镜",
+  "tacz_long_range_sniping.reason.gun_operator_unavailable": "TACZ 玩家接口不可用",
+  "tacz_long_range_sniping.reason.client_layout_mismatch": "客户端瞄准镜倍率表与服务端配置不一致"
+}
