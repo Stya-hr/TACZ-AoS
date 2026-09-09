@@ -56,13 +56,13 @@ public final class ServerConfig {
         CACHE_MIB = builder.comment("Server-wide estimated memory budget for complete collision snapshots; evicted sections become unknown.")
                 .defineInRange("snapshotMemoryMiB", 128, 16, 4096);
         builder.pop();
-        builder.comment("Experimental loaded-area ballistic scheduler. No remote terrain or entity rendering yet.")
+        builder.comment("Experimental ballistic scheduler with unloaded-terrain snapshots. No remote entity rendering yet.")
                 .push("prototype");
         PROTOTYPE = builder.comment("Opt in to taking over ordinary kinetic bullets. Original tracer entities are not spawned.")
                 .define("enabled", false);
         PROTOTYPE_DISTANCE = builder.comment("Maximum traveled path length, also bounded by limits.maxDistance.",
-                        "Stops before a whole tick that would exceed the limit; does not change TACZ gun parameters.")
-                .defineInRange("maxDistance", 128, 16, 256);
+                        "Clips the last segment at the limit; does not extend TACZ's original bullet lifetime.")
+                .defineInRange("maxDistance", 128, 16, 16384);
         MAX_BULLETS = builder.comment("Maximum active bullets per dimension. Excess shots retain native TACZ behavior.")
                 .defineInRange("maxActiveBullets", 128, 1, 1024);
         MAX_FLIGHT_TICKS = builder.comment("Scheduler safety timeout; the native bullet lifetime is also preserved.")

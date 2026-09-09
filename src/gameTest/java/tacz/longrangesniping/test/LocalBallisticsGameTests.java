@@ -81,6 +81,16 @@ public final class LocalBallisticsGameTests {
 
     @GameTest(template = "ballistics", batch = "local_ballistics")
     public static void damageHeadshotsAndPiercingMatchNative(GameTestHelper helper) {
+        compareDamage(helper, LIMITS);
+    }
+
+    @GameTest(template = "ballistics", batch = "local_ballistics")
+    public static void snapshotDamageHeadshotsAndPiercingMatchNative(GameTestHelper helper) {
+        // Range clipping selects the snapshot-safe path even though these targets are loaded.
+        compareDamage(helper, new ServerConfig.Prototype(true, 16, 16, 600));
+    }
+
+    private static void compareDamage(GameTestHelper helper, ServerConfig.Prototype limits) {
         var fixture = new Fixture(helper);
         List<Zombie> targets = List.of(target(helper, 10), target(helper, 14), target(helper, 18));
         // Same three targets and deterministic projectile seed, varying only who schedules the tick.
@@ -104,7 +114,7 @@ public final class LocalBallisticsGameTests {
                 List<Float> referenceHealth = targets.stream().map(Zombie::getHealth).toList();
                 resetTargets(targets);
                 var scheduler = new LocalBallistics(helper.getLevel());
-                accept(helper, scheduler, managed, LIMITS);
+                accept(helper, scheduler, managed, limits);
                 int ammoBefore = IGun.getIGunOrNull(fixture.stack).getCurrentAmmoCount(fixture.stack);
                 scheduler.tick();
                 scheduler.tick();
@@ -154,7 +164,8 @@ public final class LocalBallisticsGameTests {
         accept(helper, scheduler, bullet, LIMITS);
         var start = bullet.position();
         scheduler.tick();
-        helper.assertTrue(bullet.isRemoved() && bullet.position().equals(start), "Unknown terrain did not stop the entire step");
+        helper.assertTrue(bullet.isRemoved() && bullet.getX() > start.x && bullet.getX() < (x + 1) * 16,
+                "Bullet did not stop inside the known prefix");
         helper.assertTrue(level.getChunkSource().getChunkNow(x + 2, z) == null, "Scheduler loaded the missing middle chunk");
         helper.assertTrue(scheduler.status().unknown() == 1, "Unknown stop was not recorded");
         helper.succeed();
@@ -172,7 +183,8 @@ public final class LocalBallisticsGameTests {
                 "Capacity did not retain native ownership of excess shots");
         helper.assertTrue(!extra.isRemoved(), "Rejected shot was consumed");
         scheduler.tick();
-        helper.assertTrue(first.isRemoved() && first.tickCount == 0 && scheduler.status().rangeLimited() == 1, "Range limit failed");
+        helper.assertTrue(first.isRemoved() && first.tickCount == 1 && scheduler.status().rangeLimited() == 1
+                && Math.abs(first.position().distanceTo(helper.absoluteVec(new Vec3(4, 5, 4))) - 16) < 1.0e-7, "Range limit failed");
         for (String flag : List.of("explosion", "igniteEntity", "igniteBlock")) {
             var special = fixture.bullet(new Vec3(4, 5, 4), new Vec3(1, 0, 0));
             setField(special, flag, true);
@@ -247,7 +259,7 @@ public final class LocalBallisticsGameTests {
         helper.succeed();
     }
 
-    private static void setSettings(ServerConfig.Settings settings) {
+    static void setSettings(ServerConfig.Settings settings) {
         try {
             Field field = ServerConfig.class.getDeclaredField("current");
             field.setAccessible(true);
@@ -255,7 +267,7 @@ public final class LocalBallisticsGameTests {
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 
-    private static void accept(GameTestHelper helper, LocalBallistics scheduler, EntityKineticBullet bullet, ServerConfig.Prototype limits) {
+    static void accept(GameTestHelper helper, LocalBallistics scheduler, EntityKineticBullet bullet, ServerConfig.Prototype limits) {
         helper.assertTrue(scheduler.admit(bullet, TaczBridge.inspectNewBullet(bullet).orElseThrow(), limits)
                 == LocalBallistics.Admission.ACCEPTED, "Admission failed");
     }
@@ -274,7 +286,7 @@ public final class LocalBallisticsGameTests {
         targets.forEach(target -> { target.setHealth(1000); target.invulnerableTime = 0; target.setDeltaMovement(Vec3.ZERO); });
     }
 
-    private static void setField(EntityKineticBullet bullet, String name, Object value) {
+    static void setField(EntityKineticBullet bullet, String name, Object value) {
         try {
             Field field = EntityKineticBullet.class.getDeclaredField(name);
             field.setAccessible(true);
@@ -282,7 +294,7 @@ public final class LocalBallisticsGameTests {
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 
-    private static final class Fixture {
+    static final class Fixture {
         final GameTestHelper helper;
         final Player player;
         final ItemStack stack;

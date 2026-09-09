@@ -5,7 +5,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 
-/** Conservative prototype guard, not the future terrain coverage/snapshot implementation. */
+/** Selects the native fast path only where TACZ's whole swept neighborhood is currently loaded. */
 public final class LoadedAreaGuard {
     private LoadedAreaGuard() {}
 
@@ -17,7 +17,8 @@ public final class LoadedAreaGuard {
         Vec3 end = start.add(velocity);
         if (!finite(start) || !finite(velocity) || !finite(end)) return Result.INVALID;
         double distance = velocity.length();
-        if (!Double.isFinite(distance) || distance > remainingDistance + 1.0e-7) return Result.RANGE_LIMIT;
+        if (!Double.isFinite(distance) || distance > 256) return Result.INVALID;
+        if (distance >= remainingDistance) return Result.RANGE_LIMIT;
         // TACZ's entity search inflates the swept bounding box by one block. Two blocks
         // also cover fluid/base entity updates and ordinary adjacent collision-shape reads.
         var bounds = bullet.getBoundingBox().expandTowards(velocity).inflate(2);

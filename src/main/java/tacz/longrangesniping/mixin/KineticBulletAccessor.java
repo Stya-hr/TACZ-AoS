@@ -1,16 +1,21 @@
 package tacz.longrangesniping.mixin;
 
 import com.tacz.guns.entity.EntityKineticBullet;
+import com.tacz.guns.util.TacHitResult;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
+import org.spongepowered.asm.mixin.gen.Invoker;
 
-/** Read-only access to initialized TACZ fields. No tick injections or setters. */
+/** Initialized parameters and the native damage entry point for detached kinetic bullets. */
 @Mixin(value = EntityKineticBullet.class, remap = false)
 public interface KineticBulletAccessor {
     @Accessor("life") int taczlrs$getLife();
     @Accessor("gravity") float taczlrs$getGravity();
     @Accessor("friction") float taczlrs$getFriction();
     @Accessor("pierce") int taczlrs$getPierce();
+    @Accessor("pierce") void taczlrs$setPierce(int remaining);
+    @Invoker("onHitEntity") void taczlrs$hitEntity(TacHitResult hit, Vec3 start, Vec3 end);
     @Accessor("distanceAmount") float taczlrs$getEffectiveRange();
     @Accessor("headShot") float taczlrs$getHeadshot();
     @Accessor("armorIgnore") float taczlrs$getArmorIgnore();

@@ -23,6 +23,7 @@ public final class LocalBallistics {
         final ServerConfig.Prototype limits;
         double traveled;
         int ticks;
+        boolean snapshotPhysics;
         Flight(EntityKineticBullet bullet, ShotContext context, ServerConfig.Prototype limits) {
             this.bullet = bullet;
             this.context = context;
@@ -83,9 +84,6 @@ public final class LocalBallistics {
             return stop(bullet, "owner_unavailable");
         }
         if (flight.ticks++ >= flight.limits.maxFlightTicks()) return stop(bullet, "timeout");
-        var guard = LoadedAreaGuard.check(level, bullet, flight.limits.maxDistance() - flight.traveled);
-        if (guard != LoadedAreaGuard.Result.READY) return stopAtGuard(bullet, guard);
-
         // Mirror ServerLevel.tickNonPassenger, including NeoForge tick cancellation.
         bullet.setOldPosAndRot();
         bullet.tickCount++;
@@ -93,8 +91,18 @@ public final class LocalBallistics {
         if (bullet.isRemoved()) return "removed_by_tick_event";
         if (!plainKinetic(bullet)) return stop(bullet, "unsupported_ammunition_changed");
         // A tick-pre listener can change the trajectory; validate it again before TACZ reads terrain.
-        guard = LoadedAreaGuard.check(level, bullet, flight.limits.maxDistance() - flight.traveled);
-        if (guard != LoadedAreaGuard.Result.READY) return stopAtGuard(bullet, guard);
+        var guard = LoadedAreaGuard.check(level, bullet, flight.limits.maxDistance() - flight.traveled);
+        if (guard == LoadedAreaGuard.Result.INVALID) return stop(bullet, "INVALID");
+        if (flight.snapshotPhysics || guard != LoadedAreaGuard.Result.READY) {
+            // Stay on this path after crossing; stale base-entity fluid/portal state is never resumed.
+            flight.snapshotPhysics = true;
+            var step = SnapshotBallistics.tick(level, bullet, flight.limits.maxDistance() - flight.traveled);
+            EventHooks.fireEntityTickPost(bullet);
+            flight.traveled += step.distance();
+            if ("UNKNOWN_AREA".equals(step.termination())) unknown++;
+            if ("RANGE_LIMIT".equals(step.termination())) rangeLimited++;
+            return step.termination();
+        }
         double stepLength = bullet.getDeltaMovement().length();
         // Reuse TACZ's exact physics, block ray tracing, headshots, piercing, damage and events.
         // Do not call addFreshEntity, shoot(), or a second damage implementation here.
@@ -102,12 +110,6 @@ public final class LocalBallistics {
         EventHooks.fireEntityTickPost(bullet);
         flight.traveled += stepLength;
         return bullet.isRemoved() ? "native_hit_or_lifetime" : null;
-    }
-
-    private String stopAtGuard(EntityKineticBullet bullet, LoadedAreaGuard.Result result) {
-        if (result == LoadedAreaGuard.Result.UNKNOWN_AREA) unknown++;
-        if (result == LoadedAreaGuard.Result.RANGE_LIMIT) rangeLimited++;
-        return stop(bullet, result.name());
     }
 
     private static String stop(EntityKineticBullet bullet, String reason) {
