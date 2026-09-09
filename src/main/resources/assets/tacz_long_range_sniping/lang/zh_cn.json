@@ -1,6 +1,6 @@
 {
   "tacz_long_range_sniping.status": "远距狙击资格：%s；枪械：%s；瞄准镜：%s；档位：%s；倍率：%s",
-  "tacz_long_range_sniping.stage_one": "当前仅实现配置与接口层，尚未启用远距弹道。预留最大距离：%s 格。",
+  "tacz_long_range_sniping.prototype_status": "小范围弹道原型：%s；距离上限：%s 格；本维度活动弹道：%s；累计接管：%s；未知区域终止：%s；距离终止：%s。尚无远程地形与实体显示。",
   "tacz_long_range_sniping.reason.eligible": "符合条件",
   "tacz_long_range_sniping.reason.config_unavailable": "配置未加载或存在错误",
   "tacz_long_range_sniping.reason.disabled": "服务端已禁用",

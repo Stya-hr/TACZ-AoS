@@ -9,6 +9,7 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 import tacz.longrangesniping.command.SnipingCommand;
+import tacz.longrangesniping.ballistics.PrototypeBallistics;
 import tacz.longrangesniping.compat.tacz.TaczEvents;
 import tacz.longrangesniping.config.ServerConfig;
 
@@ -25,6 +26,7 @@ public final class TaczLongRangeSniping {
         modEventBus.addListener(ServerConfig::onUnload);
         modEventBus.addListener(this::commonSetup);
         NeoForge.EVENT_BUS.register(new TaczEvents());
+        NeoForge.EVENT_BUS.register(PrototypeBallistics.INSTANCE);
         NeoForge.EVENT_BUS.register(new SnipingCommand());
     }
 

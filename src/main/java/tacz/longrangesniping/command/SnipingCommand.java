@@ -6,6 +6,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import tacz.longrangesniping.compat.tacz.TaczBridge;
 import tacz.longrangesniping.config.ServerConfig;
+import tacz.longrangesniping.ballistics.PrototypeBallistics;
 
 public final class SnipingCommand {
     @SubscribeEvent
@@ -19,8 +20,11 @@ public final class SnipingCommand {
                             decision.scopeId().isEmpty() ? "-" : decision.scopeId(),
                             decision.slot() < 0 ? "-" : decision.slot() + 1,
                             decision.zoom() == 0 ? "-" : decision.zoom()), false);
-                    context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.stage_one",
-                            ServerConfig.current().maxDistance()), false);
+                    var config = ServerConfig.current();
+                    var status = PrototypeBallistics.INSTANCE.status(context.getSource().getLevel());
+                    context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.prototype_status",
+                            config.prototype().enabled(), config.prototype().maxDistance(), status.active(),
+                            status.accepted(), status.unknown(), status.rangeLimited()), false);
                     return decision.eligible() ? 1 : 0;
                 })));
     }

@@ -1,6 +1,6 @@
 {
   "tacz_long_range_sniping.status": "Long-range eligibility: %s; gun: %s; scope: %s; slot: %s; zoom: %s",
-  "tacz_long_range_sniping.stage_one": "Configuration and interface stage only; remote ballistics are not active. Reserved maximum distance: %s blocks.",
+  "tacz_long_range_sniping.prototype_status": "Local ballistic prototype: %s; distance limit: %s blocks; active in dimension: %s; accepted: %s; stopped at unknown terrain: %s; stopped at range limit: %s. Remote terrain and entity rendering are not implemented.",
   "tacz_long_range_sniping.reason.eligible": "Eligible",
   "tacz_long_range_sniping.reason.config_unavailable": "Configuration unavailable or invalid",
   "tacz_long_range_sniping.reason.disabled": "Disabled by server",
