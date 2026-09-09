@@ -3,5 +3,5 @@
   "minVersion": "0.8",
   "package": "tacz.longrangesniping.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["KineticBulletAccessor"]
+  "mixins": ["KineticBulletAccessor", "LevelChunkSnapshotMixin"]
 }

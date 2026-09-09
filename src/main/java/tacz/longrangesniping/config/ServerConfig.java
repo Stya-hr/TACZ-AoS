@@ -19,14 +19,21 @@ public final class ServerConfig {
     private static final ModConfigSpec.IntValue PROTOTYPE_DISTANCE;
     private static final ModConfigSpec.IntValue MAX_BULLETS;
     private static final ModConfigSpec.IntValue MAX_FLIGHT_TICKS;
+    private static final ModConfigSpec.BooleanValue SNAPSHOTS;
+    private static final ModConfigSpec.IntValue SNAPSHOT_BLOCKS, SNAPSHOT_SECTIONS, REFRESH_DELAY, PENDING_SECTIONS, TRACKED_CHUNKS;
+    private static final ModConfigSpec.DoubleValue SNAPSHOT_MILLIS;
 
     public record Prototype(boolean enabled, int maxDistance, int maxActiveBullets, int maxFlightTicks) {}
+    public record Snapshots(boolean enabled, int blocksPerTick, int sectionsPerTick, double maxMillisPerTick,
+                            int refreshDelayTicks, int maxPendingSections, int maxTrackedChunks) {}
+    public static final Snapshots DEFAULT_SNAPSHOTS = new Snapshots(true, 4096, 16, 2.0, 5, 8192, 8192);
 
     public record Settings(boolean available, EligibilityPolicy policy, int maxDistance,
-                           int maxTrackedEntities, int snapshotMemoryMiB, boolean diagnostics, Prototype prototype) {}
+                           int maxTrackedEntities, int snapshotMemoryMiB, boolean diagnostics, Prototype prototype,
+                           Snapshots snapshots) {}
 
     private static final Settings UNAVAILABLE = new Settings(false, EligibilityPolicy.disabled(), 1024, 32, 128, false,
-            new Prototype(false, 128, 128, 600));
+            new Prototype(false, 128, 128, 600), DEFAULT_SNAPSHOTS);
     private static volatile Settings current = UNAVAILABLE;
 
     static {
@@ -42,11 +49,12 @@ public final class ServerConfig {
                         "Malformed rules disable eligibility until corrected; never infer magnification from the scope name.")
                 .defineListAllowEmpty("scopeRules", EligibilityPolicy.DEFAULT_SCOPES, () -> "", value -> value instanceof String);
         builder.pop();
-        builder.comment("Shared limits. Entity and snapshot budgets are reserved for later stages.")
+        builder.comment("Shared limits. Entity budget is reserved for a later stage.")
                 .push("limits");
         MAX_DISTANCE = builder.defineInRange("maxDistance", 1024, 16, 16384);
         MAX_ENTITIES = builder.defineInRange("maxTrackedEntities", 32, 1, 256);
-        CACHE_MIB = builder.defineInRange("snapshotMemoryMiB", 128, 16, 4096);
+        CACHE_MIB = builder.comment("Server-wide estimated memory budget for complete collision snapshots; evicted sections become unknown.")
+                .defineInRange("snapshotMemoryMiB", 128, 16, 4096);
         builder.pop();
         builder.comment("Experimental loaded-area ballistic scheduler. No remote terrain or entity rendering yet.")
                 .push("prototype");
@@ -59,6 +67,22 @@ public final class ServerConfig {
                 .defineInRange("maxActiveBullets", 128, 1, 1024);
         MAX_FLIGHT_TICKS = builder.comment("Scheduler safety timeout; the native bullet lifetime is also preserved.")
                 .defineInRange("maxFlightTicks", 600, 1, 2400);
+        builder.pop();
+        builder.comment("Memory-only collision snapshots. Independent of prototype takeover; never loads real chunks.")
+                .push("snapshots");
+        SNAPSHOTS = builder.define("enabled", true);
+        SNAPSHOT_BLOCKS = builder.comment("Maximum sampled cells per server tick, shared across dimensions.")
+                .defineInRange("blocksPerTick", 4096, 64, 65536);
+        SNAPSHOT_SECTIONS = builder.comment("Maximum completed sections per tick; an all-air section costs one cell work unit.")
+                .defineInRange("sectionsPerTick", 16, 1, 256);
+        SNAPSHOT_MILLIS = builder.comment("Soft acquisition time budget, checked every 64 cells; this is not a hard tick-time guarantee.")
+                .defineInRange("maxMillisPerTick", 2.0, 0.1, 10.0);
+        REFRESH_DELAY = builder.comment("Coalesce edits for this many server ticks. Invalidated sections are unknown until rebuilt.")
+                .defineInRange("refreshDelayTicks", 5, 0, 200);
+        PENDING_SECTIONS = builder.comment("Bound on queued section addresses; omitted work is retried for tracked loaded chunks.")
+                .defineInRange("maxPendingSections", 8192, 64, 65536);
+        TRACKED_CHUNKS = builder.comment("Bound on coordinate-only loaded-chunk index. Overflow forgets oldest tracked coordinates.")
+                .defineInRange("maxTrackedChunks", 8192, 64, 65536);
         builder.pop();
         builder.push("diagnostics");
         DIAGNOSTICS = builder.comment("Log eligibility changes, bullet parameters, takeover and termination reasons.")
@@ -84,7 +108,9 @@ public final class ServerConfig {
             current = new Settings(true, EligibilityPolicy.parse(ENABLED.get(), GUNS.get(), SCOPES.get()),
                     MAX_DISTANCE.get(), MAX_ENTITIES.get(), CACHE_MIB.get(), DIAGNOSTICS.get(),
                     new Prototype(PROTOTYPE.get(), Math.min(MAX_DISTANCE.get(), PROTOTYPE_DISTANCE.get()),
-                            MAX_BULLETS.get(), MAX_FLIGHT_TICKS.get()));
+                            MAX_BULLETS.get(), MAX_FLIGHT_TICKS.get()),
+                    new Snapshots(SNAPSHOTS.get(), SNAPSHOT_BLOCKS.get(), SNAPSHOT_SECTIONS.get(), SNAPSHOT_MILLIS.get(),
+                            REFRESH_DELAY.get(), PENDING_SECTIONS.get(), TRACKED_CHUNKS.get()));
         } catch (IllegalArgumentException exception) {
             current = UNAVAILABLE;
             TaczLongRangeSniping.LOGGER.error("Invalid sniping eligibility config; eligibility disabled: {}", exception.getMessage());

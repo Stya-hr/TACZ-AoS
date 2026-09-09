@@ -1,4 +1,6 @@
 {
+  "tacz_long_range_sniping.cache_status": "碰撞缓存：%s；完整区块段：%s；待办：%s；估算内存：%s MiB；淘汰：%s；丢弃请求：%s；上一 tick 采集格数／完成段数：%s／%s",
+  "tacz_long_range_sniping.cache_section": "当前位置区块段 %s [%s, %s, %s]：%s；版本：%s；保守阻挡格数：%s",
   "tacz_long_range_sniping.status": "远距狙击资格：%s；枪械：%s；瞄准镜：%s；档位：%s；倍率：%s",
   "tacz_long_range_sniping.prototype_status": "小范围弹道原型：%s；距离上限：%s 格；本维度活动弹道：%s；累计接管：%s；未知区域终止：%s；距离终止：%s。尚无远程地形与实体显示。",
   "tacz_long_range_sniping.reason.eligible": "符合条件",

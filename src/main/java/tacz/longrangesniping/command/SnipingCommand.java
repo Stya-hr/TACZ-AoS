@@ -7,6 +7,8 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import tacz.longrangesniping.compat.tacz.TaczBridge;
 import tacz.longrangesniping.config.ServerConfig;
 import tacz.longrangesniping.ballistics.PrototypeBallistics;
+import tacz.longrangesniping.terrain.TerrainSnapshots;
+import tacz.longrangesniping.terrain.SectionKey;
 
 public final class SnipingCommand {
     @SubscribeEvent
@@ -26,6 +28,24 @@ public final class SnipingCommand {
                             config.prototype().enabled(), config.prototype().maxDistance(), status.active(),
                             status.accepted(), status.unknown(), status.rangeLimited()), false);
                     return decision.eligible() ? 1 : 0;
+                }))
+                .then(Commands.literal("cache").requires(source -> source.hasPermission(2)).executes(context -> {
+                    var source = context.getSource();
+                    var position = net.minecraft.core.BlockPos.containing(source.getPosition());
+                    var key = SectionKey.atBlock(TerrainSnapshots.dimension(source.getLevel()),
+                            position.getX(), position.getY(), position.getZ());
+                    var cache = TerrainSnapshots.INSTANCE;
+                    var status = cache.status();
+                    source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.cache_status",
+                            ServerConfig.current().snapshots().enabled(), status.sections(), status.queued(),
+                            String.format(java.util.Locale.ROOT, "%.2f", status.bytes() / 1048576.0),
+                            status.evictions(), status.droppedRequests(), status.lastCells(), status.lastSections()), false);
+                    var snapshot = cache.find(key);
+                    source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.cache_section",
+                            key.dimension(), key.x(), key.y(), key.z(), cache.coverage(key).name(),
+                            snapshot.map(s -> Long.toString(s.version())).orElse("-"),
+                            snapshot.map(s -> Integer.toString(s.conservativeCells())).orElse("-")), false);
+                    return 1;
                 })));
     }
 }

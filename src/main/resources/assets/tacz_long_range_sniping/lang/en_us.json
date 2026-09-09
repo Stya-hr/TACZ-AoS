@@ -1,4 +1,6 @@
 {
+  "tacz_long_range_sniping.cache_status": "Collision cache: %s; complete sections: %s; queued: %s; estimated MiB: %s; evictions: %s; dropped requests: %s; previous tick cells/sections: %s/%s",
+  "tacz_long_range_sniping.cache_section": "Current section %s [%s, %s, %s]: %s; version: %s; conservative cells: %s",
   "tacz_long_range_sniping.status": "Long-range eligibility: %s; gun: %s; scope: %s; slot: %s; zoom: %s",
   "tacz_long_range_sniping.prototype_status": "Local ballistic prototype: %s; distance limit: %s blocks; active in dimension: %s; accepted: %s; stopped at unknown terrain: %s; stopped at range limit: %s. Remote terrain and entity rendering are not implemented.",
   "tacz_long_range_sniping.reason.eligible": "Eligible",

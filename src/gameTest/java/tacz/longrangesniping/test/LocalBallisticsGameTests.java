@@ -227,7 +227,7 @@ public final class LocalBallisticsGameTests {
         try {
             // Test-only immutable config replacement: exercise the actual global event subscribers.
             setSettings(new ServerConfig.Settings(original.available(), original.policy(), original.maxDistance(),
-                    original.maxTrackedEntities(), original.snapshotMemoryMiB(), original.diagnostics(), LIMITS));
+                    original.maxTrackedEntities(), original.snapshotMemoryMiB(), original.diagnostics(), LIMITS, original.snapshots()));
             var bullet = fixture.bullet(new Vec3(4, 5, 4), new Vec3(1, 0, 0));
             helper.assertTrue(!helper.getLevel().addFreshEntity(bullet), "Native spawn was not canceled");
             helper.assertTrue(helper.getLevel().getEntity(bullet.getUUID()) == null && !bullet.isRemoved(),
