@@ -12,10 +12,15 @@ public final class ScopeNetworking {
     public static void setClientReceiver(Consumer<ScopeTargetsPayload> handler) { receiver = handler; }
     public static void setTrailReceiver(Consumer<ShotTrailsPayload> handler) { trailReceiver = handler; }
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("2");
+        var registrar = event.registrar("3");
         registrar.playToClient(ScopeTargetsPayload.TYPE, ScopeTargetsPayload.STREAM_CODEC,
                 (payload, context) -> receiver.accept(payload));
         registrar.playToClient(ShotTrailsPayload.TYPE, ShotTrailsPayload.STREAM_CODEC,
                 (payload, context) -> trailReceiver.accept(payload));
+        registrar.playToServer(ScopeViewPayload.TYPE, ScopeViewPayload.STREAM_CODEC,
+                (payload, context) -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer player)
+                        tacz.longrangesniping.scoping.ScopeViews.INSTANCE.receive(player, payload);
+                });
     }
 }

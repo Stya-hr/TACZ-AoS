@@ -34,6 +34,7 @@ public final class TaczLongRangeSniping {
         NeoForge.EVENT_BUS.register(TerrainSnapshots.INSTANCE);
         NeoForge.EVENT_BUS.register(tacz.longrangesniping.scoping.ScopeActivity.INSTANCE);
         NeoForge.EVENT_BUS.register(ScopeSubscriptions.INSTANCE);
+        NeoForge.EVENT_BUS.register(tacz.longrangesniping.scoping.ScopeViews.INSTANCE);
         NeoForge.EVENT_BUS.register(new SnipingCommand());
     }
 

@@ -55,26 +55,45 @@ public final class ScopeSubscriptions {
     }
 
     public List<Entity> select(ServerPlayer player, double zoom) {
+        if (!Double.isFinite(zoom) || zoom <= 0) return List.of();
         var level = player.serverLevel();
         var settings = ServerConfig.current();
         var config = settings.scopeRendering();
         Vec3 start = player.getEyePosition(), direction = player.getViewVector(1);
         double distance = settings.maxDistance();
         Vec3 end = start.add(direction.scale(distance));
-        double radius = distance * Math.tan(ScopeCone.halfAngle(zoom)) + 4;
+        double viewAngle = ScopeViews.INSTANCE.halfAngle(player, zoom);
+        double acquireAngle = ScopeCone.padded(viewAngle, ScopeCone.ACQUIRE_PADDING);
+        double releaseAngle = ScopeCone.padded(viewAngle, ScopeCone.RELEASE_PADDING);
+        var previous = leases.get(player.getUUID());
+        Map<Integer, UUID> retained = previous != null && previous.level == level ? previous.targets : Map.of();
+        double radius = distance * Math.tan(releaseAngle) + 4;
         AABB bounds = new AABB(start, end).inflate(radius);
         var candidates = new ArrayList<Entity>();
         int[] visited = {0};
-        // The entity section index visits existing entities only, and the callback can abort without building an unbounded list.
-        level.getEntities().get(EntityTypeTest.forClass(Entity.class), bounds, entity -> {
-            if (++visited[0] > config.maxCandidates()) return AbortableIterationConsumer.Continuation.ABORT;
+        var seen = new HashSet<Integer>();
+        java.util.function.Consumer<Entity> inspect = entity -> {
             var box = entity.getBoundingBox();
             Vec3 offset = box.getCenter().subtract(start);
+            double angle = entity.getUUID().equals(retained.get(entity.getId())) ? releaseAngle : acquireAngle;
             if (entity != player && entity.isAlive() && !entity.isInvisibleTo(player) && entity.broadcastToPlayer(player)
                     && !entity.isSpectator()
                     && level.getChunkSource().getChunkNow(entity.chunkPosition().x, entity.chunkPosition().z) != null
-                    && ScopeCone.contains(offset.x, offset.y, offset.z, direction.x, direction.y, direction.z,
-                    ScopeCone.radius(box.getXsize(), box.getYsize(), box.getZsize()), distance, zoom)) candidates.add(entity);
+                    && ScopeCone.containsAtAngle(offset.x, offset.y, offset.z, direction.x, direction.y, direction.z,
+                    ScopeCone.radius(box.getXsize(), box.getYsize(), box.getZsize()), distance, angle)) candidates.add(entity);
+        };
+        // Recheck existing observations first so a wider broad-phase scan does not arbitrarily lose them.
+        // They share the same candidate/visibility/count budgets, and can still be displaced by more central targets.
+        for (int id : retained.keySet()) {
+            if (visited[0] >= config.maxCandidates()) break;
+            var entity = level.getEntity(id);
+            if (entity != null && seen.add(id)) { visited[0]++; inspect.accept(entity); }
+        }
+        // The entity section index visits existing entities only, and the callback can abort without building an unbounded list.
+        level.getEntities().get(EntityTypeTest.forClass(Entity.class), bounds, entity -> {
+            if (!seen.add(entity.getId())) return AbortableIterationConsumer.Continuation.CONTINUE;
+            if (++visited[0] > config.maxCandidates()) return AbortableIterationConsumer.Continuation.ABORT;
+            inspect.accept(entity);
             return AbortableIterationConsumer.Continuation.CONTINUE;
         });
         // Centerline targets first, then nearer targets; deterministic tie-break avoids packet churn.

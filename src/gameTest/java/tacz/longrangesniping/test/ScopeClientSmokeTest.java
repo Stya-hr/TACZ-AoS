@@ -37,7 +37,8 @@ public final class ScopeClientSmokeTest {
     private static final TicketType<ChunkPos> TARGET = TicketType.create("scope_smoke_target", Comparator.comparingLong(ChunkPos::toLong));
     private static boolean started;
     private static int clientTicks, serverTicks, drawnTicks;
-    private static volatile int cowId = -1, itemId = -1;
+    private static volatile int cowId = -1, itemId = -1, edgeCowId = -1;
+    private static boolean edgeObserved;
     private static boolean itemObserved;
     private static volatile boolean release, failed;
     private static Cow cow;
@@ -95,6 +96,7 @@ public final class ScopeClientSmokeTest {
         com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(!release);
         IGunOperator.fromLivingEntity(mc.player).aim(!release);
         if (!release && ScopedRendering.active() && ScopedRendering.extraDraws() > 0 && mc.level.getEntity(cowId) != null) {
+            if (ScopedRendering.drewExtra(edgeCowId)) edgeObserved = true;
             if (ScopedRendering.hasRealClientChunk(mc.level.getEntity(cowId))) { fail("Target client chunk unexpectedly loaded"); return; }
             if (mc.level.getEntity(itemId) instanceof net.minecraft.world.entity.item.ItemEntity && ScopedRendering.extraDraws() >= 2)
                 itemObserved = true;
@@ -102,6 +104,7 @@ public final class ScopeClientSmokeTest {
             if (++drawnTicks == 60) {
                 if (!navigating || Math.abs(mc.level.getEntity(cowId).getX() - firstRenderedX) < 0.1) { fail("Remote pose stayed frozen"); return; }
                 if (!itemObserved) { fail("Non-living item did not render remotely"); return; }
+                if (!edgeObserved) { fail("Entity inside lens but outside old aim cone was never drawn"); return; }
                 Screenshot.grab(mc.gameDirectory, "scope-render.png", mc.getMainRenderTarget(), ignored -> {});
                 requestShot = true;
                 TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST rendered remote cow outside 6-chunk view; firing trace test");
@@ -115,10 +118,10 @@ public final class ScopeClientSmokeTest {
             release = true;
         }
         if (release && !ScopedRendering.active() && tacz.longrangesniping.client.ShotTrails.drawnPieces() > 0) trailAfterRelease = true;
-        if (release && !ScopedRendering.active() && ScopedRendering.targetCount() == 0 && mc.level.getEntity(cowId) == null && mc.level.getEntity(itemId) == null
+        if (release && !ScopedRendering.active() && ScopedRendering.targetCount() == 0 && mc.level.getEntity(cowId) == null && mc.level.getEntity(itemId) == null && mc.level.getEntity(edgeCowId) == null
                 && !tacz.longrangesniping.client.ShotTrails.hasTrails()) {
             if (!trailAfterRelease) { fail("In-flight trail vanished on scope release"); return; }
-            TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST PASSED: native AI, remote entities, real trail packets/render beyond 6 chunks, scope release and trail expiry");
+            TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST PASSED: native AI, lens-edge entity beyond old cone, real trail packets/render beyond 6 chunks, scope release and trail expiry");
             try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
             catch (java.io.IOException failure) { throw new RuntimeException(failure); }
             mc.stop();
@@ -157,6 +160,9 @@ public final class ScopeClientSmokeTest {
         if (serverTicks == 230) {
             cow = EntityType.COW.create(level); cow.setPos(232, 80, 8); cow.setOldPosAndRot();
             level.addFreshEntity(cow); cowId = cow.getId();
+            // About 1.74 degrees off-axis: inside the 25x lens, beyond the old 1.4-degree cone plus cow radius.
+            var edgeCow = EntityType.COW.create(level); edgeCow.setPos(232, 80, 14.8);
+            edgeCow.setNoAi(true); edgeCow.setNoGravity(true); level.addFreshEntity(edgeCow); edgeCowId = edgeCow.getId();
             var item = new net.minecraft.world.entity.item.ItemEntity(level, 233, 80.2, 9,
                     new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND));
             item.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO); level.addFreshEntity(item); itemId = item.getId();

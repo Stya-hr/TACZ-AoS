@@ -21,10 +21,11 @@ import tacz.longrangesniping.TaczLongRangeSniping;
 import tacz.longrangesniping.config.ServerConfig;
 import tacz.longrangesniping.network.ScopeNetworking;
 import tacz.longrangesniping.network.ScopeTargetsPayload;
-import tacz.longrangesniping.scoping.ScopeCone;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 /** Draws the very same tracked entity objects; no clone entities, client chunks, local AI or collision authority. */
 @EventBusSubscriber(modid = TaczLongRangeSniping.MOD_ID, value = Dist.CLIENT)
@@ -36,7 +37,7 @@ public final class ScopedRendering {
     private static int interval = 4;
     private static boolean active;
     private static double zoom;
-    private static int lastExtraDraws;
+    private static final Set<Integer> extraDrawn = new HashSet<>();
     private static ByteBufferBuilder byteBuffer;
     private static MultiBufferSource.BufferSource buffers;
 
@@ -64,7 +65,8 @@ public final class ScopedRendering {
 
     public static boolean active() { return active; }
     public static int targetCount() { return targets.size(); }
-    public static int extraDraws() { return lastExtraDraws; }
+    public static int extraDraws() { return extraDrawn.size(); }
+    public static boolean drewExtra(int id) { return extraDrawn.contains(id); }
     public static boolean hasRealClientChunk(Entity entity) {
         // ClientLevel.hasChunk/hasChunkAt are not a residency test; inspect the actual client storage.
         return entity.level() instanceof ClientLevel client
@@ -110,12 +112,14 @@ public final class ScopedRendering {
 
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES) return;
-        lastExtraDraws = 0;
-        if (!active || level == null || targets.isEmpty()) return;
+        extraDrawn.clear();
+        if (!active || level == null) return;
+        ScopeViewReporter.report(event, zoom, tick);
+        if (targets.isEmpty()) return;
         var minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.level != level) return;
         var camera = event.getCamera();
-        Vec3 eye = camera.getPosition(), direction = minecraft.player.getViewVector(1);
+        Vec3 eye = camera.getPosition();
         var dispatcher = minecraft.getEntityRenderDispatcher();
         float partial = event.getPartialTick().getGameTimeDeltaPartialTick(false);
         float fogStart = RenderSystem.getShaderFogStart(), fogEnd = RenderSystem.getShaderFogEnd();
@@ -128,10 +132,9 @@ public final class ScopedRendering {
                 Entity entity = level.getEntity(pose.target.id());
                 if (entity == null || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved()
                         || entity.isInvisibleTo(minecraft.player) || !event.getFrustum().isVisible(entity.getBoundingBox())) continue;
-                var box = entity.getBoundingBox();
-                Vec3 offset = box.getCenter().subtract(eye);
-                if (!ScopeCone.contains(offset.x, offset.y, offset.z, direction.x, direction.y, direction.z,
-                        ScopeCone.radius(box.getXsize(), box.getYsize(), box.getZsize()), ServerConfig.current().maxDistance(), zoom)) continue;
+                // The server already bounded the observation. Let the actual projection clip at the screen edge,
+                // rather than hiding an authorized entity inside the lens with a second, narrower aim cone.
+                if (entity.getBoundingBox().getCenter().distanceToSqr(eye) > Math.pow(ServerConfig.current().maxDistance(), 2)) continue;
                 // Vanilla already drew this object if both its distance/frustum and section checks succeeded.
                 if (dispatcher.shouldRender(entity, event.getFrustum(), eye.x, eye.y, eye.z)
                         && (level.isOutsideBuildHeight(entity.blockPosition()) || minecraft.levelRenderer.isSectionCompiled(entity.blockPosition()))) continue;
@@ -140,7 +143,7 @@ public final class ScopedRendering {
                 double z = Mth.lerp(partial, entity.zOld, entity.getZ()) - eye.z;
                 dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
                         event.getPoseStack(), buffers, pose.target.light());
-                lastExtraDraws++;
+                extraDrawn.add(entity.getId());
             }
             buffers.endBatch();
         } finally {
@@ -149,6 +152,8 @@ public final class ScopedRendering {
     }
 
     @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        ScopeViewReporter.reset();
+        extraDrawn.clear();
         targets.clear(); level = null; active = false;
         if (byteBuffer != null) { byteBuffer.close(); byteBuffer = null; buffers = null; }
     }
