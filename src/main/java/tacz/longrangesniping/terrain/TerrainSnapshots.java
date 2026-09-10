@@ -32,7 +32,65 @@ public final class TerrainSnapshots {
     private long clock, untracked;
     private SnapshotCollector.Work lastWork = new SnapshotCollector.Work(0, 0);
     private boolean enabled;
-    private TerrainSnapshots() {}
+    private SnapshotDiskCache disk;
+    private boolean diskActive;
+    private static final int[] HALO = {-1, 1};
+    private net.minecraft.server.MinecraftServer server;
+    private ServerConfig.Persistence diskConfig;
+    private TerrainSnapshots() {
+        store.listeners(snapshot -> { if (diskActive && disk != null) disk.save(snapshot); }, key -> { if (diskActive && disk != null) disk.invalidate(key); });
+    }
+    @SubscribeEvent public void starting(net.neoforged.neoforge.event.server.ServerAboutToStartEvent event) {
+        server = event.getServer(); diskConfig = ServerConfig.current().persistence();
+        store.pinLimits(diskConfig.pinMiB() * 1048576L, diskConfig.maxPinnedSections());
+        diskActive = diskConfig.enabled() && collecting();
+        String versions = net.neoforged.fml.ModList.get().getMods().stream()
+                .map(mod -> mod.getModId() + "=" + mod.getVersion()).sorted().collect(java.util.stream.Collectors.joining(";"));
+        String fingerprint;
+        try {
+            fingerprint = "geometry=" + SnapshotCodec.FORMAT + ":" + java.util.HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256").digest(versions.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+        // Running this mod with caching disabled must invalidate a prior session's files too.
+        if (!diskActive) fingerprint = "disabled";
+        disk = new SnapshotDiskCache(server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("taczlrs-collision-cache"), fingerprint,
+                new SnapshotDiskCache.Limits(diskConfig.diskMiB() * 1048576L, diskConfig.maxDiskSections(),
+                        diskConfig.maxQueuedSections(), diskConfig.queueMiB() * 1048576L,
+                        diskConfig.ioMiBPerSecond() * 1048576L, diskConfig.operationsPerSecond()),
+                message -> tacz.longrangesniping.TaczLongRangeSniping.LOGGER.warn("Snapshot disk cache disabled: {}", message),
+                server.getWorldPath(net.minecraft.world.level.storage.LevelResource.LEVEL_DATA_FILE));
+    }
+    public SnapshotDiskCache.Status diskStatus() { return disk == null || !diskActive ? null : disk.status(); }
+    public int pinnedSections() { return store.pinnedSections(); }
+    public long pinnedBytes() { return store.pinnedBytes(); }
+    public SnapshotLease lease() { return new SnapshotLease(store); }
+
+    /** Bounded look-ahead over existing memory/disk addresses; never fetches world chunks or waits for I/O. */
+    public void prepare(ServerLevel level, net.minecraft.world.phys.Vec3 start, net.minecraft.world.phys.Vec3 end, SnapshotLease lease) {
+        if (!collecting()) return;
+        double distance = start.distanceTo(end);
+        if (!Double.isFinite(distance) || distance > 16384) return;
+        String dimension = dimension(level);
+        int steps = Math.max(1, (int) Math.ceil(distance / 8));
+        var seen = new java.util.HashSet<SectionKey>();
+        int checks = 0;
+        for (int i = 0; i <= steps && checks < 1024; i++) {
+            var point = start.lerp(end, (double) i / steps);
+            int x = net.minecraft.util.Mth.floor(point.x), y = net.minecraft.util.Mth.floor(point.y), z = net.minecraft.util.Mth.floor(point.z);
+            var center = SectionKey.atBlock(dimension, x, y, z);
+            // Stop warming at a truly unknown section, even if disk records exist farther along the ray.
+            if (level.getChunkSource().getChunkNow(center.x(), center.z()) == null && !store.contains(center)
+                    && (!diskActive || disk == null || !disk.known(center))) break;
+            for (int ox : HALO) for (int oy : HALO) for (int oz : HALO) {
+                if (++checks > 1024) break;
+                var key = SectionKey.atBlock(dimension, x + ox, y + oy, z + oz);
+                if (!seen.add(key)) continue;
+                if (lease != null) lease.retain(key);
+                if (!store.contains(key) && diskActive && disk != null) disk.request(key);
+            }
+        }
+    }
 
     @SubscribeEvent public void onLoad(ChunkEvent.Load event) {
         if (!(event.getChunk() instanceof LevelChunk chunk) || !(chunk.getLevel() instanceof ServerLevel level)
@@ -91,6 +149,23 @@ public final class TerrainSnapshots {
     }
     public void tick() {
         clock++;
+        if (disk != null) {
+            // Restore only on this thread and only if the real chunk is still absent; live terrain always wins.
+            for (var snapshot : disk.drain(diskConfig.restoresPerTick())) {
+                var level = server == null ? null : server.getAllLevels().iterator();
+                if (!collecting()) continue;
+                if (level != null) while (level.hasNext()) {
+                    var candidate = level.next();
+                    if (dimension(candidate).equals(snapshot.key().dimension())
+                            && snapshot.key().y() >= candidate.getMinSection() && snapshot.key().y() < candidate.getMaxSection()
+                            && candidate.getChunkSource().getChunkNow(snapshot.key().x(), snapshot.key().z()) == null) {
+                        store.restore(snapshot); break;
+                    }
+                }
+            }
+        }
+        var pinConfig = ServerConfig.current().persistence();
+        store.pinLimits(pinConfig.pinMiB() * 1048576L, pinConfig.maxPinnedSections());
         boolean nextEnabled = collecting();
         if (!nextEnabled) {
             if (enabled || store.size() != 0 || collector.pendingCount() != 0) collector.clear();
@@ -123,7 +198,13 @@ public final class TerrainSnapshots {
     public SnapshotStore.Coverage coverage(SectionKey key) {
         return collecting() ? store.coverage(key) : SnapshotStore.Coverage.UNKNOWN;
     }
-    public Optional<SectionSnapshot> find(SectionKey key) { return collecting() ? store.find(key) : Optional.empty(); }
+    public Optional<SectionSnapshot> find(SectionKey key) {
+        if (!collecting()) return Optional.empty();
+        var snapshot = store.find(key);
+        if (snapshot.isEmpty() && diskActive && disk != null) disk.request(key);
+        else if (diskActive && disk != null) snapshot.ifPresent(disk::retrySave);
+        return snapshot;
+    }
     public Optional<CollisionCell> cell(ServerLevel level, BlockPos pos) {
         return find(SectionKey.atBlock(dimension(level), pos.getX(), pos.getY(), pos.getZ()))
                 .map(snapshot -> snapshot.cell(SectionKey.cellIndex(pos.getX(), pos.getY(), pos.getZ())));
@@ -141,7 +222,10 @@ public final class TerrainSnapshots {
         collector.removeDimension(dimension);
         levels.remove(dimension);
     }
-    @SubscribeEvent public void onStop(ServerStoppedEvent event) { clear(); }
+    @SubscribeEvent public void onStop(ServerStoppedEvent event) {
+        if (disk != null) { disk.close(); disk = null; }
+        server = null; clear();
+    }
     public void clear() {
         collector.clear();
         loaded.clear();

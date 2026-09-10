@@ -28,6 +28,13 @@ public final class ServerConfig {
     private static final ModConfigSpec.IntValue ACTIVITY_RADIUS, ACTIVITY_STABLE, ACTIVITY_RETENTION,
             ACTIVITY_CHUNKS, ACTIVITY_DEPENDENCIES, ACTIVITY_REGIONS, ACTIVITY_STARTS, ACTIVITY_TIMEOUT, ACTIVITY_QUERIES;
 
+    private static final ModConfigSpec.BooleanValue DISK;
+    private static final ModConfigSpec.IntValue DISK_MIB, DISK_SECTIONS, IO_QUEUE, IO_QUEUE_MIB, IO_MIB, IO_OPS, RESTORE_SECTIONS, PIN_MIB, PIN_SECTIONS;
+    public record Persistence(boolean enabled, int diskMiB, int maxDiskSections, int maxQueuedSections,
+                              int queueMiB, int ioMiBPerSecond, int operationsPerSecond, int restoresPerTick,
+                              int pinMiB, int maxPinnedSections) {}
+    public static final Persistence DEFAULT_PERSISTENCE = new Persistence(true, 256, 65536, 128, 32, 8, 128, 8, 32, 2048);
+
     public record Ballistics(boolean enabled, int maxDistance, int maxActiveBullets, int maxFlightTicks, boolean extendLifetime) {
         public Ballistics(boolean enabled, int maxDistance, int maxActiveBullets, int maxFlightTicks) {
             this(enabled, maxDistance, maxActiveBullets, maxFlightTicks, false);
@@ -50,7 +57,13 @@ public final class ServerConfig {
 
     public record Settings(boolean available, EligibilityPolicy policy, int maxDistance,
                            int maxTrackedEntities, int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics,
-                           Snapshots snapshots, ScopeRendering scopeRendering, Activity activity) {
+                           Snapshots snapshots, ScopeRendering scopeRendering, Activity activity, Persistence persistence) {
+        public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
+                        int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots,
+                        ScopeRendering scopeRendering, Activity activity) {
+            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, ballistics,
+                    snapshots, scopeRendering, activity, DEFAULT_PERSISTENCE);
+        }
         public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
                         int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots,
                         ScopeRendering scopeRendering) {
@@ -103,7 +116,7 @@ public final class ServerConfig {
                         "Speed, gravity, drag, damage falloff and the traveled-distance limit remain in force.")
                 .define("extendLifetime", true);
         builder.pop();
-        builder.comment("Memory-only collision snapshots. Independent of ballistic takeover; never loads real chunks.")
+        builder.comment("Collision snapshots with optional asynchronous persistence. Independent of ballistic takeover; never loads real chunks.")
                 .push("snapshots");
         SNAPSHOTS = builder.define("enabled", true);
         SNAPSHOT_BLOCKS = builder.comment("Maximum sampled cells per server tick, shared across dimensions.")
@@ -118,6 +131,21 @@ public final class ServerConfig {
                 .defineInRange("maxPendingSections", 8192, 64, 65536);
         TRACKED_CHUNKS = builder.comment("Bound on coordinate-only loaded-chunk index. Overflow forgets oldest tracked coordinates.")
                 .defineInRange("maxTrackedChunks", 8192, 64, 65536);
+        builder.pop();
+        builder.comment("World-local collision cache. Reads/writes/compression run off-thread; disk-only sections are not yet usable.",
+                        "Changes to these limits apply after restarting the server. A dirty shutdown discards the disk cache conservatively.")
+                .push("persistence");
+        DISK = builder.define("enabled", true);
+        DISK_MIB = builder.defineInRange("diskMiB", 256, 16, 4096);
+        DISK_SECTIONS = builder.defineInRange("maxDiskSections", 65536, 256, 262144);
+        IO_QUEUE = builder.defineInRange("maxQueuedSections", 128, 8, 2048);
+        IO_QUEUE_MIB = builder.defineInRange("queueMiB", 32, 8, 256);
+        IO_MIB = builder.defineInRange("ioMiBPerSecond", 8, 1, 128);
+        IO_OPS = builder.defineInRange("operationsPerSecond", 128, 8, 2048);
+        RESTORE_SECTIONS = builder.defineInRange("restoresPerTick", 8, 1, 64);
+        PIN_MIB = builder.comment("Subset of the memory cache reserved for in-flight snapshot leases, not extra memory.")
+                .defineInRange("pinMiB", 32, 0, 1024);
+        PIN_SECTIONS = builder.defineInRange("maxPinnedSections", 2048, 0, 32768);
         builder.pop();
         builder.comment("Additional entity tracking/rendering only while gun, installed scope, zoom and aiming qualify.",
                         "All entity types may be displayed; activity controls bounded server-side target loading.")
@@ -182,7 +210,9 @@ public final class ServerConfig {
                     new ScopeRendering(SCOPE_RENDERING.get(), SCOPE_INTERVAL.get(), SCOPE_CANDIDATES.get(), SCOPE_TRACE_CELLS.get()),
                     new Activity(ACTIVITY.get(), ACTIVITY_RADIUS.get(), ACTIVITY_STABLE.get(), ACTIVITY_RETENTION.get(),
                             ACTIVITY_CHUNKS.get(), ACTIVITY_DEPENDENCIES.get(), ACTIVITY_REGIONS.get(), ACTIVITY_STARTS.get(),
-                            ACTIVITY_TIMEOUT.get(), ACTIVITY_QUERIES.get()));
+                            ACTIVITY_TIMEOUT.get(), ACTIVITY_QUERIES.get()),
+                    new Persistence(DISK.get(), DISK_MIB.get(), DISK_SECTIONS.get(), IO_QUEUE.get(), IO_QUEUE_MIB.get(),
+                            IO_MIB.get(), IO_OPS.get(), RESTORE_SECTIONS.get(), PIN_MIB.get(), PIN_SECTIONS.get()));
         } catch (IllegalArgumentException exception) {
             current = UNAVAILABLE;
             TaczLongRangeSniping.LOGGER.error("Invalid sniping eligibility config; eligibility disabled: {}", exception.getMessage());

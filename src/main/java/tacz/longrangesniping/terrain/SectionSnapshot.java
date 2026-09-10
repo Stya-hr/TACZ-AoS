@@ -37,6 +37,8 @@ public final class SectionSnapshot {
         return palette.get(cells == null ? 0 : Short.toUnsignedInt(cells[index]));
     }
     public long estimatedBytes() { return estimatedBytes; }
+    List<CollisionCell> palette() { return palette; }
+    int paletteIndex(int index) { return cells == null ? 0 : Short.toUnsignedInt(cells[index]); }
 
     public static SectionSnapshot air(SectionKey key, long version, long tick) {
         return new SectionSnapshot(key, version, tick, List.of(CollisionCell.AIR), null, 0);

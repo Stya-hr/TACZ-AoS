@@ -20,5 +20,6 @@
   "tacz_long_range_sniping.reason.gun_operator_unavailable": "TACZ player interface unavailable",
   "tacz_long_range_sniping.reason.client_layout_mismatch": "Client scope zoom layout differs from server configuration",
   "tacz_long_range_sniping.activity_status": "Remote simulation: enabled=%s, ready/regions=%s/%s, FULL chunks=%s/%s, dependency chunks=%s, unknown refusals=%s, budget refusals=%s, loading timeouts=%s, flight pins=%s",
-  "tacz_long_range_sniping.flight_status": "Flight: extend lifetime=%s, tick cap=%s, lifetime/timeouts=%s, cached blocks=%s, last end=%s, last admission=%s"
+  "tacz_long_range_sniping.flight_status": "Flight: extend lifetime=%s, tick cap=%s, lifetime/timeouts=%s, cached blocks=%s, last end=%s, last admission=%s",
+  "tacz_long_range_sniping.disk_status": "Disk cache: %s, index %s sections / %s MiB, queue %s jobs / %s MiB, dropped %s, corrupt/missing %s; flight pins %s sections / %s MiB"
 }

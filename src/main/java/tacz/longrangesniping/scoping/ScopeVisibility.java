@@ -14,15 +14,17 @@ import java.util.Optional;
 /** One bounded, shared read cache per player refresh; neither successful nor failed queries load terrain. */
 public final class ScopeVisibility {
     private final NoLoadCollisionSource world;
+    private final ServerLevel level;
     private final Map<Long, CollisionCell> cells = new HashMap<>();
     private int remaining;
-    public ScopeVisibility(ServerLevel level, int maxCells) { world = new NoLoadCollisionSource(level); remaining = maxCells; }
+    public ScopeVisibility(ServerLevel level, int maxCells) { this.level = level; world = new NoLoadCollisionSource(level); remaining = maxCells; }
     public int remaining() { return remaining; }
 
     /** The first real/cached collision before any unknown cell. Air and exhausted budgets provide no loading target. */
     public Optional<Vec3> firstBlock(Vec3 start, Vec3 end) {
         double distance = end.distanceTo(start);
         if (!Double.isFinite(distance) || distance > 16384 || remaining <= 0) return Optional.empty();
+        tacz.longrangesniping.terrain.TerrainSnapshots.INSTANCE.prepare(level, start, end, null);
         int steps = Math.max(1, (int) Math.ceil(distance / 128));
         Vec3 delta = end.subtract(start).scale(1.0 / steps);
         for (int step = 0; step < steps; step++) {

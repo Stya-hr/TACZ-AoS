@@ -12,10 +12,13 @@ import java.util.Map;
 /** Tick-local readers only: live sections win over snapshots, without creating tickets or doing I/O. */
 public final class NoLoadCollisionSource implements SegmentTrace.Source {
     private final ServerLevel level;
+    private final SnapshotLease lease;
     private final String dimension;
     private final Map<SectionKey, SnapshotCollector.Reader> readers = new HashMap<>();
     private final IdentityHashMap<BlockState, CollisionCell> states = new IdentityHashMap<>();
-    public NoLoadCollisionSource(ServerLevel level) {
+    public NoLoadCollisionSource(ServerLevel level) { this(level, null); }
+    public NoLoadCollisionSource(ServerLevel level, SnapshotLease lease) {
+        this.lease = lease;
         this.level = level;
         this.dimension = TerrainSnapshots.dimension(level);
     }
@@ -43,6 +46,7 @@ public final class NoLoadCollisionSource implements SegmentTrace.Source {
         }
         var snapshot = TerrainSnapshots.INSTANCE.find(key).orElse(null);
         if (snapshot == null) return null;
+        if (lease != null) lease.retain(key);
         return new SnapshotCollector.Reader() {
             public boolean allAir() { return snapshot.allAir(); }
             public CollisionCell read(int index) { return snapshot.cell(index); }

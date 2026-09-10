@@ -15,7 +15,7 @@ final class SnapshotBallistics {
     record Step(String termination, double distance) {}
     private SnapshotBallistics() {}
 
-    static Step tick(ServerLevel level, EntityKineticBullet bullet, double remaining) {
+    static Step tick(ServerLevel level, EntityKineticBullet bullet, double remaining, tacz.longrangesniping.terrain.SnapshotLease lease) {
         Vec3 start = bullet.position(), velocity = bullet.getDeltaMovement();
         double length = velocity.length();
         if (!Double.isFinite(length) || length > 256 || !Double.isFinite(remaining) || remaining <= 0) {
@@ -23,7 +23,7 @@ final class SnapshotBallistics {
         }
         boolean rangeEnd = length >= remaining;
         Vec3 movement = rangeEnd && length > 0 ? velocity.scale(remaining / length) : velocity;
-        var source = new NoLoadCollisionSource(level);
+        var source = new NoLoadCollisionSource(level, lease);
         var trace = SegmentTrace.trace(source, start.x, start.y, start.z, movement.x, movement.y, movement.z);
         double fraction = trace.fraction();
         // Keep the endpoint strictly inside the covered prefix. A block/unknown tie cannot hit an entity behind it.

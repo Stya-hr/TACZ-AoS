@@ -35,6 +35,7 @@ public final class LocalBallistics {
         final ShotContext context;
         final ServerConfig.Ballistics limits;
         final ScopeActivity.FlightLease lease;
+        final tacz.longrangesniping.terrain.SnapshotLease snapshots = tacz.longrangesniping.terrain.TerrainSnapshots.INSTANCE.lease();
         final int originalLife, installedLife;
         double traveled;
         int ticks;
@@ -86,10 +87,10 @@ public final class LocalBallistics {
             Flight flight = iterator.next();
             String termination;
             try { termination = advance(flight); }
-            catch (RuntimeException | Error failure) { flight.lease.close(); throw failure; }
+            catch (RuntimeException | Error failure) { flight.lease.close(); flight.snapshots.close(); throw failure; }
             collectVisual(flight, termination != null, visuals);
             if (termination != null) {
-                flight.lease.close();
+                flight.lease.close(); flight.snapshots.close();
                 iterator.remove();
                 finished++;
                 lastTermination = termination;
@@ -143,6 +144,8 @@ public final class LocalBallistics {
         if (bullet.isRemoved()) return "removed_by_tick_event";
         if (!plainKinetic(bullet)) return stop(bullet, "unsupported_ammunition_changed");
         // A tick-pre listener can change the trajectory; validate it again before TACZ reads terrain.
+        tacz.longrangesniping.terrain.TerrainSnapshots.INSTANCE.prepare(level, bullet.position(),
+                bullet.position().add(bullet.getDeltaMovement().scale(2)), flight.snapshots);
         var guard = LoadedAreaGuard.check(level, bullet, flight.limits.maxDistance() - flight.traveled);
         if (guard == LoadedAreaGuard.Result.INVALID) return stop(bullet, "INVALID");
         flight.visualStart = bullet.position();
@@ -150,7 +153,7 @@ public final class LocalBallistics {
         if (flight.snapshotPhysics || guard != LoadedAreaGuard.Result.READY) {
             // Stay on this path after crossing; stale base-entity fluid/portal state is never resumed.
             flight.snapshotPhysics = true;
-            var step = SnapshotBallistics.tick(level, bullet, flight.limits.maxDistance() - flight.traveled);
+            var step = SnapshotBallistics.tick(level, bullet, flight.limits.maxDistance() - flight.traveled, flight.snapshots);
             flight.visualEnd = bullet.position();
             EventHooks.fireEntityTickPost(bullet);
             flight.traveled += step.distance();
@@ -187,8 +190,8 @@ public final class LocalBallistics {
             lifetimeLimited, blocked, lastTermination); }
 
     public void clear() {
-        active.values().forEach(f -> { f.lease.close(); f.bullet.discard(); });
-        pending.forEach(f -> { f.lease.close(); f.bullet.discard(); });
+        active.values().forEach(f -> { f.lease.close(); f.snapshots.close(); f.bullet.discard(); });
+        pending.forEach(f -> { f.lease.close(); f.snapshots.close(); f.bullet.discard(); });
         active.clear();
         pending.clear();
     }

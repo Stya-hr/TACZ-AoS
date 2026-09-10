@@ -54,6 +54,13 @@ public final class SnipingCommand {
                             ServerConfig.current().snapshots().enabled(), status.sections(), status.queued(),
                             String.format(java.util.Locale.ROOT, "%.2f", status.bytes() / 1048576.0),
                             status.evictions(), status.droppedRequests(), status.lastCells(), status.lastSections()), false);
+                    var disk = cache.diskStatus();
+                    source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.disk_status",
+                            disk == null ? "off" : disk.failed() ? "failed" : disk.ready() ? "ready" : "indexing",
+                            disk == null ? 0 : disk.indexed(), disk == null ? 0 : disk.diskBytes() / 1048576,
+                            disk == null ? 0 : disk.queued(), disk == null ? 0 : disk.queueBytes() / 1048576,
+                            disk == null ? 0 : disk.dropped(), disk == null ? 0 : disk.corrupt(),
+                            cache.pinnedSections(), cache.pinnedBytes() / 1048576), false);
                     var snapshot = cache.find(key);
                     source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.cache_section",
                             key.dimension(), key.x(), key.y(), key.z(), cache.coverage(key).name(),
