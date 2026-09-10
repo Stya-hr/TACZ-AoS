@@ -28,14 +28,14 @@ import java.util.UUID;
 @GameTestHolder(TaczLongRangeSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class ScopeActivityGameTests {
-    @GameTest(template = "ballistics", batch = "scope_activity", timeoutTicks = 700)
+    @GameTest(template = "ballistics", batch = "scope_activity", timeoutTicks = 850)
     public static void savedMobReloadsSimulatesAndReleasesBoundedRegion(GameTestHelper helper) {
         var level = helper.getLevel();
         var original = ServerConfig.current();
         var activity = ScopeActivity.INSTANCE;
         var cache = TerrainSnapshots.INSTANCE;
         var player = FakePlayerFactory.get(level, new GameProfile(UUID.randomUUID(), "activity-test"));
-        new LocalBallisticsGameTests.Fixture(helper, player);
+        var fixture = new LocalBallisticsGameTests.Fixture(helper, player);
         var second = FakePlayerFactory.get(level, new GameProfile(UUID.randomUUID(), "activity-share"));
         new LocalBallisticsGameTests.Fixture(helper, second);
         var secondOperator = IGunOperator.fromLivingEntity(second);
@@ -44,6 +44,11 @@ public final class ScopeActivityGameTests {
         Cow[] restored = {null};
         net.minecraft.world.entity.monster.Zombie[] zombie = {null};
         Wolf[] wolf = {null}; Sheep[] prey = {null}; Vec3[] initial = {null};
+        var foreign = net.minecraft.server.level.TicketType.<net.minecraft.world.level.ChunkPos>create("activity_test_foreign",
+                java.util.Comparator.comparingLong(net.minecraft.world.level.ChunkPos::toLong));
+        var foreignPos = new net.minecraft.world.level.ChunkPos(cx, cz);
+        com.tacz.guns.entity.EntityKineticBullet[] shot = {null};
+        Cow[] shotTarget = {null};
         var operator = IGunOperator.fromLivingEntity(player);
         operator.aim(false); secondOperator.aim(false);
         // Register only observer/nearest-player lists; no normal player chunk tickets are installed by this fixture.
@@ -54,6 +59,8 @@ public final class ScopeActivityGameTests {
             ScopeSubscriptions.INSTANCE.replace(player, java.util.List.of());
             ScopeSubscriptions.INSTANCE.replace(second, java.util.List.of());
             activity.releaseAll();
+            level.getChunkSource().removeRegionTicket(foreign, foreignPos, 3, foreignPos, true);
+            tacz.longrangesniping.ballistics.PrototypeBallistics.INSTANCE.unload(new net.neoforged.neoforge.event.level.LevelEvent.Unload(level));
             register(player, false); level.players().remove(player);
             register(second, false); level.players().remove(second);
             LocalBallisticsGameTests.setSettings(original);
@@ -64,7 +71,7 @@ public final class ScopeActivityGameTests {
         var restricted = new ServerConfig.Activity(true, 1, 8, 20, 25, 4096, 4, 2, 100);
         var allowed = new ServerConfig.Activity(true, 1, 8, 20, 196, 4096, 4, 2, 100);
         java.util.function.Consumer<ServerConfig.Activity> configure = config -> LocalBallisticsGameTests.setSettings(
-                new ServerConfig.Settings(true, original.policy(), 1024, 32, 128, true, original.prototype(),
+                new ServerConfig.Settings(true, original.policy(), 1024, 32, 128, true, new ServerConfig.Ballistics(true, 1024, 128, 200, true),
                         new ServerConfig.Snapshots(true, 65536, 256, 10, 0, 8192, 8192), original.scopeRendering(), config));
         configure.accept(restricted);
         helper.onEachTick(() -> { if (!finished[0]) {
@@ -136,18 +143,70 @@ public final class ScopeActivityGameTests {
             helper.assertTrue(!prey[0].isAlive() || prey[0].getHealth() < prey[0].getMaxHealth(), "Remote wolf never attacked its prey");
             helper.assertTrue(zombie[0].isAlive() && zombie[0].getNoActionTime() < 100,
                     "Active hostile despawned or retained idle gating");
+            // Fire a deliberately slow, short-native-life bullet beyond 128 blocks, then immediately unscope.
+            // Remove the AI fixtures from this firing lane; they were already checked above.
+            restored[0].discard(); wolf[0].discard(); prey[0].discard(); zombie[0].discard();
+            level.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,
+                    new net.minecraft.world.phys.AABB(wx-16, 79, wz-16, wx+32, 85, wz+32)).forEach(net.minecraft.world.entity.Entity::discard);
+            shotTarget[0] = EntityType.COW.create(level); shotTarget[0].setPos(wx + 8, 80.32, wz + 8);
+            shotTarget[0].setNoAi(true); shotTarget[0].setNoGravity(true);
+            shotTarget[0].getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH).setBaseValue(1000);
+            shotTarget[0].setHealth(1000); level.addFreshEntity(shotTarget[0]);
+            Vec3 shooterPosition = player.position(), origin = player.getEyePosition();
+            shot[0] = fixture.bullet(new Vec3(4, 5, 4), new Vec3(2, 0, 0));
+            player.setPos(shooterPosition); shot[0].setPos(origin);
+            LocalBallisticsGameTests.setField(shot[0], "startPos", origin);
+            LocalBallisticsGameTests.setField(shot[0], "life", 2);
+            LocalBallisticsGameTests.setField(shot[0], "gravity", 0f);
+            LocalBallisticsGameTests.setField(shot[0], "friction", 0f);
+            LocalBallisticsGameTests.setField(shot[0], "pierce", 1);
+            helper.assertTrue(!level.addFreshEntity(shot[0]), "Qualified shot did not enter default snapshot scheduler");
+            helper.assertTrue(activity.status().flightPins() == 1, "Shot did not retain its existing target region");
             aiming[0] = false; operator.aim(false);
         }));
         helper.runAfterDelay(420, () -> checked.accept(() -> {
-            helper.assertTrue(activity.status().regions() == 1 && activity.status().fullChunks() == 49 && activity.active(restored[0]),
+            helper.assertTrue(activity.status().regions() == 1 && activity.status().fullChunks() == 49 && activity.active(shotTarget[0]),
                     "First observer release removed the second observer's shared region");
             sharing[0] = false; secondOperator.aim(false);
         }));
-        helper.runAfterDelay(450, () -> checked.accept(() -> {
-            helper.assertTrue(activity.status().regions() == 0 && activity.status().fullChunks() == 0
-                    && !activity.active(restored[0]), "Release grace leaked tickets/budget");
+        helper.runAfterDelay(430, () -> checked.accept(() -> {
+            level.getChunkSource().addRegionTicket(foreign, foreignPos, 3, foreignPos, true);
         }));
-        helper.runAfterDelay(610, () -> checked.accept(() -> {
+        helper.runAfterDelay(450, () -> checked.accept(() -> {
+            helper.assertTrue(activity.status().regions() == 1 && activity.status().flightPins() == 1
+                    && !shot[0].isRemoved() && shotTarget[0].getHealth() == 1000,
+                    "Both scopes closed: region released before the slow bullet arrived");
+            level.getChunkSource().removeRegionTicket(foreign, foreignPos, 3, foreignPos, true);
+        }));
+        helper.runAfterDelay(470, () -> checked.accept(() -> {
+            helper.assertTrue(level.isPositionEntityTicking(shotTarget[0].blockPosition()) && activity.status().flightPins() == 1,
+                    "Foreign ticket removal interfered with our in-flight hold");
+            helper.assertTrue(level.getChunkSource().getChunkNow(cx - 8, cz) == null, "Flight loaded the corridor");
+            level.getChunkSource().addRegionTicket(foreign, foreignPos, 3, foreignPos, true);
+        }));
+        helper.runAfterDelay(520, () -> checked.accept(() -> {
+            helper.assertTrue(shot[0].isRemoved() && shotTarget[0].getHealth() < 1000,
+                    "Snapshot bullet did not hit beyond 128 blocks after both scopes closed");
+            helper.assertTrue(activity.status().regions() == 0 && activity.status().flightPins() == 0,
+                    "Completed flight retained its region");
+            helper.assertTrue(level.getEntity(shotTarget[0].getUUID()) == shotTarget[0]
+                    && level.isPositionEntityTicking(shotTarget[0].blockPosition()),
+                    "Our ticket removal unloaded the foreign loader's existing target");
+            aiming[0] = true; sharing[0] = true; operator.aim(true); secondOperator.aim(true);
+        }));
+        helper.runAfterDelay(555, () -> checked.accept(() -> {
+            helper.assertTrue(activity.status().regions() == 1 && level.getEntity(shotTarget[0].getUUID()) == shotTarget[0],
+                    "Scoping an externally loaded area duplicated/replaced its entity");
+            level.getChunkSource().removeRegionTicket(foreign, foreignPos, 3, foreignPos, true);
+        }));
+        helper.runAfterDelay(565, () -> checked.accept(() -> {
+            helper.assertTrue(level.isPositionEntityTicking(shotTarget[0].blockPosition()), "External unload removed our renewed region");
+            aiming[0] = false; sharing[0] = false; operator.aim(false); secondOperator.aim(false);
+        }));
+        helper.runAfterDelay(600, () -> checked.accept(() -> {
+            helper.assertTrue(activity.status().regions() == 0, "Non-shooting scope release leaked region");
+        }));
+        helper.runAfterDelay(760, () -> checked.accept(() -> {
             helper.assertTrue(level.getChunkSource().getChunkNow(cx, cz) == null, "Released region stayed loaded");
             cleanup.run(); helper.succeed();
         }));

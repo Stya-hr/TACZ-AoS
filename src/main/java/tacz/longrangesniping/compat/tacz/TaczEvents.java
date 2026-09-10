@@ -31,7 +31,7 @@ public final class TaczEvents {
             var admission = PrototypeBallistics.INSTANCE.admit(bullet, context);
             if (admission == LocalBallistics.Admission.ACCEPTED) event.setCanceled(true);
             if (ServerConfig.current().diagnostics()) {
-                TaczLongRangeSniping.LOGGER.info("Eligible TACZ shot: prototype={}, {}", admission, context);
+                TaczLongRangeSniping.LOGGER.info("Eligible TACZ shot: ballistics={}, {}", admission, context);
             }
         });
     }

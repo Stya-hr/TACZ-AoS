@@ -9,6 +9,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.AABB;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -28,15 +29,17 @@ public final class ScopeActivity {
     private record Key(ServerLevel level, int x, int z, int radius) {}
     private record Pending(Key key, long since) {}
     private record View(Vec3 eye, Vec3 direction) {}
+    private record FlightHold(UUID owner, long deadline) {}
     private static final class Region {
         final Key key;
         final long started;
         final Map<UUID, Long> owners = new HashMap<>();
         final Map<UUID, View> views = new HashMap<>();
+        final Map<UUID, FlightHold> flights = new HashMap<>();
         boolean ready;
         Region(Key key, long started) { this.key = key; this.started = started; }
     }
-    public record Status(int regions, int ready, int fullChunks, int dependencyChunks, long admitted,
+    public record Status(int regions, int ready, int fullChunks, int dependencyChunks, int flightPins, long admitted,
                          long unknown, long budgetDenied, long timedOut) {}
     private final Map<Key, Region> regions = new LinkedHashMap<>();
     private final Map<Address, Integer> cores = new HashMap<>();
@@ -61,7 +64,7 @@ public final class ScopeActivity {
     }
 
     @SubscribeEvent public void tick(ServerTickEvent.Pre event) {
-        clock++;
+        if (event.getServer().tickRateManager().runsNormally()) clock++;
         queries = 0;
         var settings = ServerConfig.current();
         var config = settings.activity();
@@ -88,9 +91,10 @@ public final class ScopeActivity {
                 return e.getValue() < clock || player == null || player.serverLevel() != region.key.level;
             });
             region.views.keySet().retainAll(region.owners.keySet());
+            region.flights.values().removeIf(hold -> hold.deadline < clock);
             region.ready = ready(region.key);
             boolean timeout = !region.ready && clock - region.started >= config.loadTimeoutTicks();
-            if (region.owners.isEmpty() || timeout) {
+            if ((region.owners.isEmpty() && region.flights.isEmpty()) || timeout) {
                 if (timeout) timedOut++;
                 removeTickets(region.key); iterator.remove();
             }
@@ -128,14 +132,16 @@ public final class ScopeActivity {
         var pos = new ChunkPos(BlockPos.containing(target));
         Key key = new Key(player.serverLevel(), pos.x, pos.z, config.radius());
         // Keep an existing region while the reticle remains inside its core, avoiding border churn.
-        for (var region : regions.values()) if (region.owners.containsKey(id)
+        for (var region : regions.values()) if (ownedBy(region, id)
                 && contains(region.key, new Address(key.level, key.x, key.z), region.key.radius)) {
-            region.owners.put(id, clock + config.retentionTicks()); pending.remove(id); return;
+            region.owners.put(id, clock + config.retentionTicks());
+            region.views.put(id, new View(player.getEyePosition(), player.getViewVector(1)));
+            pending.remove(id); return;
         }
         var wait = pending.get(id);
         if (wait == null || !wait.key.equals(key)) { pending.put(id, new Pending(key, clock)); return; }
         if (clock - wait.since < config.stableTicks()) return;
-        long owned = regions.values().stream().filter(r -> r.owners.containsKey(id)).count();
+        long owned = regions.values().stream().filter(r -> ownedBy(r, id)).count();
         if (owned >= 2) { budgetDenied++; return; }
         var shared = regions.get(key);
         if (shared != null) {
@@ -182,6 +188,39 @@ public final class ScopeActivity {
                 && entity.level() instanceof ServerLevel level
                 && cores.containsKey(new Address(level, entity.chunkPosition().x, entity.chunkPosition().z));
     }
+    private static boolean ownedBy(Region region, UUID player) {
+        return region.owners.containsKey(player) || region.flights.values().stream().anyMatch(hold -> hold.owner.equals(player));
+    }
+
+    /** Holds only already budgeted regions on the shot's horizontal path. Never adds a ticket or searches the corridor. */
+    public FlightLease retainForShot(Entity bullet, Entity owner, int maxFlightTicks, int maxDistance) {
+        var held = new ArrayList<Region>();
+        Vec3 start = bullet.position(), velocity = bullet.getDeltaMovement();
+        if (owner == null || !Double.isFinite(velocity.lengthSqr()) || velocity.lengthSqr() == 0) return new FlightLease(bullet.getUUID(), held);
+        // Gravity changes height; retain the target column, not a straight 3D ray that could miss a compensated shot.
+        Vec3 end = start.add(velocity.normalize().scale(maxDistance));
+        for (var region : regions.values()) {
+            var key = region.key;
+            if (key.level != bullet.level() || !region.owners.containsKey(owner.getUUID())) continue;
+            var bounds = new AABB((key.x-key.radius)*16, -30_000_000, (key.z-key.radius)*16,
+                    (key.x+key.radius+1)*16, 30_000_000, (key.z+key.radius+1)*16).inflate(1);
+            if (bounds.contains(start) || bounds.clip(start, end).isPresent()) {
+                region.flights.put(bullet.getUUID(), new FlightHold(owner.getUUID(), clock + maxFlightTicks + 2L));
+                held.add(region);
+            }
+        }
+        return new FlightLease(bullet.getUUID(), held);
+    }
+
+    public static final class FlightLease implements AutoCloseable {
+        private final UUID bullet;
+        private final List<Region> held;
+        private FlightLease(UUID bullet, List<Region> held) { this.bullet = bullet; this.held = held; }
+        @Override public void close() {
+            for (var region : held) region.flights.remove(bullet);
+            held.clear();
+        }
+    }
     private static boolean ready(Key key) {
         for (var a : square(key, key.radius)) {
             if (!key.level.isPositionEntityTicking(new BlockPos(a.x * 16 + 8, 0, a.z * 16 + 8))) return false;
@@ -219,7 +258,7 @@ public final class ScopeActivity {
     public Status status() {
         return new Status(regions.size(), (int) regions.values().stream().filter(r -> r.ready).count(),
                 footprint(null, 2).size(), footprint(null, 2 + ChunkLevel.RADIUS_AROUND_FULL_CHUNK).size(),
-                admitted, unknown, budgetDenied, timedOut);
+                regions.values().stream().mapToInt(r -> r.flights.size()).sum(), admitted, unknown, budgetDenied, timedOut);
     }
     public void releaseAll() {
         for (var key : regions.keySet()) removeTickets(key);

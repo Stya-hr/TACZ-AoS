@@ -100,7 +100,7 @@ public final class ScopeClientSmokeTest {
             player.setItemInHand(InteractionHand.MAIN_HAND, stack);
             var original = ServerConfig.current();
             LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(true, original.policy(), 1024, 32, 128, false,
-                    original.prototype(), new ServerConfig.Snapshots(true, 65536, 256, 10, 0, 8192, 8192)));
+                    original.ballistics(), new ServerConfig.Snapshots(true, 65536, 256, 10, 0, 8192, 8192)));
             // Fixture-only preparation of previously explored terrain. Activity must later restore native simulation.
             for (int x = 0; x <= 14; x++) level.getChunk(x, 0);
             for (int x = 10; x <= 18; x++) for (int z = -4; z <= 4; z++) level.getChunk(x, z);

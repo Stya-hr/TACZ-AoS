@@ -15,15 +15,19 @@ import java.util.Map;
 public final class PrototypeBallistics {
     public static final PrototypeBallistics INSTANCE = new PrototypeBallistics();
     private final Map<ServerLevel, LocalBallistics> levels = new IdentityHashMap<>();
+    private final Map<ServerLevel, LocalBallistics.Admission> lastAdmission = new IdentityHashMap<>();
     private PrototypeBallistics() {}
 
     public LocalBallistics.Admission admit(EntityKineticBullet bullet, ShotContext context) {
         var settings = ServerConfig.current();
-        if (!settings.available() || !settings.policy().enabled() || !settings.prototype().enabled()) {
+        if (!(bullet.level() instanceof ServerLevel level)) return LocalBallistics.Admission.UNSUPPORTED;
+        if (!settings.available() || !settings.policy().enabled() || !settings.ballistics().enabled()) {
+            lastAdmission.put(level, LocalBallistics.Admission.DISABLED);
             return LocalBallistics.Admission.DISABLED;
         }
-        if (!(bullet.level() instanceof ServerLevel level)) return LocalBallistics.Admission.UNSUPPORTED;
-        return levels.computeIfAbsent(level, LocalBallistics::new).admit(bullet, context, settings.prototype());
+        var admission = levels.computeIfAbsent(level, LocalBallistics::new).admit(bullet, context, settings.ballistics());
+        lastAdmission.put(level, admission);
+        return admission;
     }
 
     @SubscribeEvent public void tick(LevelTickEvent.Post event) {
@@ -35,16 +39,22 @@ public final class PrototypeBallistics {
 
     @SubscribeEvent public void unload(LevelEvent.Unload event) {
         var scheduler = levels.remove(event.getLevel());
+        lastAdmission.remove(event.getLevel());
         if (scheduler != null) scheduler.clear();
     }
 
     @SubscribeEvent public void stopped(ServerStoppedEvent event) {
         levels.values().forEach(LocalBallistics::clear);
         levels.clear();
+        lastAdmission.clear();
     }
 
     public LocalBallistics.Status status(ServerLevel level) {
         var scheduler = levels.get(level);
         return scheduler == null ? new LocalBallistics.Status(0, 0, 0, 0, 0) : scheduler.status();
+    }
+    public String lastAdmission(ServerLevel level) {
+        var result = lastAdmission.get(level);
+        return result == null ? "none" : result.name();
     }
 }

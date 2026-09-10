@@ -146,7 +146,7 @@ public final class TerrainSnapshotGameTests {
         var old = ServerConfig.current();
         TerrainSnapshots.INSTANCE.clear();
         setSettings(new ServerConfig.Settings(old.available(), old.policy(), old.maxDistance(), old.maxTrackedEntities(),
-                old.snapshotMemoryMiB(), old.diagnostics(), old.prototype(), new ServerConfig.Snapshots(true, blocks, 16, 10, 0, 8192, 8192)));
+                old.snapshotMemoryMiB(), old.diagnostics(), old.ballistics(), new ServerConfig.Snapshots(true, blocks, 16, 10, 0, 8192, 8192)));
         return old;
     }
     private static void restore(ServerConfig.Settings old) { setSettings(old); TerrainSnapshots.INSTANCE.clear(); }

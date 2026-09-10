@@ -34,7 +34,7 @@ import static tacz.longrangesniping.test.LocalBallisticsGameTests.*;
 @GameTestHolder(TaczLongRangeSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class UnloadedBallisticsGameTests {
-    private static final ServerConfig.Prototype LIMITS = new ServerConfig.Prototype(true, 1024, 16, 600);
+    private static final ServerConfig.Ballistics LIMITS = new ServerConfig.Ballistics(true, 1024, 16, 600);
     private static final TicketType<ChunkPos> ENDPOINT = TicketType.create("taczlrs_test_endpoint", Comparator.comparingLong(ChunkPos::toLong));
 
     @GameTest(template = "ballistics", batch = "unloaded_ballistics", timeoutTicks = 240)
@@ -47,7 +47,7 @@ public final class UnloadedBallisticsGameTests {
         var keys = new ArrayList<SectionKey>();
         try {
             cache.clear();
-            setSettings(new ServerConfig.Settings(true, original.policy(), 1024, 32, 128, false, original.prototype(),
+            setSettings(new ServerConfig.Settings(true, original.policy(), 1024, 32, 128, false, original.ballistics(),
                     new ServerConfig.Snapshots(true, 65536, 256, 10, 0, 8192, 8192)));
             // Fixture preparation deliberately loads terrain. The firing phase below must not do so.
             for (int x = cx; x <= cx + 4; x++) {

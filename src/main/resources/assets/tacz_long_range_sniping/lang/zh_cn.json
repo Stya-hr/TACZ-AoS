@@ -2,8 +2,8 @@
   "tacz_long_range_sniping.cache_status": "碰撞缓存：%s；完整区块段：%s；待办：%s；估算内存：%s MiB；淘汰：%s；丢弃请求：%s；上一 tick 采集格数／完成段数：%s／%s",
   "tacz_long_range_sniping.cache_section": "当前位置区块段 %s [%s, %s, %s]：%s；版本：%s；保守阻挡格数：%s",
   "tacz_long_range_sniping.status": "远距狙击资格：%s；枪械：%s；瞄准镜：%s；档位：%s；倍率：%s",
-  "tacz_long_range_sniping.prototype_status": "远距弹道原型：%s；距离上限：%s 格；本维度活动弹道：%s；累计接管：%s；未知区域终止：%s；距离终止：%s。",
-  "tacz_long_range_sniping.scope_status": "开镜实体显示：%s；当前订阅：%s／%s；距离上限：%s 格；刷新间隔：%s tick。普通 Mob 与玩家按类型筛选，Boss／展示实体不额外显示。",
+  "tacz_long_range_sniping.prototype_status": "远端弹道：启用=%s，射程=%s，飞行中=%s，累计接管=%s，未知截断=%s，射程终止=%s",
+  "tacz_long_range_sniping.scope_status": "开镜实体显示：%s；当前订阅：%s／%s；距离上限：%s 格；刷新间隔：%s tick。",
   "tacz_long_range_sniping.reason.eligible": "符合条件",
   "tacz_long_range_sniping.reason.config_unavailable": "配置未加载或存在错误",
   "tacz_long_range_sniping.reason.disabled": "服务端已禁用",
@@ -19,5 +19,6 @@
   "tacz_long_range_sniping.reason.not_aiming": "当前未开镜",
   "tacz_long_range_sniping.reason.gun_operator_unavailable": "TACZ 玩家接口不可用",
   "tacz_long_range_sniping.reason.client_layout_mismatch": "客户端瞄准镜倍率表与服务端配置不一致",
-  "tacz_long_range_sniping.activity_status": "远端模拟：启用=%s，就绪/区域=%s/%s，FULL区块预算=%s/%s，依赖区块=%s，未知拒绝=%s，预算拒绝=%s，加载超时=%s"
+  "tacz_long_range_sniping.activity_status": "远端模拟：启用=%s，就绪/区域=%s/%s，FULL区块预算=%s/%s，依赖区块=%s，未知拒绝=%s，预算拒绝=%s，加载超时=%s，飞行保留引用=%s",
+  "tacz_long_range_sniping.flight_status": "弹道：延长寿命=%s，最多飞行=%s tick，寿命/超时终止=%s，快照挡弹=%s，上次终止=%s，上次接管=%s"
 }

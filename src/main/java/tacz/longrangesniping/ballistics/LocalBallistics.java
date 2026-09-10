@@ -7,6 +7,7 @@ import tacz.longrangesniping.TaczLongRangeSniping;
 import tacz.longrangesniping.compat.tacz.TaczBridge.ShotContext;
 import tacz.longrangesniping.config.ServerConfig;
 import tacz.longrangesniping.mixin.KineticBulletAccessor;
+import tacz.longrangesniping.scoping.ScopeActivity;
 
 import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
@@ -16,18 +17,30 @@ import java.util.UUID;
 /** Owns detached TACZ projectiles; only this scheduler advances accepted shots. Server thread only. */
 public final class LocalBallistics {
     public enum Admission { ACCEPTED, DISABLED, UNSUPPORTED, CAPACITY, ALREADY_REGISTERED }
-    public record Status(int active, long accepted, long finished, long unknown, long rangeLimited) {}
+    public record Status(int active, long accepted, long finished, long unknown, long rangeLimited,
+                         long lifetimeLimited, long blocked, String lastTermination) {
+        public Status(int active, long accepted, long finished, long unknown, long rangeLimited) {
+            this(active, accepted, finished, unknown, rangeLimited, 0, 0, "none");
+        }
+    }
     private static final class Flight {
         final EntityKineticBullet bullet;
         final ShotContext context;
-        final ServerConfig.Prototype limits;
+        final ServerConfig.Ballistics limits;
+        final ScopeActivity.FlightLease lease;
+        final int originalLife, installedLife;
         double traveled;
         int ticks;
         boolean snapshotPhysics;
-        Flight(EntityKineticBullet bullet, ShotContext context, ServerConfig.Prototype limits) {
+        Flight(EntityKineticBullet bullet, ShotContext context, ServerConfig.Ballistics limits) {
             this.bullet = bullet;
             this.context = context;
             this.limits = limits;
+            var fields = (KineticBulletAccessor) bullet;
+            originalLife = fields.taczlrs$getLife();
+            installedLife = limits.extendLifetime() ? Math.max(originalLife, limits.maxFlightTicks() + 1) : originalLife;
+            fields.taczlrs$setLife(installedLife);
+            lease = ScopeActivity.INSTANCE.retainForShot(bullet, bullet.getOwner(), limits.maxFlightTicks(), limits.maxDistance());
         }
     }
 
@@ -35,11 +48,12 @@ public final class LocalBallistics {
     private final Map<UUID, Flight> active = new LinkedHashMap<>();
     // A hit callback may spawn another bullet while the active map is being iterated.
     private final ArrayDeque<Flight> pending = new ArrayDeque<>();
-    private long accepted, finished, unknown, rangeLimited;
+    private long accepted, finished, unknown, rangeLimited, lifetimeLimited, blocked;
+    private String lastTermination = "none";
 
     public LocalBallistics(ServerLevel level) { this.level = level; }
 
-    public Admission admit(EntityKineticBullet bullet, ShotContext context, ServerConfig.Prototype limits) {
+    public Admission admit(EntityKineticBullet bullet, ShotContext context, ServerConfig.Ballistics limits) {
         if (!limits.enabled()) return Admission.DISABLED;
         if (bullet.getClass() != EntityKineticBullet.class || !context.eligibilityAtFire().eligible()
                 || !context.parameters().isPlainKinetic() || !plainKinetic(bullet) || bullet.level() != level
@@ -60,12 +74,18 @@ public final class LocalBallistics {
         var iterator = active.values().iterator();
         while (iterator.hasNext()) {
             Flight flight = iterator.next();
-            String termination = advance(flight);
+            String termination;
+            try { termination = advance(flight); }
+            catch (RuntimeException | Error failure) { flight.lease.close(); throw failure; }
             if (termination != null) {
+                flight.lease.close();
                 iterator.remove();
                 finished++;
+                lastTermination = termination;
+                if ("lifetime".equals(termination) || "timeout".equals(termination)) lifetimeLimited++;
+                if ("BLOCK".equals(termination)) blocked++;
                 if (ServerConfig.current().diagnostics()) {
-                    TaczLongRangeSniping.LOGGER.info("Prototype shot {} ended: {}, ticks={}, distance={}",
+                    TaczLongRangeSniping.LOGGER.info("Scoped shot {} ended: {}, ticks={}, distance={}",
                             flight.bullet.getUUID(), termination, flight.ticks, flight.traveled);
                 }
             }
@@ -76,7 +96,11 @@ public final class LocalBallistics {
         EntityKineticBullet bullet = flight.bullet;
         // If a later event handler reversed spawn cancellation, world ticking owns it.
         // Relinquish it without ticking or discarding the now-registered entity.
-        if (level.getEntity(bullet.getUUID()) == bullet) return "native_ownership_restored";
+        if (level.getEntity(bullet.getUUID()) == bullet) {
+            var fields = (KineticBulletAccessor) bullet;
+            if (fields.taczlrs$getLife() == flight.installedLife) fields.taczlrs$setLife(flight.originalLife);
+            return "native_ownership_restored";
+        }
         var owner = bullet.getOwner();
         if (bullet.isRemoved()) return "native_removed";
         if (!plainKinetic(bullet)) return stop(bullet, "unsupported_ammunition_changed");
@@ -109,7 +133,8 @@ public final class LocalBallistics {
         bullet.tick();
         EventHooks.fireEntityTickPost(bullet);
         flight.traveled += stepLength;
-        return bullet.isRemoved() ? "native_hit_or_lifetime" : null;
+        return bullet.isRemoved() ? (bullet.tickCount >= ((KineticBulletAccessor) bullet).taczlrs$getLife() - 1
+                ? "lifetime" : "native_hit") : null;
     }
 
     private static String stop(EntityKineticBullet bullet, String reason) {
@@ -122,11 +147,12 @@ public final class LocalBallistics {
         return !fields.taczlrs$isExplosive() && !fields.taczlrs$ignitesEntities() && !fields.taczlrs$ignitesBlocks();
     }
 
-    public Status status() { return new Status(active.size() + pending.size(), accepted, finished, unknown, rangeLimited); }
+    public Status status() { return new Status(active.size() + pending.size(), accepted, finished, unknown, rangeLimited,
+            lifetimeLimited, blocked, lastTermination); }
 
     public void clear() {
-        active.values().forEach(f -> f.bullet.discard());
-        pending.forEach(f -> f.bullet.discard());
+        active.values().forEach(f -> { f.lease.close(); f.bullet.discard(); });
+        pending.forEach(f -> { f.lease.close(); f.bullet.discard(); });
         active.clear();
         pending.clear();
     }

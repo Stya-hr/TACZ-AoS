@@ -15,8 +15,8 @@ public final class ServerConfig {
     private static final ModConfigSpec.IntValue MAX_ENTITIES;
     private static final ModConfigSpec.IntValue CACHE_MIB;
     private static final ModConfigSpec.BooleanValue DIAGNOSTICS;
-    private static final ModConfigSpec.BooleanValue PROTOTYPE;
-    private static final ModConfigSpec.IntValue PROTOTYPE_DISTANCE;
+    private static final ModConfigSpec.BooleanValue BALLISTICS, EXTEND_LIFETIME;
+    private static final ModConfigSpec.IntValue BALLISTICS_DISTANCE;
     private static final ModConfigSpec.IntValue MAX_BULLETS;
     private static final ModConfigSpec.IntValue MAX_FLIGHT_TICKS;
     private static final ModConfigSpec.BooleanValue SNAPSHOTS;
@@ -28,7 +28,11 @@ public final class ServerConfig {
     private static final ModConfigSpec.IntValue ACTIVITY_RADIUS, ACTIVITY_STABLE, ACTIVITY_RETENTION,
             ACTIVITY_CHUNKS, ACTIVITY_DEPENDENCIES, ACTIVITY_REGIONS, ACTIVITY_STARTS, ACTIVITY_TIMEOUT, ACTIVITY_QUERIES;
 
-    public record Prototype(boolean enabled, int maxDistance, int maxActiveBullets, int maxFlightTicks) {}
+    public record Ballistics(boolean enabled, int maxDistance, int maxActiveBullets, int maxFlightTicks, boolean extendLifetime) {
+        public Ballistics(boolean enabled, int maxDistance, int maxActiveBullets, int maxFlightTicks) {
+            this(enabled, maxDistance, maxActiveBullets, maxFlightTicks, false);
+        }
+    }
     public record Snapshots(boolean enabled, int blocksPerTick, int sectionsPerTick, double maxMillisPerTick,
                             int refreshDelayTicks, int maxPendingSections, int maxTrackedChunks) {}
     public static final Snapshots DEFAULT_SNAPSHOTS = new Snapshots(true, 4096, 16, 2.0, 5, 8192, 8192);
@@ -45,23 +49,23 @@ public final class ServerConfig {
     public static final Activity DEFAULT_ACTIVITY = new Activity(true, 1, 8, 40, 196, 4096, 4, 2, 100);
 
     public record Settings(boolean available, EligibilityPolicy policy, int maxDistance,
-                           int maxTrackedEntities, int snapshotMemoryMiB, boolean diagnostics, Prototype prototype,
+                           int maxTrackedEntities, int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics,
                            Snapshots snapshots, ScopeRendering scopeRendering, Activity activity) {
         public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
-                        int snapshotMemoryMiB, boolean diagnostics, Prototype prototype, Snapshots snapshots,
+                        int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots,
                         ScopeRendering scopeRendering) {
-            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, prototype,
+            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, ballistics,
                     snapshots, scopeRendering, DEFAULT_ACTIVITY);
         }
         public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
-                        int snapshotMemoryMiB, boolean diagnostics, Prototype prototype, Snapshots snapshots) {
-            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, prototype, snapshots,
+                        int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots) {
+            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, ballistics, snapshots,
                     DEFAULT_SCOPE_RENDERING);
         }
     }
 
     private static final Settings UNAVAILABLE = new Settings(false, EligibilityPolicy.disabled(), 1024, 32, 128, false,
-            new Prototype(false, 128, 128, 600), DEFAULT_SNAPSHOTS);
+            new Ballistics(false, 128, 128, 600), DEFAULT_SNAPSHOTS);
     private static volatile Settings current = UNAVAILABLE;
 
     static {
@@ -84,19 +88,22 @@ public final class ServerConfig {
         CACHE_MIB = builder.comment("Server-wide estimated memory budget for complete collision snapshots; evicted sections become unknown.")
                 .defineInRange("snapshotMemoryMiB", 128, 16, 4096);
         builder.pop();
-        builder.comment("Experimental ballistic scheduler with unloaded-terrain snapshots.")
-                .push("prototype");
-        PROTOTYPE = builder.comment("Opt in to taking over ordinary kinetic bullets. Original tracer entities are not spawned.")
-                .define("enabled", false);
-        PROTOTYPE_DISTANCE = builder.comment("Maximum traveled path length, also bounded by limits.maxDistance.",
-                        "Clips the last segment at the limit; does not extend TACZ's original bullet lifetime.")
-                .defineInRange("maxDistance", 128, 16, 16384);
+        builder.comment("Server-authoritative scoped kinetic bullets; unloaded corridors use collision snapshots.",
+                        "Replaces the old prototype section. Legacy prototype settings no longer control this feature.")
+                .push("ballistics");
+        BALLISTICS = builder.comment("Take over eligible ordinary kinetic bullets. Does not spawn native tracer entities.")
+                .define("enabled", true);
+        BALLISTICS_DISTANCE = builder.comment("Maximum traveled path length. Zero follows limits.maxDistance; a positive value can only lower it.")
+                .defineInRange("maxDistance", 0, 0, 16384);
         MAX_BULLETS = builder.comment("Maximum active bullets per dimension. Excess shots retain native TACZ behavior.")
                 .defineInRange("maxActiveBullets", 128, 1, 1024);
-        MAX_FLIGHT_TICKS = builder.comment("Scheduler safety timeout; the native bullet lifetime is also preserved.")
+        MAX_FLIGHT_TICKS = builder.comment("Hard flight duration cap. In-flight target-region leases use this same bounded deadline.")
                 .defineInRange("maxFlightTicks", 600, 1, 2400);
+        EXTEND_LIFETIME = builder.comment("Allow eligible bullets to outlive TACZ's native lifetime up to maxFlightTicks.",
+                        "Speed, gravity, drag, damage falloff and the traveled-distance limit remain in force.")
+                .define("extendLifetime", true);
         builder.pop();
-        builder.comment("Memory-only collision snapshots. Independent of prototype takeover; never loads real chunks.")
+        builder.comment("Memory-only collision snapshots. Independent of ballistic takeover; never loads real chunks.")
                 .push("snapshots");
         SNAPSHOTS = builder.define("enabled", true);
         SNAPSHOT_BLOCKS = builder.comment("Maximum sampled cells per server tick, shared across dimensions.")
@@ -130,12 +137,13 @@ public final class ServerConfig {
         ACTIVITY_RADIUS = builder.comment("Entity-ticking core radius in chunks; 1 means 3x3 core and 7x7 FULL footprint.")
                 .defineInRange("radius", 1, 0, 2);
         ACTIVITY_STABLE = builder.defineInRange("stableTicks", 8, 2, 100);
-        ACTIVITY_RETENTION = builder.defineInRange("retentionTicks", 40, 1, 200);
-        ACTIVITY_CHUNKS = builder.comment("Union of reserved FULL chunk footprints, including loading regions and release grace.")
+        ACTIVITY_RETENTION = builder.comment("Scope release grace. Accepted in-flight bullets can retain their target regions beyond this grace.")
+                .defineInRange("retentionTicks", 40, 1, 200);
+        ACTIVITY_CHUNKS = builder.comment("Union of reserved FULL chunk footprints, including loading regions, release grace and in-flight shots.")
                 .defineInRange("maxFullChunks", 196, 25, 2048);
         ACTIVITY_DEPENDENCIES = builder.comment("Additional conservative budget for the entire ticket dependency footprint (including FULL chunks).")
                 .defineInRange("maxDependencyChunks", 4096, 256, 16384);
-        ACTIVITY_REGIONS = builder.comment("Server-wide region limit. Each player may retain at most two regions including release grace.")
+        ACTIVITY_REGIONS = builder.comment("Server-wide region limit. Each player may retain at most two regions including release grace and in-flight shots.")
                 .defineInRange("maxRegions", 4, 1, 32);
         ACTIVITY_STARTS = builder.comment("Maximum new regions admitted in any rolling 20 server ticks.")
                 .defineInRange("startsPerSecond", 2, 1, 20);
@@ -167,8 +175,8 @@ public final class ServerConfig {
         try {
             current = new Settings(true, EligibilityPolicy.parse(ENABLED.get(), GUNS.get(), SCOPES.get()),
                     MAX_DISTANCE.get(), MAX_ENTITIES.get(), CACHE_MIB.get(), DIAGNOSTICS.get(),
-                    new Prototype(PROTOTYPE.get(), Math.min(MAX_DISTANCE.get(), PROTOTYPE_DISTANCE.get()),
-                            MAX_BULLETS.get(), MAX_FLIGHT_TICKS.get()),
+                    new Ballistics(BALLISTICS.get(), BALLISTICS_DISTANCE.get() == 0 ? MAX_DISTANCE.get() : Math.min(MAX_DISTANCE.get(), BALLISTICS_DISTANCE.get()),
+                            MAX_BULLETS.get(), MAX_FLIGHT_TICKS.get(), EXTEND_LIFETIME.get()),
                     new Snapshots(SNAPSHOTS.get(), SNAPSHOT_BLOCKS.get(), SNAPSHOT_SECTIONS.get(), SNAPSHOT_MILLIS.get(),
                             REFRESH_DELAY.get(), PENDING_SECTIONS.get(), TRACKED_CHUNKS.get()),
                     new ScopeRendering(SCOPE_RENDERING.get(), SCOPE_INTERVAL.get(), SCOPE_CANDIDATES.get(), SCOPE_TRACE_CELLS.get()),

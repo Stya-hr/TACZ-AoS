@@ -26,8 +26,12 @@ public final class SnipingCommand {
                     var config = ServerConfig.current();
                     var status = PrototypeBallistics.INSTANCE.status(context.getSource().getLevel());
                     context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.prototype_status",
-                            config.prototype().enabled(), config.prototype().maxDistance(), status.active(),
+                            config.ballistics().enabled(), config.ballistics().maxDistance(), status.active(),
                             status.accepted(), status.unknown(), status.rangeLimited()), false);
+                    context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.flight_status",
+                            config.ballistics().extendLifetime(), config.ballistics().maxFlightTicks(),
+                            status.lifetimeLimited(), status.blocked(), status.lastTermination(),
+                            PrototypeBallistics.INSTANCE.lastAdmission(context.getSource().getLevel())), false);
                     context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.scope_status",
                             config.scopeRendering().enabled(),
                             tacz.longrangesniping.scoping.ScopeSubscriptions.INSTANCE.count(player),
@@ -36,7 +40,7 @@ public final class SnipingCommand {
                     context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.activity_status",
                             config.activity().enabled(), activity.ready(), activity.regions(), activity.fullChunks(),
                             config.activity().maxFullChunks(), activity.dependencyChunks(), activity.unknown(),
-                            activity.budgetDenied(), activity.timedOut()), false);
+                            activity.budgetDenied(), activity.timedOut(), activity.flightPins()), false);
                     return decision.eligible() ? 1 : 0;
                 }))
                 .then(Commands.literal("cache").requires(source -> source.hasPermission(2)).executes(context -> {

@@ -29,6 +29,10 @@ public final class TaczBridgeGameTests {
     @GameTest(template = "empty", batch = "tacz_bridge")
     public static void readsServerConfigAndTaczEquipment(GameTestHelper helper) {
         helper.assertTrue(ServerConfig.current().available(), "Server config was not loaded");
+        var ballistics = ServerConfig.current().ballistics();
+        helper.assertTrue(ballistics.enabled() && ballistics.extendLifetime()
+                        && ballistics.maxDistance() == ServerConfig.current().maxDistance(),
+                "Formal ballistic defaults must enable takeover, extend lifetime and follow global distance");
         var player = helper.makeMockPlayer(GameType.SURVIVAL);
         helper.assertTrue(TaczBridge.evaluate(player).reason() == Reason.NOT_A_GUN, "Empty hand qualified");
         var stack = GunItemBuilder.create().setId(id("tacz:ai_awp"))

@@ -11,6 +11,7 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 @Mixin(value = EntityKineticBullet.class, remap = false)
 public interface KineticBulletAccessor {
     @Accessor("life") int taczlrs$getLife();
+    @Accessor("life") void taczlrs$setLife(int ticks);
     @Accessor("gravity") float taczlrs$getGravity();
     @Accessor("friction") float taczlrs$getFriction();
     @Accessor("pierce") int taczlrs$getPierce();

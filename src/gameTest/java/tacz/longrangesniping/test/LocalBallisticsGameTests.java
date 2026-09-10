@@ -32,6 +32,7 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import tacz.longrangesniping.compat.tacz.TaczBridge;
 import tacz.longrangesniping.config.ServerConfig;
+import tacz.longrangesniping.mixin.KineticBulletAccessor;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -41,7 +42,26 @@ import java.util.function.Consumer;
 @GameTestHolder(TaczLongRangeSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class LocalBallisticsGameTests {
-    private static final ServerConfig.Prototype LIMITS = new ServerConfig.Prototype(true, 256, 16, 600);
+    private static final ServerConfig.Ballistics LIMITS = new ServerConfig.Ballistics(true, 256, 16, 600);
+
+    @GameTest(template = "ballistics", batch = "local_ballistics")
+    public static void extendedLifetimeStillObeysDistanceAndDuration(GameTestHelper helper) {
+        var fixture = new Fixture(helper);
+        var scheduler = new LocalBallistics(helper.getLevel());
+        var bullet = fixture.bullet(new Vec3(4, 5, 4), new Vec3(1, 0, 0));
+        setField(bullet, "life", 2); setField(bullet, "gravity", 0f); setField(bullet, "friction", 0f);
+        accept(helper, scheduler, bullet, new ServerConfig.Ballistics(true, 16, 1, 40, true));
+        for (int i = 0; i < 40 && !bullet.isRemoved(); i++) scheduler.tick();
+        helper.assertTrue(bullet.tickCount == 16 && scheduler.status().rangeLimited() == 1,
+                "Extended bullet retained short native lifetime or bypassed range: " + scheduler.status());
+        var stopped = fixture.bullet(new Vec3(4, 5, 4), Vec3.ZERO);
+        setField(stopped, "life", 2); setField(stopped, "gravity", 0f); setField(stopped, "friction", 0f);
+        accept(helper, scheduler, stopped, new ServerConfig.Ballistics(true, 16, 1, 8, true));
+        for (int i = 0; i < 10 && !stopped.isRemoved(); i++) scheduler.tick();
+        helper.assertTrue(stopped.isRemoved() && scheduler.status().active() == 0 && scheduler.status().lifetimeLimited() == 1,
+                "Stationary extended bullet bypassed duration cap");
+        helper.succeed();
+    }
 
     @GameTest(template = "ballistics", batch = "local_ballistics")
     public static void airTrajectoryLifetimeAndReleaseMatchNative(GameTestHelper helper) {
@@ -87,10 +107,10 @@ public final class LocalBallisticsGameTests {
     @GameTest(template = "ballistics", batch = "local_ballistics")
     public static void snapshotDamageHeadshotsAndPiercingMatchNative(GameTestHelper helper) {
         // Range clipping selects the snapshot-safe path even though these targets are loaded.
-        compareDamage(helper, new ServerConfig.Prototype(true, 16, 16, 600));
+        compareDamage(helper, new ServerConfig.Ballistics(true, 16, 16, 600));
     }
 
-    private static void compareDamage(GameTestHelper helper, ServerConfig.Prototype limits) {
+    private static void compareDamage(GameTestHelper helper, ServerConfig.Ballistics limits) {
         var fixture = new Fixture(helper);
         List<Zombie> targets = List.of(target(helper, 10), target(helper, 14), target(helper, 18));
         // Same three targets and deterministic projectile seed, varying only who schedules the tick.
@@ -175,7 +195,7 @@ public final class LocalBallisticsGameTests {
     public static void rangeCapacityAndUnsupportedAmmunition(GameTestHelper helper) {
         var fixture = new Fixture(helper);
         var scheduler = new LocalBallistics(helper.getLevel());
-        var limits = new ServerConfig.Prototype(true, 16, 1, 600);
+        var limits = new ServerConfig.Ballistics(true, 16, 1, 600);
         var first = fixture.bullet(new Vec3(4, 5, 4), new Vec3(17, 0, 0));
         accept(helper, scheduler, first, limits);
         var extra = fixture.bullet(new Vec3(4, 5, 4), new Vec3(1, 0, 0));
@@ -218,13 +238,18 @@ public final class LocalBallisticsGameTests {
         var fixture = new Fixture(helper);
         var scheduler = new LocalBallistics(helper.getLevel());
         var bullet = fixture.bullet(new Vec3(4, 5, 4), new Vec3(1, 0, 0));
-        accept(helper, scheduler, bullet, LIMITS);
-        // Simulates another mod reversing the original EntityJoinLevelEvent cancellation.
+        int originalLife = ((KineticBulletAccessor) bullet).taczlrs$getLife();
+        accept(helper, scheduler, bullet, new ServerConfig.Ballistics(true, 128, 128, 600, true));
+        helper.assertTrue(((KineticBulletAccessor) bullet).taczlrs$getLife() > originalLife, "Lifetime extension was not installed");
+        // The manually admitted object becomes world-owned; release aim so the global event subscriber does not re-admit this fixture.
+        IGunOperator.fromLivingEntity(fixture.player).aim(false);
         helper.getLevel().addFreshEntity(bullet);
         scheduler.tick();
         helper.assertTrue(bullet.tickCount == 0 && !bullet.isRemoved() && scheduler.status().active() == 0,
                 "World-owned entity was advanced or discarded by scheduler");
+        helper.assertTrue(((KineticBulletAccessor) bullet).taczlrs$getLife() == originalLife, "Native ownership did not restore original lifetime");
         bullet.discard();
+        IGunOperator.fromLivingEntity(fixture.player).aim(true);
         var pending = fixture.bullet(new Vec3(4, 5, 4), new Vec3(1, 0, 0));
         accept(helper, scheduler, pending, LIMITS);
         scheduler.clear();
@@ -267,7 +292,7 @@ public final class LocalBallisticsGameTests {
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 
-    static void accept(GameTestHelper helper, LocalBallistics scheduler, EntityKineticBullet bullet, ServerConfig.Prototype limits) {
+    static void accept(GameTestHelper helper, LocalBallistics scheduler, EntityKineticBullet bullet, ServerConfig.Ballistics limits) {
         helper.assertTrue(scheduler.admit(bullet, TaczBridge.inspectNewBullet(bullet).orElseThrow(), limits)
                 == LocalBallistics.Admission.ACCEPTED, "Admission failed");
     }
