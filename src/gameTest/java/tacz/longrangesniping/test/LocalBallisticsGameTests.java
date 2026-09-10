@@ -299,8 +299,11 @@ public final class LocalBallisticsGameTests {
         final Player player;
         final ItemStack stack;
         Fixture(GameTestHelper helper) {
+            this(helper, helper.makeMockPlayer(GameType.SURVIVAL));
+        }
+        Fixture(GameTestHelper helper, Player player) {
             this.helper = helper;
-            player = helper.makeMockPlayer(GameType.SURVIVAL);
+            this.player = player;
             stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
                     .setAmmoCount(7).putAttachment(AttachmentType.SCOPE, ResourceLocation.parse("tacz:scope_mk5hd"))
                     .build(helper.getLevel().registryAccess());

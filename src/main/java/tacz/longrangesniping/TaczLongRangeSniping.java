@@ -13,6 +13,8 @@ import tacz.longrangesniping.ballistics.PrototypeBallistics;
 import tacz.longrangesniping.compat.tacz.TaczEvents;
 import tacz.longrangesniping.config.ServerConfig;
 import tacz.longrangesniping.terrain.TerrainSnapshots;
+import tacz.longrangesniping.scoping.ScopeSubscriptions;
+import tacz.longrangesniping.network.ScopeNetworking;
 
 /** Entry point for the TACZ Long Range Sniping extension. */
 @Mod(TaczLongRangeSniping.MOD_ID)
@@ -26,9 +28,11 @@ public final class TaczLongRangeSniping {
         modEventBus.addListener(ServerConfig::onReload);
         modEventBus.addListener(ServerConfig::onUnload);
         modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(ScopeNetworking::register);
         NeoForge.EVENT_BUS.register(new TaczEvents());
         NeoForge.EVENT_BUS.register(PrototypeBallistics.INSTANCE);
         NeoForge.EVENT_BUS.register(TerrainSnapshots.INSTANCE);
+        NeoForge.EVENT_BUS.register(ScopeSubscriptions.INSTANCE);
         NeoForge.EVENT_BUS.register(new SnipingCommand());
     }
 

@@ -10,12 +10,12 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 /** Tick-local readers only: live sections win over snapshots, without creating tickets or doing I/O. */
-final class NoLoadCollisionSource implements SegmentTrace.Source {
+public final class NoLoadCollisionSource implements SegmentTrace.Source {
     private final ServerLevel level;
     private final String dimension;
     private final Map<SectionKey, SnapshotCollector.Reader> readers = new HashMap<>();
     private final IdentityHashMap<BlockState, CollisionCell> states = new IdentityHashMap<>();
-    NoLoadCollisionSource(ServerLevel level) {
+    public NoLoadCollisionSource(ServerLevel level) {
         this.level = level;
         this.dimension = TerrainSnapshots.dimension(level);
     }

@@ -1,0 +1,155 @@
+package tacz.longrangesniping.client;
+
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import tacz.longrangesniping.TaczLongRangeSniping;
+import tacz.longrangesniping.config.ServerConfig;
+import tacz.longrangesniping.network.ScopeNetworking;
+import tacz.longrangesniping.network.ScopeTargetsPayload;
+import tacz.longrangesniping.scoping.ScopeCone;
+import tacz.longrangesniping.scoping.ScopedEntityPolicy;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/** Draws the very same tracked entity objects; no clone entities, client chunks, local AI or collision authority. */
+@EventBusSubscriber(modid = TaczLongRangeSniping.MOD_ID, value = Dist.CLIENT)
+public final class ScopedRendering {
+    private record Pose(ScopeTargetsPayload.Target target, Vec3 from, float fromYaw, float fromPitch, long received) {}
+    private static final Map<Integer, Pose> targets = new HashMap<>();
+    private static ClientLevel level;
+    private static long tick, received;
+    private static int interval = 4;
+    private static boolean active;
+    private static double zoom;
+    private static int lastExtraDraws;
+    private static ByteBufferBuilder byteBuffer;
+    private static MultiBufferSource.BufferSource buffers;
+
+    @SubscribeEvent public static void setup(FMLClientSetupEvent event) {
+        event.enqueueWork(() -> {
+            ScopeNetworking.setClientReceiver(ScopedRendering::receive);
+        });
+    }
+
+    private static void receive(ScopeTargetsPayload payload) {
+        var minecraft = Minecraft.getInstance();
+        if (minecraft.level == null || !minecraft.level.dimension().location().equals(payload.dimension())) return;
+        if (level != minecraft.level) { targets.clear(); level = minecraft.level; }
+        var next = new HashMap<Integer, Pose>();
+        for (var target : payload.targets()) {
+            Entity entity = level.getEntity(target.id());
+            Vec3 from = entity != null && entity.getUUID().equals(target.uuid()) ? entity.position() : new Vec3(target.x(), target.y(), target.z());
+            next.put(target.id(), new Pose(target, from, entity == null ? target.yaw() : entity.getYRot(),
+                    entity == null ? target.pitch() : entity.getXRot(), tick));
+        }
+        targets.clear(); targets.putAll(next);
+        interval = payload.interval();
+        received = tick;
+    }
+
+    public static boolean active() { return active; }
+    public static int targetCount() { return targets.size(); }
+    public static int extraDraws() { return lastExtraDraws; }
+    public static boolean hasRealClientChunk(Entity entity) {
+        // ClientLevel.hasChunk/hasChunkAt are not a residency test; inspect the actual client storage.
+        return entity.level() instanceof ClientLevel client
+                && client.getChunkSource().getChunk(entity.chunkPosition().x, entity.chunkPosition().z, ChunkStatus.FULL, false) != null;
+    }
+    public static boolean suppressExtra(Entity entity) {
+        var pose = targets.get(entity.getId());
+        return !active && pose != null && pose.target.extra() && pose.target.uuid().equals(entity.getUUID());
+    }
+
+    @SubscribeEvent public static void tick(ClientTickEvent.Post event) {
+        tick++;
+        var minecraft = Minecraft.getInstance();
+        if (minecraft.level != level) { targets.clear(); level = minecraft.level; }
+        active = false;
+        if (minecraft.player != null && level != null && ServerConfig.current().scopeRendering().enabled()) {
+            var decision = TaczClientBridge.evaluateForDisplay(minecraft.player);
+            active = decision.eligible(); zoom = decision.zoom();
+        }
+        if (tick - received > Math.max(40, interval * 3)) targets.clear();
+        if (!active || level == null) return;
+        for (var pose : targets.values()) {
+            var entity = level.getEntity(pose.target.id());
+            if (!(entity instanceof LivingEntity living) || !entity.getUUID().equals(pose.target.uuid())
+                    || entity.isRemoved() || entity.isAlwaysTicking() || hasRealClientChunk(entity)) continue;
+            // Client entities outside received chunks do not tick, so native lerpTo alone would leave them frozen.
+            // Advance only visual pose/animation, never Mob.tick/baseTick/AI or world collision.
+            double alpha = Math.clamp((double) (tick - pose.received) / interval, 0, 1);
+            entity.setOldPosAndRot();
+            entity.setPos(pose.from.lerp(new Vec3(pose.target.x(), pose.target.y(), pose.target.z()), alpha));
+            entity.setYRot(Mth.rotLerp((float) alpha, pose.fromYaw, pose.target.yaw()));
+            entity.setXRot(Mth.rotLerp((float) alpha, pose.fromPitch, pose.target.pitch()));
+            living.yHeadRotO = living.yHeadRot; living.yHeadRot = pose.target.headYaw();
+            living.yBodyRotO = living.yBodyRot; living.yBodyRot = pose.target.bodyYaw();
+            float moved = (float) Math.sqrt(Mth.square(entity.getX() - entity.xOld) + Mth.square(entity.getZ() - entity.zOld));
+            living.walkAnimation.update(Math.min(moved * 4, 1), 0.4f);
+            if (living.hurtTime > 0) living.hurtTime--;
+            entity.tickCount++;
+        }
+    }
+
+    @SubscribeEvent public static void render(RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES) return;
+        lastExtraDraws = 0;
+        if (!active || level == null || targets.isEmpty()) return;
+        var minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || minecraft.level != level) return;
+        var camera = event.getCamera();
+        Vec3 eye = camera.getPosition(), direction = minecraft.player.getViewVector(1);
+        var dispatcher = minecraft.getEntityRenderDispatcher();
+        float partial = event.getPartialTick().getGameTimeDeltaPartialTick(false);
+        float fogStart = RenderSystem.getShaderFogStart(), fogEnd = RenderSystem.getShaderFogEnd();
+        if (buffers == null) { byteBuffer = new ByteBufferBuilder(262144); buffers = MultiBufferSource.immediate(byteBuffer); }
+        try {
+            // Dedicated buffers prevent our fog range from changing already queued vanilla entity draws.
+            RenderSystem.setShaderFogStart(ServerConfig.current().maxDistance());
+            RenderSystem.setShaderFogEnd(ServerConfig.current().maxDistance() + 64);
+            for (var pose : targets.values()) {
+                Entity entity = level.getEntity(pose.target.id());
+                if (!(entity instanceof LivingEntity) || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved()
+                        || !ScopedEntityPolicy.allows(entity, ServerConfig.current().scopeRendering().players())
+                        || entity.isInvisibleTo(minecraft.player) || !event.getFrustum().isVisible(entity.getBoundingBox())) continue;
+                var box = entity.getBoundingBox();
+                Vec3 offset = box.getCenter().subtract(eye);
+                if (!ScopeCone.contains(offset.x, offset.y, offset.z, direction.x, direction.y, direction.z,
+                        ScopeCone.radius(box.getXsize(), box.getYsize(), box.getZsize()), ServerConfig.current().maxDistance(), zoom)) continue;
+                // Vanilla already drew this object if both its distance/frustum and section checks succeeded.
+                if (dispatcher.shouldRender(entity, event.getFrustum(), eye.x, eye.y, eye.z)
+                        && (level.isOutsideBuildHeight(entity.blockPosition()) || minecraft.levelRenderer.isSectionCompiled(entity.blockPosition()))) continue;
+                double x = Mth.lerp(partial, entity.xOld, entity.getX()) - eye.x;
+                double y = Mth.lerp(partial, entity.yOld, entity.getY()) - eye.y;
+                double z = Mth.lerp(partial, entity.zOld, entity.getZ()) - eye.z;
+                dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
+                        event.getPoseStack(), buffers, pose.target.light());
+                lastExtraDraws++;
+            }
+            buffers.endBatch();
+        } finally {
+            RenderSystem.setShaderFogStart(fogStart); RenderSystem.setShaderFogEnd(fogEnd);
+        }
+    }
+
+    @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        targets.clear(); level = null; active = false;
+        if (byteBuffer != null) { byteBuffer.close(); byteBuffer = null; buffers = null; }
+    }
+}

@@ -3,5 +3,6 @@
   "minVersion": "0.8",
   "package": "tacz.longrangesniping.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["KineticBulletAccessor", "LevelChunkSnapshotMixin"]
+  "mixins": ["KineticBulletAccessor", "LevelChunkSnapshotMixin", "ChunkMapAccessor", "TrackedEntityAccessor", "TrackedEntityMixin"],
+  "client": ["ScopeFarPlaneMixin", "ScopedEntityRendererMixin"]
 }

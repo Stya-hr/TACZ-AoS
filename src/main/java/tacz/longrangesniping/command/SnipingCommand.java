@@ -15,7 +15,8 @@ public final class SnipingCommand {
     public void register(RegisterCommandsEvent event) {
         event.getDispatcher().register(Commands.literal("taczlrs")
                 .then(Commands.literal("status").executes(context -> {
-                    var decision = TaczBridge.evaluate(context.getSource().getPlayerOrException());
+                    var player = context.getSource().getPlayerOrException();
+                    var decision = TaczBridge.evaluate(player);
                     context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.status",
                             Component.translatable("tacz_long_range_sniping.reason." + decision.reason().name().toLowerCase(java.util.Locale.ROOT)),
                             decision.gunId().isEmpty() ? "-" : decision.gunId(),
@@ -27,6 +28,10 @@ public final class SnipingCommand {
                     context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.prototype_status",
                             config.prototype().enabled(), config.prototype().maxDistance(), status.active(),
                             status.accepted(), status.unknown(), status.rangeLimited()), false);
+                    context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.scope_status",
+                            config.scopeRendering().enabled(),
+                            tacz.longrangesniping.scoping.ScopeSubscriptions.INSTANCE.count(player),
+                            config.maxTrackedEntities(), config.maxDistance(), config.scopeRendering().intervalTicks()), false);
                     return decision.eligible() ? 1 : 0;
                 }))
                 .then(Commands.literal("cache").requires(source -> source.hasPermission(2)).executes(context -> {

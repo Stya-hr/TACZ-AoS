@@ -46,6 +46,12 @@ neoForge {
     }
     runs {
         client { client() }
+        clientScopeTest {
+            client()
+            gameDirectory = file('build/client-scope-test')
+            systemProperty 'taczlrs.clientScopeTest', 'true'
+            programArguments.addAll '--width', '960', '--height', '540'
+        }
         server {
             server()
             programArgument '--nogui'
@@ -95,6 +101,19 @@ dependencies {
 }
 
 tasks.named('test', Test).configure { useJUnitPlatform() }
+
+tasks.named('runClientScopeTest').configure {
+    def result = layout.projectDirectory.file('build/client-scope-test/scope-result.txt').asFile
+    doFirst {
+        result.parentFile.mkdirs()
+        result.text = 'RUNNING'
+    }
+    doLast {
+        if (result.text.trim() != 'PASS') {
+            throw new GradleException('Client scope integration did not report PASS; inspect build/client-scope-test/logs/latest.log')
+        }
+    }
+}
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
     var replaceProperties = [

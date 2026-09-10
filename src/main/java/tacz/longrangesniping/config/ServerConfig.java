@@ -22,15 +22,29 @@ public final class ServerConfig {
     private static final ModConfigSpec.BooleanValue SNAPSHOTS;
     private static final ModConfigSpec.IntValue SNAPSHOT_BLOCKS, SNAPSHOT_SECTIONS, REFRESH_DELAY, PENDING_SECTIONS, TRACKED_CHUNKS;
     private static final ModConfigSpec.DoubleValue SNAPSHOT_MILLIS;
+    private static final ModConfigSpec.BooleanValue SCOPE_RENDERING, SCOPE_PLAYERS;
+    private static final ModConfigSpec.IntValue SCOPE_INTERVAL, SCOPE_CANDIDATES, SCOPE_TRACE_CELLS;
+    private static final ModConfigSpec.ConfigValue<List<? extends String>> SCOPE_EXCLUDED_CLASSES;
 
     public record Prototype(boolean enabled, int maxDistance, int maxActiveBullets, int maxFlightTicks) {}
     public record Snapshots(boolean enabled, int blocksPerTick, int sectionsPerTick, double maxMillisPerTick,
                             int refreshDelayTicks, int maxPendingSections, int maxTrackedChunks) {}
     public static final Snapshots DEFAULT_SNAPSHOTS = new Snapshots(true, 4096, 16, 2.0, 5, 8192, 8192);
+    public record ScopeRendering(boolean enabled, boolean players, int intervalTicks, int maxCandidates,
+                                 int maxTraceCells, List<String> excludedClasses) {
+        public ScopeRendering { excludedClasses = List.copyOf(excludedClasses); }
+    }
+    public static final ScopeRendering DEFAULT_SCOPE_RENDERING = new ScopeRendering(true, true, 4, 256, 65536, List.of());
 
     public record Settings(boolean available, EligibilityPolicy policy, int maxDistance,
                            int maxTrackedEntities, int snapshotMemoryMiB, boolean diagnostics, Prototype prototype,
-                           Snapshots snapshots) {}
+                           Snapshots snapshots, ScopeRendering scopeRendering) {
+        public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
+                        int snapshotMemoryMiB, boolean diagnostics, Prototype prototype, Snapshots snapshots) {
+            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, prototype, snapshots,
+                    DEFAULT_SCOPE_RENDERING);
+        }
+    }
 
     private static final Settings UNAVAILABLE = new Settings(false, EligibilityPolicy.disabled(), 1024, 32, 128, false,
             new Prototype(false, 128, 128, 600), DEFAULT_SNAPSHOTS);
@@ -49,14 +63,14 @@ public final class ServerConfig {
                         "Malformed rules disable eligibility until corrected; never infer magnification from the scope name.")
                 .defineListAllowEmpty("scopeRules", EligibilityPolicy.DEFAULT_SCOPES, () -> "", value -> value instanceof String);
         builder.pop();
-        builder.comment("Shared limits. Entity budget is reserved for a later stage.")
+        builder.comment("Shared limits. Entity budget applies per scoped player.")
                 .push("limits");
         MAX_DISTANCE = builder.defineInRange("maxDistance", 1024, 16, 16384);
         MAX_ENTITIES = builder.defineInRange("maxTrackedEntities", 32, 1, 256);
         CACHE_MIB = builder.comment("Server-wide estimated memory budget for complete collision snapshots; evicted sections become unknown.")
                 .defineInRange("snapshotMemoryMiB", 128, 16, 4096);
         builder.pop();
-        builder.comment("Experimental ballistic scheduler with unloaded-terrain snapshots. No remote entity rendering yet.")
+        builder.comment("Experimental ballistic scheduler with unloaded-terrain snapshots.")
                 .push("prototype");
         PROTOTYPE = builder.comment("Opt in to taking over ordinary kinetic bullets. Original tracer entities are not spawned.")
                 .define("enabled", false);
@@ -84,6 +98,23 @@ public final class ServerConfig {
         TRACKED_CHUNKS = builder.comment("Bound on coordinate-only loaded-chunk index. Overflow forgets oldest tracked coordinates.")
                 .defineInRange("maxTrackedChunks", 8192, 64, 65536);
         builder.pop();
+        builder.comment("Additional entity tracking/rendering only while gun, installed scope, zoom and aiming qualify.",
+                        "Only existing server entities are considered. This never loads target or corridor chunks.")
+                .push("scopeRendering");
+        SCOPE_RENDERING = builder.define("enabled", true);
+        SCOPE_PLAYERS = builder.comment("Include other players as well as ordinary Mob subclasses.").define("players", true);
+        SCOPE_INTERVAL = builder.comment("Refresh subscriptions every N ticks; losing eligibility revokes them each tick.")
+                .defineInRange("intervalTicks", 4, 2, 20);
+        SCOPE_CANDIDATES = builder.comment("Maximum living candidates inspected per refresh and player.")
+                .defineInRange("maxCandidates", 256, 16, 2048);
+        SCOPE_TRACE_CELLS = builder.comment("Maximum distinct collision cells read per refresh/player; exhausted checks fail closed.")
+                .defineInRange("maxTraceCells", 65536, 1024, 1048576);
+        SCOPE_EXCLUDED_CLASSES = builder.comment("Additional excluded Java superclass/interface names (not entity IDs).",
+                        "Subclasses are excluded too. Example: another.mod.entity.BaseBoss.",
+                        "Dragon, wither, warden and the c:bosses entity type tag are always excluded.",
+                        "An unresolved class disables extra subscriptions until the configuration is corrected.")
+                .defineListAllowEmpty("excludedClasses", List.of(), () -> "", value -> value instanceof String);
+        builder.pop();
         builder.push("diagnostics");
         DIAGNOSTICS = builder.comment("Log eligibility changes, bullet parameters, takeover and termination reasons.")
                 .define("enabled", false);
@@ -110,7 +141,9 @@ public final class ServerConfig {
                     new Prototype(PROTOTYPE.get(), Math.min(MAX_DISTANCE.get(), PROTOTYPE_DISTANCE.get()),
                             MAX_BULLETS.get(), MAX_FLIGHT_TICKS.get()),
                     new Snapshots(SNAPSHOTS.get(), SNAPSHOT_BLOCKS.get(), SNAPSHOT_SECTIONS.get(), SNAPSHOT_MILLIS.get(),
-                            REFRESH_DELAY.get(), PENDING_SECTIONS.get(), TRACKED_CHUNKS.get()));
+                            REFRESH_DELAY.get(), PENDING_SECTIONS.get(), TRACKED_CHUNKS.get()),
+                    new ScopeRendering(SCOPE_RENDERING.get(), SCOPE_PLAYERS.get(), SCOPE_INTERVAL.get(), SCOPE_CANDIDATES.get(),
+                            SCOPE_TRACE_CELLS.get(), List.copyOf(SCOPE_EXCLUDED_CLASSES.get())));
         } catch (IllegalArgumentException exception) {
             current = UNAVAILABLE;
             TaczLongRangeSniping.LOGGER.error("Invalid sniping eligibility config; eligibility disabled: {}", exception.getMessage());
