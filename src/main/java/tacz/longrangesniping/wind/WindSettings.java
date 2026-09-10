@@ -10,7 +10,7 @@ public record WindSettings(boolean enabled, boolean weatherEffects, long seedSal
         }
     }
     public static final WindSettings DEFAULT = new WindSettings(true, true, 0,
-            new Profile(4000, 2, 5), new Profile(2000, 4, 9), new Profile(1000, 6, 14));
+            new Profile(4000, 4, 5), new Profile(2000, 8, 9), new Profile(1000, 12, 14));
     public static final WindSettings DISABLED = new WindSettings(false, false, 0, DEFAULT.clear, DEFAULT.rain, DEFAULT.thunder);
     public Profile profile(int weather) { return weather == 2 ? thunder : weather == 1 ? rain : clear; }
 }

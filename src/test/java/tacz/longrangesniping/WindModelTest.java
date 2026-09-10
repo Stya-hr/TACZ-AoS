@@ -27,6 +27,8 @@ class WindModelTest {
     }
 
     @Test void speedIsBoundedTypicalWindsAreModerateAndBearingsAreUnbiased() {
+        // Analytic means of the default Rayleigh distributions after applying their hard caps.
+        double[] truncatedMeans = {2.9221565359363284, 5.398922868396719, 8.328455723809903};
         for (int weather = 0; weather < 3; weather++) {
             double sum = 0, x = 0, z = 0;
             int[] quadrants = new int[4];
@@ -36,7 +38,7 @@ class WindModelTest {
                 sum += wind.speed(); x += wind.x(); z += wind.z();
                 quadrants[(wind.x() >= 0 ? 1 : 0) + (wind.z() >= 0 ? 2 : 0)]++;
             }
-            assertEquals(WindSettings.DEFAULT.profile(weather).meanSpeed(), sum / 10000, .25);
+            assertEquals(truncatedMeans[weather], sum / 10000, .25);
             assertEquals(0, x / 10000, .15); assertEquals(0, z / 10000, .15);
             for (int count : quadrants) assertTrue(count > 2300 && count < 2700);
         }

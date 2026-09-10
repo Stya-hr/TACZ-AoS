@@ -567,17 +567,17 @@ seedSalt = 0
 
 [wind.clear]
 periodTicks = 4000
-meanSpeed = 2.0
+meanSpeed = 4.0
 maxSpeed = 5.0
 
 [wind.rain]
 periodTicks = 2000
-meanSpeed = 4.0
+meanSpeed = 8.0
 maxSpeed = 9.0
 
 [wind.thunder]
 periodTicks = 1000
-meanSpeed = 6.0
+meanSpeed = 12.0
 maxSpeed = 14.0
 ```
 
