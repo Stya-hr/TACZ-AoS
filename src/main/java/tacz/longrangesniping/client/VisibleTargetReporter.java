@@ -1,0 +1,138 @@
+package tacz.longrangesniping.client;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.phys.*;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModList;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
+import org.joml.Matrix4f;
+import org.joml.Vector4f;
+import tacz.longrangesniping.TaczLongRangeSniping;
+import tacz.longrangesniping.config.ServerConfig;
+import tacz.longrangesniping.network.ScopeAimPayload;
+import static org.lwjgl.opengl.GL33C.*;
+
+/** Native loaded-block picking plus optional asynchronous picking of the composited Voxy world depth.
+ * Runs before hands/HUD. Three tiny PBOs, nonblocking fences, no terrain cache and no Voxy class linkage.
+ */
+@EventBusSubscriber(modid=TaczLongRangeSniping.MOD_ID,value=Dist.CLIENT)
+public final class VisibleTargetReporter {
+    private static final class Read {
+        int buffer; long fence, tick; ClientLevel level; Matrix4f inverse;
+        Vec3 camera,eye,direction; float clear; boolean zeroToOne; float nx,ny;
+    }
+    private static final Read[] ring={new Read(),new Read(),new Read()};
+    private static ClientLevel level;
+    private static long sent=-100, captured=-100;
+    private static Vec3 depthPoint,depthEye,depthDirection;
+    private static long depthTick;
+    public static double lastDistance=-1;
+    private VisibleTargetReporter(){}
+    @SubscribeEvent public static void render(RenderLevelStageEvent event) {
+        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
+        var mc=Minecraft.getInstance();
+        if(level!=mc.level) {reset();level=mc.level;}
+        if(level==null || mc.player==null || !mc.options.getCameraType().isFirstPerson()
+                || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()) {depthPoint=null;return;}
+        long tick=level.getGameTime();
+        if(ModList.get().isLoaded("voxy")) {
+            poll(tick);
+            if(tick!=captured) {capture(event,tick);captured=tick;}
+        }
+        if(tick-sent<2) return;
+        Vec3 eye=mc.player.getEyePosition(),direction=mc.player.getViewVector(1).normalize();
+        int range=ServerConfig.current().maxDistance();
+        var nativeHit=nativeTarget(eye,direction,range);
+        Vec3 target=nativeHit==null?null:nativeHit.getLocation();
+        if(depthPoint!=null && tick-depthTick<=6 && depthEye.distanceToSqr(eye)<1
+                && depthDirection.dot(direction)>.99999) {
+            double distance=eye.distanceTo(depthPoint);
+            if(distance<=range && distance>.1 && (target==null || distance<eye.distanceTo(target))) target=depthPoint;
+        }
+        double distance=target==null?range:eye.distanceTo(target);
+        // Remote entities already paired by this mod are valid candidates too. Unseen entities cannot be invented.
+        var end=eye.add(direction.scale(distance));
+        for(var entity:level.entitiesForRendering()) {
+            if(entity==mc.player || entity.isRemoved() || !entity.isPickable() || entity.distanceToSqr(mc.player)>range*(double)range) continue;
+            var hit=entity.getBoundingBox().clip(eye,end);
+            if(hit.isPresent() && eye.distanceTo(hit.get())<distance) {target=hit.get();distance=eye.distanceTo(target);}
+        }
+        lastDistance=target==null?-1:eye.distanceTo(target);
+        PacketDistributor.sendToServer(new ScopeAimPayload(level.dimension().location(),eye,direction,lastDistance));
+        sent=tick;
+    }
+    private static BlockHitResult nativeTarget(Vec3 eye,Vec3 direction,int range) {
+        var mc=Minecraft.getInstance();
+        int cx=mc.player.chunkPosition().x,cz=mc.player.chunkPosition().z,view=mc.options.getEffectiveRenderDistance();
+        BlockHitResult result=BlockGetter.traverseBlocks(eye,eye.add(direction.scale(range)),Boolean.TRUE,(ignored,pos)->{
+            if(Math.abs((pos.getX()>>4)-cx)>view || Math.abs((pos.getZ()>>4)-cz)>view)
+                return BlockHitResult.miss(eye,net.minecraft.core.Direction.UP,pos);
+            var chunk=level.getChunkSource().getChunk(pos.getX()>>4,pos.getZ()>>4,ChunkStatus.FULL,false);
+            if(chunk==null) return BlockHitResult.miss(eye,net.minecraft.core.Direction.UP,pos);
+            var state=chunk.getBlockState(pos);
+            return state.getShape(chunk,pos).clip(eye,eye.add(direction.scale(range)),pos);
+        },ignored->BlockHitResult.miss(eye,net.minecraft.core.Direction.UP,BlockPos.containing(eye)));
+        return result.getType()==HitResult.Type.BLOCK?result:null;
+    }
+    private static void poll(long tick) {
+        int previous=glGetInteger(GL_PIXEL_PACK_BUFFER_BINDING);
+        try {
+            for(var r:ring) {
+                if(r.fence==0) continue;
+                int result=glClientWaitSync(r.fence,0,0);
+                if(result==GL_TIMEOUT_EXPIRED) continue;
+                glDeleteSync(r.fence);r.fence=0;
+                if(result==GL_WAIT_FAILED || r.level!=level || tick-r.tick>6) continue;
+                glBindBuffer(GL_PIXEL_PACK_BUFFER,r.buffer);
+                float[] data=new float[1];glGetBufferSubData(GL_PIXEL_PACK_BUFFER,0,data);
+                float depth=data[0];
+                if(r.tick<depthTick) continue;
+                depthTick=r.tick;depthPoint=null;
+                if(!Float.isFinite(depth) || depth==r.clear) continue;
+                var p=new Vector4f(r.nx,r.ny,r.zeroToOne?depth:depth*2-1,1).mul(r.inverse);
+                if(!Float.isFinite(p.w) || Math.abs(p.w)<1e-10) continue;
+                Vec3 point=r.camera.add(p.x/p.w,p.y/p.w,p.z/p.w);
+                if(!Double.isFinite(point.lengthSqr()) || point.subtract(r.eye).dot(r.direction)<=0) continue;
+                depthPoint=point;depthEye=r.eye;depthDirection=r.direction;
+            }
+        } finally {glBindBuffer(GL_PIXEL_PACK_BUFFER,previous);}
+    }
+    private static void capture(RenderLevelStageEvent event,long tick) {
+        Read r=null;for(var entry:ring) if(entry.fence==0){r=entry;break;} if(r==null)return;
+        var mc=Minecraft.getInstance();var target=mc.getMainRenderTarget();
+        if(target.width<=0||target.height<=0)return;
+        int previous=glGetInteger(GL_PIXEL_PACK_BUFFER_BINDING),fb=glGetInteger(GL_READ_FRAMEBUFFER_BINDING);
+        int row=glGetInteger(GL_PACK_ROW_LENGTH),skipRows=glGetInteger(GL_PACK_SKIP_ROWS),skipPixels=glGetInteger(GL_PACK_SKIP_PIXELS);
+        try {
+            if(r.buffer==0) r.buffer=glGenBuffers();
+            glBindBuffer(GL_PIXEL_PACK_BUFFER,r.buffer);glBufferData(GL_PIXEL_PACK_BUFFER,4,GL_STREAM_READ);
+            glPixelStorei(GL_PACK_ROW_LENGTH,0);glPixelStorei(GL_PACK_SKIP_ROWS,0);glPixelStorei(GL_PACK_SKIP_PIXELS,0);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER,target.frameBufferId);
+            int x=target.width/2,y=target.height/2;
+            glReadPixels(x,y,1,1,GL_DEPTH_COMPONENT,GL_FLOAT,0L);
+            r.fence=glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE,0);
+            r.level=level;r.tick=tick;r.clear=glGetFloat(GL_DEPTH_CLEAR_VALUE);
+            r.zeroToOne=org.lwjgl.opengl.GL.getCapabilities().GL_ARB_clip_control
+                    && glGetInteger(org.lwjgl.opengl.GL45C.GL_CLIP_DEPTH_MODE)==org.lwjgl.opengl.GL45C.GL_ZERO_TO_ONE;
+            r.inverse=new Matrix4f(event.getProjectionMatrix()).mul(event.getModelViewMatrix()).invert();
+            r.camera=event.getCamera().getPosition();r.eye=mc.player.getEyePosition();r.direction=mc.player.getViewVector(1).normalize();
+            r.nx=2f*(x+.5f)/target.width-1;r.ny=2f*(y+.5f)/target.height-1;
+        } finally {
+            glBindBuffer(GL_PIXEL_PACK_BUFFER,previous);glBindFramebuffer(GL_READ_FRAMEBUFFER,fb);
+            glPixelStorei(GL_PACK_ROW_LENGTH,row);glPixelStorei(GL_PACK_SKIP_ROWS,skipRows);glPixelStorei(GL_PACK_SKIP_PIXELS,skipPixels);
+        }
+    }
+    private static void reset() {
+        for(var r:ring){if(r.fence!=0)glDeleteSync(r.fence);if(r.buffer!=0)glDeleteBuffers(r.buffer);r.fence=0;r.buffer=0;r.level=null;}
+        sent=captured=-100;depthPoint=null;depthTick=0;lastDistance=-1;
+    }
+    @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event){reset();level=null;}
+}
