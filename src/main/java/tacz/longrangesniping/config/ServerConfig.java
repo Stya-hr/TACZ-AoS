@@ -8,6 +8,11 @@ import java.util.List;
 
 public final class ServerConfig {
     public static final ModConfigSpec SPEC;
+    private static final ModConfigSpec.BooleanValue WIND_ENABLED, WIND_WEATHER;
+    private static final ModConfigSpec.LongValue WIND_SEED;
+    private static final ModConfigSpec.IntValue[] WIND_PERIODS = new ModConfigSpec.IntValue[3];
+    private static final ModConfigSpec.DoubleValue[] WIND_MEANS = new ModConfigSpec.DoubleValue[3], WIND_MAX = new ModConfigSpec.DoubleValue[3];
+    private static volatile tacz.longrangesniping.wind.WindSettings wind = tacz.longrangesniping.wind.WindSettings.DISABLED;
     private static final ModConfigSpec.BooleanValue GUN_OVERRIDES_ENABLED;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> GUN_OVERRIDES;
     private static volatile java.util.Map<String, GunPhysicsOverride> gunOverrides = java.util.Map.of();
@@ -97,6 +102,28 @@ public final class ServerConfig {
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
+        builder.comment("Global crosswind for ordinary TACZ kinetic bullets. HUD still requires an eligible scoped player near a rangefinder.",
+                        "Wind is shared per dimension, fixed per shot, absent in dimensions without skylight and ignored under water.",
+                        "Restart the world/server after edits so clients receive the same configuration.")
+                .push("wind");
+        WIND_ENABLED = builder.define("enabled", true);
+        WIND_WEATHER = builder.comment("Rain/thunder use their own speed distribution and interval; weather transitions may change wind immediately.")
+                .define("weatherEffects", true);
+        WIND_SEED = builder.comment("Salt combined with world seed, game day, time slot and weather. Reopening scopes does not reroll wind.")
+                .defineInRange("seedSalt", 0L, Long.MIN_VALUE, Long.MAX_VALUE);
+        String[] weatherNames = {"clear", "rain", "thunder"};
+        for (int i = 0; i < 3; i++) {
+            var defaults = tacz.longrangesniping.wind.WindSettings.DEFAULT.profile(i);
+            builder.push(weatherNames[i]);
+            WIND_PERIODS[i] = builder.comment("Ticks per time slot within each 24000-tick game day; the final slot may be shorter.")
+                    .defineInRange("periodTicks", defaults.periodTicks(), 20, 24000);
+            WIND_MEANS[i] = builder.comment("Rayleigh mean before truncation, in blocks/second. Must not exceed maxSpeed. Zero means calm.")
+                    .defineInRange("meanSpeed", defaults.meanSpeed(), 0, 30);
+            WIND_MAX[i] = builder.comment("Hard speed cap, in blocks/second; direction is uniform over 360 degrees.")
+                    .defineInRange("maxSpeed", defaults.maxSpeed(), 0, 30);
+            builder.pop();
+        }
+        builder.pop();
         builder.comment("Global TACZ projectile physics, independent of rangefinder, aiming and sniping whitelist.",
                         "Restart the world/server after editing. Native TACZ spawn packets synchronize actual bullet physics.")
                 .push("gunOverrides");
@@ -225,6 +252,10 @@ public final class ServerConfig {
     private ServerConfig() {}
 
     public static Settings current() { return current; }
+    public static tacz.longrangesniping.wind.WindSettings wind() { return wind; }
+    private static tacz.longrangesniping.wind.WindSettings.Profile windProfile(int weather) {
+        return new tacz.longrangesniping.wind.WindSettings.Profile(WIND_PERIODS[weather].get(), WIND_MEANS[weather].get(), WIND_MAX[weather].get());
+    }
     public static java.util.Map<String, GunPhysicsOverride> gunOverrides() { return gunOverrides; }
 
     public static void onLoad(ModConfigEvent.Loading event) { reload(event); }
@@ -233,12 +264,20 @@ public final class ServerConfig {
     public static void onUnload(ModConfigEvent.Unloading event) {
         if (event.getConfig().getSpec() == SPEC) {
             current = UNAVAILABLE;
+            wind = tacz.longrangesniping.wind.WindSettings.DISABLED;
             gunOverrides = java.util.Map.of();
         }
     }
 
     private static void reload(ModConfigEvent event) {
         if (event.getConfig().getSpec() != SPEC) return;
+        try {
+            wind = new tacz.longrangesniping.wind.WindSettings(WIND_ENABLED.get(), WIND_WEATHER.get(), WIND_SEED.get(),
+                    windProfile(0), windProfile(1), windProfile(2));
+        } catch (IllegalArgumentException exception) {
+            wind = tacz.longrangesniping.wind.WindSettings.DISABLED;
+            TaczLongRangeSniping.LOGGER.error("Invalid wind config; wind disabled: {}", exception.getMessage());
+        }
         try {
             gunOverrides = GUN_OVERRIDES_ENABLED.get() ? GunPhysicsOverride.parse(GUN_OVERRIDES.get()) : java.util.Map.of();
         } catch (IllegalArgumentException exception) {

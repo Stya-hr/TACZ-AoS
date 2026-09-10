@@ -20,7 +20,11 @@ import java.util.Arrays;
 import java.util.Optional;
 
 /** Read-only mean shot, excluding random spread/recoil and future target movement. Never fires a dummy bullet. */
-public record BallisticPreview(Vec3 start, Vec3 velocity, float gravity, float friction, int lifeTicks) {
+public record BallisticPreview(Vec3 start, Vec3 velocity, float gravity, float friction, int lifeTicks,
+                               tacz.longrangesniping.wind.WindVector crosswind) {
+    public BallisticPreview(Vec3 start, Vec3 velocity, float gravity, float friction, int lifeTicks) {
+        this(start, velocity, gravity, friction, lifeTicks, tacz.longrangesniping.wind.WindVector.ZERO);
+    }
     private static final Prototype DELEGATING_SHOOT = delegatingShoot();
 
     public static Optional<BallisticPreview> read(Player player) {
@@ -70,7 +74,10 @@ public record BallisticPreview(Vec3 start, Vec3 velocity, float gravity, float f
         Vec3 direction = new Vec3(-Mth.sin(yaw) * Mth.cos(pitch), -Mth.sin(pitch), Mth.cos(yaw) * Mth.cos(pitch));
         Vec3 velocity = direction.normalize().scale(speed)
                 .add(motion.x, player.onGround() ? 0 : motion.y, motion.z);
-        return Optional.of(new BallisticPreview(start, velocity, gravity, friction, life));
+        var wind = player.level() instanceof net.minecraft.server.level.ServerLevel server
+                ? tacz.longrangesniping.wind.WindField.current(server).perpendicular(direction.x, direction.z)
+                : tacz.longrangesniping.wind.WindVector.ZERO;
+        return Optional.of(new BallisticPreview(start, velocity, gravity, friction, life, wind));
     }
 
     /** Accept plain native delegation (including the bundled Kar98); inspect bytecode without running Lua. */

@@ -39,7 +39,8 @@ public final class SnipingPhysicsGameTests {
         Vec3 impact = preview.start(), motion = preview.velocity();
         for (int tick = 0; tick < 9; tick++) {
             impact = impact.add(motion);
-            motion = motion.scale(1f - preview.friction()).add(0, -preview.gravity(), 0);
+            motion = tacz.longrangesniping.wind.WindPhysics.afterDrag(
+                    motion.scale(1f - preview.friction()).add(0, -preview.gravity(), 0), preview.crosswind(), preview.friction(), false);
         }
         impact = impact.add(motion.scale(.5));
         // Test setup deliberately loads an empty high-altitude corridor, never production loading code.
@@ -133,6 +134,10 @@ public final class SnipingPhysicsGameTests {
                 ((ModernKineticGunItem) gun).doBulletSpread(operator.getDataHolder(), stack, player, bullet,
                         1, nativeSpeed, 0, player.getXRot(), player.getYRot());
                 var fields = (KineticBulletAccessor) bullet;
+                var actualWind = ((tacz.longrangesniping.wind.WindBulletAccess) bullet).taczlrs$wind();
+                helper.assertTrue(Math.abs(actualWind.x() - preview.crosswind().x()) < 1e-8
+                                && Math.abs(actualWind.z() - preview.crosswind().z()) < 1e-8,
+                        "Default launch wind disagrees with preview");
                 boolean changed = i < 5;
                 double speed = changed ? speeds[i] : nativeSpeed;
                 helper.assertTrue(Math.abs(bullet.getDeltaMovement().subtract(player.getKnownMovement()).length() - speed) < 1e-4,
@@ -151,7 +156,8 @@ public final class SnipingPhysicsGameTests {
                     var receivedFields = (KineticBulletAccessor) received;
                     helper.assertTrue(received.getDeltaMovement().equals(bullet.getDeltaMovement())
                                     && receivedFields.taczlrs$getGravity() == fields.taczlrs$getGravity()
-                                    && receivedFields.taczlrs$getFriction() == fields.taczlrs$getFriction(),
+                                    && receivedFields.taczlrs$getFriction() == fields.taczlrs$getFriction()
+                                    && ((tacz.longrangesniping.wind.WindBulletAccess) received).taczlrs$wind().equals(actualWind),
                             "Native spawn packet lost overridden projectile physics");
                 } finally { buffer.release(); }
                 helper.assertTrue(cache.<Float>getCache(GunProperties.AMMO_SPEED) == cachedSpeed

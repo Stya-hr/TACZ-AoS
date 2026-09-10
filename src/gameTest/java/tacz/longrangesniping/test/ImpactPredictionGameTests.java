@@ -140,7 +140,7 @@ public final class ImpactPredictionGameTests {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var nativeShot = BallisticPreview.read(fixture.player).orElseThrow();
         var shot = new BallisticPreview(new Vec3(.5, 5, .5), new Vec3(nativeShot.velocity().length(), 1, 0),
-                nativeShot.gravity(), nativeShot.friction(), nativeShot.lifeTicks());
+                nativeShot.gravity(), nativeShot.friction(), nativeShot.lifeTicks(), new tacz.longrangesniping.wind.WindVector(0, 5));
         SegmentTrace.Source landscape = (x,y,z) -> y < 0 ? CollisionCell.FULL : CollisionCell.AIR;
         for (int i = 0; i < 20; i++) predict(shot, landscape, List.of());
         long[] times = new long[80];

@@ -99,7 +99,9 @@ public final class ScopeActivityGameTests {
                     .noneMatch(tacz.longrangesniping.block.RangefinderAccess::nearby), "Exploration fixture has an active instrument");
             for (int x = wx - 8; x < wx + 24; x++) for (int z = wz - 8; z < wz + 24; z++)
                 level.setBlock(new BlockPos(x, 79, z), Blocks.STONE.defaultBlockState(), 2);
-            for (int y = 79; y <= 84; y++) level.setBlock(new BlockPos(wx + 14, y, wz + 8), Blocks.STONE.defaultBlockState(), 2);
+            // The old one-block column was aimed exactly at its Z edge; either crosswind sign must still hit this fixture.
+            for (int y = 79; y <= 84; y++) for (int z = 6; z <= 10; z++)
+                level.setBlock(new BlockPos(wx + 14, y, wz + z), Blocks.STONE.defaultBlockState(), 2);
             saved.setPos(wx + 8, 80, wz + 12); level.addFreshEntity(saved);
             var key = new SectionKey(TerrainSnapshots.dimension(level), cx, 5, cz);
             var corridor = new java.util.ArrayList<SectionKey>();

@@ -31,7 +31,9 @@ public final class ScopeRangefinder {
         float distance = measure(eye, direction, new NoLoadCollisionSource(player.serverLevel()), boxes,
                 settings.maxDistance(), settings.scopeRendering().maxTraceCells(), started + 2_000_000 - nanos);
         nanos += System.nanoTime() - started;
-        PacketDistributor.sendToPlayer(player, new RangePayload(player.serverLevel().dimension().location(), eye, direction, distance));
+        var wind = tacz.longrangesniping.wind.WindField.current(player.serverLevel());
+        PacketDistributor.sendToPlayer(player, new RangePayload(player.serverLevel().dimension().location(), eye, direction, distance,
+                ServerConfig.wind().enabled(), (float) wind.x(), (float) wind.z()));
     }
 
     /** Zero gravity/drag here denotes a geometric straight ray, not guessed firearm parameters. */

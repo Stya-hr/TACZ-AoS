@@ -13,4 +13,8 @@ public abstract class ProjectileLaunchMixin {
     private float taczlrs$gunSpeed(float nativeSpeed) {
         return GunPhysics.launchSpeed((Projectile) (Object) this, nativeSpeed);
     }
+    @org.spongepowered.asm.mixin.injection.Inject(method = "shoot(DDDFF)V", at = @At("RETURN"))
+    private void taczlrs$captureWind(org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        tacz.longrangesniping.wind.WindPhysics.captureLaunch((Projectile) (Object) this);
+    }
 }

@@ -66,6 +66,8 @@ public final class ImpactPrediction {
             float friction = shot.friction(), gravity = shot.gravity();
             if (medium != null && medium.water()) { friction = 0.4f; gravity *= 0.6f; }
             velocity = velocity.scale((double) (1f - friction)).add(0, (double) -gravity, 0);
+            velocity = tacz.longrangesniping.wind.WindPhysics.afterDrag(velocity, shot.crosswind(), friction,
+                    medium != null && medium.water());
         }
         return new Result(End.LIFETIME, point, maxTicks, source.cells.size());
     }

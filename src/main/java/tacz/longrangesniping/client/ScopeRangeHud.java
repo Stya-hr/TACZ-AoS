@@ -30,7 +30,8 @@ public final class ScopeRangeHud {
     private static long maskTime;
     private static int draws;
     private static int shownTenths = Integer.MIN_VALUE;
-    private static String shownNumber = "---";
+    private static String shownNumber = "---", shownWind = "0.0";
+    private static int shownWindTenths = Integer.MIN_VALUE;
     private static final int[] DIGITS = {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f};
     private static final int[][] BARS = {{1,0,6,1},{6,1,7,6},{6,7,7,12},{1,12,6,13},{0,7,1,12},{0,1,1,6},{1,6,6,7}};
     private ScopeRangeHud() {}
@@ -61,6 +62,16 @@ public final class ScopeRangeHud {
                 || mc.player.getEyePosition().distanceToSqr(sample.eye()) > 1
                 || mc.player.getViewVector(1).normalize().dot(sample.direction()) < .99999) return -1;
         return sample.distance();
+    }
+
+    /** World wind stays valid during camera rotation; only the crosswind projection changes. */
+    public static double displayedCrosswind() {
+        var mc = Minecraft.getInstance();
+        if (sample == null || !sample.windEnabled() || mc.level == null || mc.player == null || sampleLevel != mc.level
+                || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()
+                || mc.level.getGameTime() - received > 10 || mc.level.getGameTime() < received) return Double.NaN;
+        var view = mc.player.getViewVector(1);
+        return new tacz.longrangesniping.wind.WindVector(sample.windX(), sample.windZ()).signedCrosswind(view.x, view.z);
     }
 
     /** Coordinates and radius of TACZ's actual ocular circle in its current first-person projection. */
@@ -131,18 +142,45 @@ public final class ScopeRangeHud {
         if (System.nanoTime() - maskTime < 250_000_000L)
             r = Math.min(r, maskRadius - Math.hypot(maskX - cx, maskY - cy));
         if (!Double.isFinite(r) || r < 16) return;
-        // All text corners lie comfortably within the circle, with room for the physical lens rim.
-        double height = Math.clamp(r * .065, 6, 9);
+        // Two compact lines, bounded together inside the ocular circle (including very small lenses).
+        boolean showWind = sample != null && sample.windEnabled();
+        double crosswind = displayedCrosswind();
+        int windTenths = Double.isFinite(crosswind) ? (int) Math.round(Math.abs(crosswind) * 10) : -1;
+        if (windTenths != shownWindTenths) {
+            shownWindTenths = windTenths;
+            shownWind = windTenths < 0 ? "---" : String.format(Locale.ROOT, "%.1f", windTenths / 10.0);
+        }
+        double height = Math.clamp(r * .048, 4.5, 6.5);
         double units = number.length() * 8 + 4 + mc.font.width("blocks");
-        float scale = (float) Math.min(height / 12, r * .9 / units);
+        if (showWind) units = Math.max(units, shownWind.length() * 8 + 4 + mc.font.width("block/s") + 18);
+        float scale = (float) Math.min(Math.min(height / 13, r * .9 / units), r * .32 / 31);
         var gui = event.getGuiGraphics();
         gui.pose().pushPose();
-        gui.pose().translate(cx - r * .55, cy + r * .50, 0);
+        gui.pose().translate(cx - r * .52, cy + r * .43, 0);
         gui.pose().scale(scale, scale, 1);
         for (int i = 0; i < number.length(); i++) digit(gui, number.charAt(i), i * 8, 0xff72ff86);
         gui.drawString(mc.font, "blocks", number.length() * 8 + 4, 3, 0xff72ff86, true);
+        if (showWind) {
+            gui.pose().translate(0, 18, 0);
+            for (int i = 0; i < shownWind.length(); i++) digit(gui, shownWind.charAt(i), i * 8, 0xff72ff86);
+            int unitX = shownWind.length() * 8 + 4;
+            gui.drawString(mc.font, "block/s", unitX, 3, 0xff72ff86, true);
+            if (windTenths >= 0) arrow(gui, unitX + mc.font.width("block/s") + 5, windTenths == 0 ? 0 : crosswind > 0 ? 1 : -1);
+        }
         gui.pose().popPose();
         draws++;
+    }
+
+    private static void arrow(GuiGraphics gui, int x, int direction) {
+        int color = 0xff72ff86;
+        gui.fill(x, 6, x + 10, 7, color);
+        if (direction == 0) return; // A dash for calm/parallel wind; no misleading direction.
+        int tip = direction > 0 ? x + 9 : x;
+        for (int i = 1; i <= 4; i++) {
+            int px = tip - direction * i;
+            gui.fill(px, 6 - i, px + 1, 7 - i, color);
+            gui.fill(px, 6 + i, px + 1, 7 + i, color);
+        }
     }
 
     private static void digit(GuiGraphics gui, char c, int x, int color) {

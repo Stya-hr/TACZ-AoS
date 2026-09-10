@@ -126,7 +126,8 @@ public final class ScopeClientSmokeTest {
                         fail("Backup sight must keep range processing without HUD: " + decision + ", range=" + range); return;
                     }
                 } else {
-                    if (decision.eligible() || optical || draws != zoomBaseline || range != -1 || ScopedRendering.active()) {
+                    if (decision.eligible() || optical || draws != zoomBaseline || range != -1 || ScopedRendering.active()
+                            || Double.isFinite(tacz.longrangesniping.client.ScopeRangeHud.displayedCrosswind())) {
                         fail("Removing rangefinder left client functions active"); return;
                     }
                 }
@@ -187,6 +188,9 @@ public final class ScopeClientSmokeTest {
                 if (tacz.longrangesniping.client.ScopeRangeHud.draws() == 0) { fail("Lens range HUD never rendered"); return; }
                 float range = tacz.longrangesniping.client.ScopeRangeHud.displayedDistance();
                 if (Math.abs(range - 238) > .1) { fail("Live range to center wall incorrect: " + range); return; }
+                if (!Double.isFinite(tacz.longrangesniping.client.ScopeRangeHud.displayedCrosswind())) {
+                    fail("Scoped crosswind sample was not received"); return;
+                }
                 try (var screenshot = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
                     int green = 0, w = screenshot.getWidth(), h = screenshot.getHeight();
                     for (int y = h * 6 / 10; y < h * 9 / 10; y++) for (int x = w / 4; x < w / 2; x++) {

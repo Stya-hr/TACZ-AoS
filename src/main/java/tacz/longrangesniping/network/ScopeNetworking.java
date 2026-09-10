@@ -14,7 +14,7 @@ public final class ScopeNetworking {
     public static void setClientReceiver(Consumer<ScopeTargetsPayload> handler) { receiver = handler; }
     public static void setTrailReceiver(Consumer<ShotTrailsPayload> handler) { trailReceiver = handler; }
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("5");
+        var registrar = event.registrar("6");
         registrar.playToClient(RangePayload.TYPE, RangePayload.STREAM_CODEC,
                 (payload, context) -> rangeReceiver.accept(payload));
         registrar.playToClient(ScopeTargetsPayload.TYPE, ScopeTargetsPayload.STREAM_CODEC,

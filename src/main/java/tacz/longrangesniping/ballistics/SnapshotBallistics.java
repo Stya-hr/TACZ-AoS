@@ -65,7 +65,9 @@ final class SnapshotBallistics {
         var medium = source.cell(Mth.floor(start.x), Mth.floor(start.y), Mth.floor(start.z));
         float friction = fields.taczlrs$getFriction(), gravity = fields.taczlrs$getGravity();
         if (medium != null && medium.water()) { friction = 0.4f; gravity *= 0.6f; }
-        bullet.setDeltaMovement(velocity.scale((double) (1.0f - friction)).add(0, (double) -gravity, 0));
+        bullet.setDeltaMovement(tacz.longrangesniping.wind.WindPhysics.afterDrag(
+                velocity.scale((double) (1.0f - friction)).add(0, (double) -gravity, 0),
+                ((tacz.longrangesniping.wind.WindBulletAccess) bullet).taczlrs$wind(), friction, medium != null && medium.water()));
         float yaw = (float) (Mth.atan2(velocity.x, velocity.z) * (180 / Math.PI));
         float pitch = (float) (Mth.atan2(velocity.y, velocity.horizontalDistance()) * (180 / Math.PI));
         if (bullet.xRotO == 0 && bullet.yRotO == 0) { bullet.xRotO = pitch; bullet.yRotO = yaw; }

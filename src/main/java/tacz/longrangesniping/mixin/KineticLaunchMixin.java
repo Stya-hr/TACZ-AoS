@@ -13,4 +13,8 @@ public abstract class KineticLaunchMixin {
     private float taczlrs$gunSpeed(float nativeSpeed) {
         return GunPhysics.launchSpeed((EntityKineticBullet) (Object) this, nativeSpeed);
     }
+    @org.spongepowered.asm.mixin.injection.Inject(method = "shoot(DDFLorg/joml/Vector2d;)V", at = @At("RETURN"))
+    private void taczlrs$captureWind(org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
+        tacz.longrangesniping.wind.WindPhysics.captureLaunch((EntityKineticBullet) (Object) this);
+    }
 }

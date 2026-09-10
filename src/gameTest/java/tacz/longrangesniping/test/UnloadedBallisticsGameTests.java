@@ -133,6 +133,7 @@ public final class UnloadedBallisticsGameTests {
                         setField(bullet, "gravity", 0.04f);
                         setField(bullet, "friction", 0.01f);
                         setField(bullet, "life", 5);
+                        ((tacz.longrangesniping.wind.WindBulletAccess) bullet).taczlrs$wind(new tacz.longrangesniping.wind.WindVector(0, 6));
                     }
                     Vec3 referenceStart = reference.position(), flyingStart = flying.position();
                     accept(helper, scheduler, flying, LIMITS);
@@ -141,9 +142,10 @@ public final class UnloadedBallisticsGameTests {
                         scheduler.tick();
                         helper.assertTrue(reference.position().subtract(referenceStart).distanceTo(flying.position().subtract(flyingStart)) < 1.0e-7
                                 && reference.getDeltaMovement().distanceTo(flying.getDeltaMovement()) < 1.0e-12
-                                && reference.isRemoved() == flying.isRemoved(), "Unloaded air gravity/drag/lifetime differs from native");
+                                && reference.isRemoved() == flying.isRemoved(), "Unloaded air gravity/drag/wind/lifetime differs from native: tick=" + tick + " native=" + reference.getDeltaMovement() + " snapshot=" + flying.getDeltaMovement());
                     }
                     helper.assertTrue(flying.isRemoved(), "Detached lifetime did not expire");
+                    helper.assertTrue(flying.getZ() > flyingStart.z + .01, "Unloaded trajectory did not apply crosswind");
 
                     // Live endpoint terrain must override its old air snapshot even before reacquisition finishes.
                     level.setBlockAndUpdate(new BlockPos(wx + 67, 85, wz + 8), Blocks.STONE.defaultBlockState());
