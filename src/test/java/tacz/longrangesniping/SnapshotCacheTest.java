@@ -146,4 +146,22 @@ class SnapshotCacheTest {
         assertThrows(UnsupportedOperationException.class, () -> slab.boxes().clear());
         assertThrows(IllegalArgumentException.class, () -> new CollisionCell.Box(0, 0, 0, Double.NaN, 1, 1));
     }
+
+    @Test void uniformSolidFastPathKeepsGeometryAndHonorsSectionBudget() {
+        var store = new SnapshotStore(1_000_000);
+        var collector = new SnapshotCollector(store, 20);
+        for (int i = 0; i < 20; i++) collector.request(new SectionKey(KEY.dimension(), i, 0, 0), 0);
+        SnapshotCollector.Reader reader = new SnapshotCollector.Reader() {
+            public boolean allAir() { return false; }
+            public CollisionCell uniform() { return CollisionCell.FULL; }
+            public CollisionCell read(int i) { throw new AssertionError("Uniform palette needed a cell scan"); }
+        };
+        var work = collector.tick(key -> reader, 0, 4096, 16, 0);
+        assertEquals(new SnapshotCollector.Work(16, 16), work);
+        assertEquals(4, collector.pendingCount());
+        var snapshot = store.find(new SectionKey(KEY.dimension(), 0, 0, 0)).orElseThrow();
+        assertFalse(snapshot.allAir());
+        assertEquals(CollisionCell.FULL, snapshot.cell(4095));
+        assertEquals(4096, SectionSnapshot.uniform(KEY, 1, 0, CollisionCell.CONSERVATIVE).conservativeCells());
+    }
 }

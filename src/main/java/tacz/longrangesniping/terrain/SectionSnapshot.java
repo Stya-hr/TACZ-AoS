@@ -41,7 +41,12 @@ public final class SectionSnapshot {
     int paletteIndex(int index) { return cells == null ? 0 : Short.toUnsignedInt(cells[index]); }
 
     public static SectionSnapshot air(SectionKey key, long version, long tick) {
-        return new SectionSnapshot(key, version, tick, List.of(CollisionCell.AIR), null, 0);
+        return uniform(key, version, tick, CollisionCell.AIR);
+    }
+
+    public static SectionSnapshot uniform(SectionKey key, long version, long tick, CollisionCell cell) {
+        return new SectionSnapshot(key, version, tick, List.of(cell), null,
+                cell.kind() == CollisionCell.Kind.CONSERVATIVE ? CELL_COUNT : 0);
     }
 
     public static final class Builder {

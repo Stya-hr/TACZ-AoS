@@ -92,7 +92,11 @@ public final class ScopeActivityGameTests {
             for (int x = cx - 4; x <= cx + 4; x++) for (int z = cz - 4; z <= cz + 4; z++) level.getChunk(x, z);
             for (int x = cx - 14; x < cx; x++) level.getChunk(x, cz);
             level.getChunkSource().addRegionTicket(foreign, shooterChunk, 0, shooterChunk);
-            TestRangefinders.placeNear(player);
+            // Explore without an instrument. Cached terrain is a prerequisite for a later scoped reload,
+            // not an active gameplay feature that may be disabled by the proximity gate.
+            level.removeBlock(player.blockPosition().offset(0, -1, 2), false);
+            helper.assertTrue(level.getServer().getPlayerList().getPlayers().stream()
+                    .noneMatch(tacz.longrangesniping.block.RangefinderAccess::nearby), "Exploration fixture has an active instrument");
             for (int x = wx - 8; x < wx + 24; x++) for (int z = wz - 8; z < wz + 24; z++)
                 level.setBlock(new BlockPos(x, 79, z), Blocks.STONE.defaultBlockState(), 2);
             for (int y = 79; y <= 84; y++) level.setBlock(new BlockPos(wx + 14, y, wz + 8), Blocks.STONE.defaultBlockState(), 2);
@@ -101,16 +105,32 @@ public final class ScopeActivityGameTests {
             var corridor = new java.util.ArrayList<SectionKey>();
             for (int x = cx - 14; x <= cx; x++) for (int y = 4; y <= 5; y++)
                 corridor.add(new SectionKey(TerrainSnapshots.dimension(level), x, y, cz));
-            for (int i = 0; i < 4096 && corridor.stream().anyMatch(k -> cache.coverage(k) == SnapshotStore.Coverage.UNKNOWN); i++) cache.tick();
+            for (int x = cx - 4; x <= cx + 4; x++) for (int z = cz - 4; z <= cz + 4; z++)
+                corridor.add(new SectionKey(TerrainSnapshots.dimension(level), x, 5, z));
+            // Exercise the production event handler, including any gating; calling tick() directly hid this regression.
+            for (int i = 0; i < 4096 && corridor.stream().anyMatch(k -> cache.coverage(k) == SnapshotStore.Coverage.UNKNOWN); i++)
+                cache.onTick(new net.neoforged.neoforge.event.tick.ServerTickEvent.Post(() -> true, level.getServer()));
+            helper.assertTrue(corridor.stream().noneMatch(k -> cache.coverage(k) == SnapshotStore.Coverage.UNKNOWN),
+                    "Exploring without a rangefinder did not preserve the later shot's terrain coverage");
             helper.assertTrue(cache.coverage(key) != SnapshotStore.Coverage.UNKNOWN, "Target snapshot missing");
+            operator.aim(true); secondOperator.aim(true);
+            ScopeSubscriptions.INSTANCE.tick(new net.neoforged.neoforge.event.tick.ServerTickEvent.Post(() -> true, level.getServer()));
+            helper.assertTrue(!tacz.longrangesniping.compat.tacz.TaczBridge.evaluate(player).eligible()
+                    && ScopeSubscriptions.INSTANCE.count(player) == 0 && activity.status().regions() == 0,
+                    "Passive cache acquisition enabled scoped gameplay without a rangefinder");
+            operator.aim(false); secondOperator.aim(false);
             helper.assertTrue(new ScopeVisibility(level, 65536).firstBlock(player.getEyePosition(),
                     player.getEyePosition().add(300, 0, 0)).isPresent(), "Known terrain did not locate reticle target");
         });
         helper.runAfterDelay(200, () -> checked.accept(() -> {
             helper.assertTrue(level.getChunkSource().getChunkNow(cx, cz) == null && level.getEntity(saved.getUUID()) == null,
                     "Fixture target did not unload before activation");
+            // Reproduce losing the session-only residency index, as happens on reopening a save.
+            // Retain the collision cache: it is independent evidence of previously resident terrain.
+            activity.stopped(new net.neoforged.neoforge.event.server.ServerStoppedEvent(level.getServer()));
             helper.assertTrue(new ScopeVisibility(level, 65536).firstBlock(player.getEyePosition(),
                     player.getEyePosition().add(300, 0, 0)).isPresent(), "Unloaded terrain lost reticle target");
+            TestRangefinders.placeNear(player);
             aiming[0] = true; sharing[0] = true; operator.aim(true); secondOperator.aim(true);
         }));
         helper.runAfterDelay(230, () -> checked.accept(() -> {
@@ -122,6 +142,21 @@ public final class ScopeActivityGameTests {
                             + ", registered=" + (level.getServer().getPlayerList().getPlayer(player.getUUID()) == player));
             helper.assertTrue(level.getChunkSource().getChunkNow(cx, cz) == null, "Budget refusal loaded target");
             configure.accept(allowed);
+            // Remain aimed while walking out and back in. Entry must not require a new aim edge.
+            player.setPos(player.position().add(-8, 0, 0));
+            second.setPos(second.position().add(-8, 0, 0));
+        }));
+        helper.runAfterDelay(240, () -> checked.accept(() -> {
+            helper.assertTrue(activity.status().regions() == 0, "Outside instrument range activated a region");
+            player.setPos(player.position().add(8, 0, 0)); player.setOldPosAndRot();
+            second.setPos(second.position().add(8, 0, 0)); second.setOldPosAndRot();
+            helper.assertTrue(operator.getDataHolder().isAiming, "Fixture released aim before entering range");
+            ScopeSubscriptions.INSTANCE.tick(new net.neoforged.neoforge.event.tick.ServerTickEvent.Post(() -> true, level.getServer()));
+            helper.assertTrue(!activity.predictionStatus(player.getUUID()).equals("none"),
+                    "Entering while aimed did not immediately predict");
+            helper.assertTrue(activity.status().regions() == 1,
+                    "Known cached impact was not immediately admitted on entry: " + activity.status()
+                            + ", prediction=" + activity.predictionStatus(player.getUUID()));
         }));
         helper.runAfterDelay(300, () -> checked.accept(() -> {
             helper.assertTrue(activity.status().ready() == 1 && activity.status().fullChunks() == 49,

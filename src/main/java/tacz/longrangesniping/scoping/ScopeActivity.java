@@ -151,11 +151,15 @@ public final class ScopeActivity {
                     player.getGameProfile().getName(), reason, target);
         }
         predictions.put(id, new PredictionState(player.serverLevel(), clock + settings.prediction().intervalTicks(), reason));
-        consider(player, target);
+        consider(player, target, last == null);
     }
 
     /** Admission entry point; caller has already established a known, unobstructed target. No client coordinates accepted. */
     public void consider(ServerPlayer player, Vec3 target) {
+        consider(player, target, false);
+    }
+
+    private void consider(ServerPlayer player, Vec3 target, boolean activating) {
         var id = player.getUUID();
         if (!enabled(player) || target == null || !Double.isFinite(target.x + target.y + target.z)
                 || target.distanceToSqr(player.getEyePosition()) > Math.pow(ServerConfig.current().maxDistance(), 2)) {
@@ -172,8 +176,10 @@ public final class ScopeActivity {
             pending.remove(id); return;
         }
         var wait = pending.get(id);
-        if (wait == null || !wait.key.equals(key)) { pending.put(id, new Pending(key, clock)); return; }
-        if (clock - wait.since < config.stableTicks()) return;
+        if (!activating) {
+            if (wait == null || !wait.key.equals(key)) { pending.put(id, new Pending(key, clock)); return; }
+            if (clock - wait.since < config.stableTicks()) return;
+        }
         long owned = regions.values().stream().filter(r -> ownedBy(r, id)).count();
         if (owned >= 2) { budgetDenied++; return; }
         var shared = regions.get(key);
@@ -187,10 +193,12 @@ public final class ScopeActivity {
                 || footprint(key, 2 + ChunkLevel.RADIUS_AROUND_FULL_CHUNK).size() > config.maxDependencyChunks()) {
             budgetDenied++; return;
         }
-        // Already completed chunks + one light-loading neighbor ring. This check never reads the disk or loads a chunk.
+        // Completed chunks + one light-loading neighbor ring. A valid persisted snapshot also proves
+        // prior residency after a restart; this is only an index lookup, not a disk read or a load.
         for (var address : square(key, key.radius + 3)) {
             if (!key.level.getWorldBorder().isWithinBounds(new ChunkPos(address.x, address.z))
-                    || !known.contains(address) && key.level.getChunkSource().getChunkNow(address.x, address.z) == null) {
+                    || !known.contains(address) && key.level.getChunkSource().getChunkNow(address.x, address.z) == null
+                    && !tacz.longrangesniping.terrain.TerrainSnapshots.INSTANCE.knownChunk(key.level, address.x, address.z)) {
                 unknown++; return;
             }
         }

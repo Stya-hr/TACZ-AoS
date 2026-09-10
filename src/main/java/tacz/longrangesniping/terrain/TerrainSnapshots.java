@@ -145,13 +145,12 @@ public final class TerrainSnapshots {
     }
 
     @SubscribeEvent public void onTick(ServerTickEvent.Post event) {
-        tick(collecting() && event.getServer().getPlayerList().getPlayers().stream()
-                .anyMatch(tacz.longrangesniping.block.RangefinderAccess::nearby));
+        // Passive terrain history must survive exploration before a player deploys a rangefinder.
+        // This only reads naturally resident chunks under the existing budget: it cannot load,
+        // simulate, subscribe to entities or grant scoped gameplay to an unauthorized player.
+        tick();
     }
     public void tick() {
-        tick(true);
-    }
-    private void tick(boolean acquire) {
         clock++;
         if (disk != null) {
             // Restore only on this thread and only if the real chunk is still absent; live terrain always wins.
@@ -183,9 +182,6 @@ public final class TerrainSnapshots {
         store.resize(settings.snapshotMemoryMiB() * 1024L * 1024L);
         collector.resizeQueue(config.maxPendingSections());
         trimTracked();
-        // Keep invalidations, bounded queues and completed I/O safe while no device is in use.
-        // Expensive collision-shape collection resumes only when a player is near a rangefinder.
-        if (!acquire) { lastWork = new SnapshotCollector.Work(0, 0); return; }
         // Retry omitted/evicted sections and recover after enabling the cache mid-session.
         // Poll one naturally loaded chunk per tick; queue work never creates chunk tickets.
         if (!loaded.isEmpty()) {
@@ -204,6 +200,16 @@ public final class TerrainSnapshots {
 
     public SnapshotStore.Coverage coverage(SectionKey key) {
         return collecting() ? store.coverage(key) : SnapshotStore.Coverage.UNKNOWN;
+    }
+    /** Residency evidence only; a section on disk is not yet usable collision data. No I/O or chunk loads. */
+    public boolean knownChunk(ServerLevel level, int x, int z) {
+        if (!collecting()) return false;
+        String dimension = dimension(level);
+        for (int y = level.getMinSection(); y < level.getMaxSection(); y++) {
+            var key = new SectionKey(dimension, x, y, z);
+            if (store.contains(key) || diskActive && disk != null && disk.known(key)) return true;
+        }
+        return false;
     }
     public Optional<SectionSnapshot> find(SectionKey key) {
         if (!collecting()) return Optional.empty();

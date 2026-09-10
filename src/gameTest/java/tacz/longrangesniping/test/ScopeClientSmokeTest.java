@@ -252,12 +252,6 @@ public final class ScopeClientSmokeTest {
         if (serverTicks == 30) {
             level.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false, event.getServer());
             player.connection.teleport(8, 80, 8, -90, 0);
-            // Put the device directly beside the eye ray, inside the old conservative one-cell halo.
-            // The displayed 238-block wall must remain measurable at every optical magnification.
-            var device = tacz.longrangesniping.block.ModContent.RANGEFINDER.get();
-            level.setBlockAndUpdate(DEVICE.below(), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
-            level.setBlockAndUpdate(DEVICE, device.defaultBlockState());
-            device.setPlacedBy(level, DEVICE, device.defaultBlockState(), player, new net.minecraft.world.item.ItemStack(device));
             player.getAbilities().flying = true; player.onUpdateAbilities();
             var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
                     .putAttachment(AttachmentType.SCOPE, ResourceLocation.parse("tacz:scope_mk5hd")).build(level.registryAccess());
@@ -275,12 +269,23 @@ public final class ScopeClientSmokeTest {
                 level.setBlock(new net.minecraft.core.BlockPos(x, 79, z), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 2);
             level.setBlock(new net.minecraft.core.BlockPos(246, 81, 8), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 2);
             // Complete the corridor before short-lived fixture loading tickets can expire.
-            for (int attempt = 0; attempt < 2048 && !corridorKnown(level); attempt++) TerrainSnapshots.INSTANCE.tick();
+            // Terrain history must be captured before placing a device, using the real event entry point.
+            for (int attempt = 0; attempt < 2048 && !corridorKnown(level); attempt++) TerrainSnapshots.INSTANCE.onTick(event);
             if (!corridorKnown(level)) { fail("Fixture corridor could not be captured"); return; }
             var endpoint = new ChunkPos(14, 0);
             level.getChunkSource().addRegionTicket(TARGET, endpoint, 0, endpoint);
         }
         if (serverTicks == 230) {
+            if (tacz.longrangesniping.scoping.ScopeActivity.INSTANCE.status().regions() != 0) {
+                fail("Remote activity started before placing a rangefinder"); return;
+            }
+            // Put the device directly beside the eye ray, inside the old conservative one-cell halo.
+            // The displayed 238-block wall must remain measurable at every optical magnification.
+            var device = tacz.longrangesniping.block.ModContent.RANGEFINDER.get();
+            level.setBlockAndUpdate(DEVICE.below(), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+            level.setBlockAndUpdate(DEVICE, device.defaultBlockState());
+            device.setPlacedBy(level, DEVICE, device.defaultBlockState(), player, new net.minecraft.world.item.ItemStack(device));
+            player.connection.teleport(4, 80, 8, -90, 0);
             cow = EntityType.COW.create(level); cow.setPos(232, 80, 8); cow.setOldPosAndRot();
             level.addFreshEntity(cow); cowId = cow.getId();
             // About 1.74 degrees off-axis: inside the 25x lens, beyond the old 1.4-degree cone plus cow radius.
@@ -292,6 +297,16 @@ public final class ScopeClientSmokeTest {
             TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST prepared cow={}, snapshots={}", cowId, TerrainSnapshots.INSTANCE.status().sections());
         }
         if (serverTicks >= 230) {
+            if (serverTicks == 270) {
+                if (!IGunOperator.fromLivingEntity(player).getSynIsAiming()
+                        || tacz.longrangesniping.scoping.ScopeActivity.INSTANCE.status().regions() != 0
+                        || tacz.longrangesniping.client.ScopeRangeHud.displayedDistance() != -1) {
+                    fail("Aimed player outside device range activated scoped functions"); return;
+                }
+                // Keep the same gun and held aim state while crossing the proximity boundary.
+                player.connection.teleport(8, 80, 8, -90, 0);
+                TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST entered range while already aiming");
+            }
             if (zoomTests && appliedZoomStage != zoomStage) {
                 if (zoomStage == 0) {
                     var ray = new tacz.longrangesniping.compat.tacz.BallisticPreview(player.getEyePosition(),

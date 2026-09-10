@@ -35,6 +35,8 @@ public final class PersistenceGameTests {
             store.resize(0); store.resize(128L << 20);
             helper.assertTrue(cache.find(key).isEmpty(), "Disk read blocked until ready instead of returning unknown");
             helper.assertTrue(cache.coverage(key) == SnapshotStore.Coverage.UNKNOWN, "Disk-only data was authorized");
+            helper.assertTrue(cache.knownChunk(level, cx, cz), "Disk-only cache did not preserve prior chunk residency");
+            helper.assertTrue(!cache.knownChunk(level, cx + 10000, cz), "Missing cache granted exploration evidence");
             await(helper, deadline, () -> cache.coverage(key) == SnapshotStore.Coverage.KNOWN, () -> {
                 var result = SegmentTrace.trace(new NoLoadCollisionSource(level), x + 4, 85.5, z + 8.5, 8, 0, 0);
                 helper.assertTrue(result.end() == SegmentTrace.End.BLOCK, "Restored disk wall did not block ballistic trace");

@@ -132,7 +132,7 @@ public final class ServerConfig {
         SNAPSHOTS = builder.define("enabled", true);
         SNAPSHOT_BLOCKS = builder.comment("Maximum sampled cells per server tick, shared across dimensions.")
                 .defineInRange("blocksPerTick", 4096, 64, 65536);
-        SNAPSHOT_SECTIONS = builder.comment("Maximum completed sections per tick; an all-air section costs one cell work unit.")
+        SNAPSHOT_SECTIONS = builder.comment("Maximum completed sections per tick; a palette-proven uniform section costs one cell work unit.")
                 .defineInRange("sectionsPerTick", 16, 1, 256);
         SNAPSHOT_MILLIS = builder.comment("Soft acquisition time budget, checked every 64 cells; this is not a hard tick-time guarantee.")
                 .defineInRange("maxMillisPerTick", 2.0, 0.1, 10.0);
@@ -170,7 +170,7 @@ public final class ServerConfig {
                 .defineInRange("maxTraceCells", 65536, 1024, 1048576);
         builder.pop();
         builder.comment("Temporary real simulation around known scope targets; shared server-wide budgets.",
-                        "Unknown sight lines never trigger loading. Full terrain and its loading halo must have been seen this session.")
+                        "Unknown sight lines never trigger loading. Full terrain and its loading halo require live/session evidence or valid collision cache records.")
                 .push("activity");
         ACTIVITY = builder.define("enabled", true);
         ACTIVITY_RADIUS = builder.comment("Entity-ticking core radius in chunks; 1 means 3x3 core and 7x7 FULL footprint.")

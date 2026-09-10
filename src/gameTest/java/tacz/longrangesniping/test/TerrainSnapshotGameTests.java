@@ -110,26 +110,49 @@ public final class TerrainSnapshotGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "empty", batch = "terrain_natural_unload", timeoutTicks = 240)
+    @GameTest(template = "empty", batch = "terrain_natural_unload", timeoutTicks = 420)
     public static void naturallyLoadedChunkSnapshotSurvivesActualUnload(GameTestHelper helper) {
         var previous = configure(4096);
+        var configured = ServerConfig.current();
+        setSettings(new ServerConfig.Settings(configured.available(), configured.policy(), configured.maxDistance(),
+                configured.maxTrackedEntities(), configured.snapshotMemoryMiB(), configured.diagnostics(),
+                configured.ballistics(), new ServerConfig.Snapshots(true, 4096, 16, 2, 5, 8192, 8192)));
         var cache = TerrainSnapshots.INSTANCE;
         int x = 92000, z = 92000;
+        var visit = net.minecraft.server.level.TicketType.<net.minecraft.world.level.ChunkPos>create("snapshot_test_visit",
+                java.util.Comparator.comparingLong(net.minecraft.world.level.ChunkPos::toLong));
+        Runnable leave = () -> {
+            for (int offset = 0; offset < 8; offset++) {
+                var pos = new net.minecraft.world.level.ChunkPos(x + offset, z);
+                helper.getLevel().getChunkSource().removeRegionTicket(visit, pos, 0, pos);
+            }
+        };
         var key = new SectionKey(TerrainSnapshots.dimension(helper.getLevel()), x, 4, z);
         try {
-            // The fixture intentionally loads this one distant chunk. The cache must not keep it loaded.
-            helper.getLevel().getChunk(x, z);
+            // A short naturally visited corridor, using default production budgets and real server ticks.
+            // Fixture tickets represent the explorer's visit; production caching adds no tickets.
+            // No instrument, gun or accelerated cache loop is provided.
+            for (int offset = 0; offset < 8; offset++) {
+                var pos = new net.minecraft.world.level.ChunkPos(x + offset, z);
+                helper.getLevel().getChunkSource().addRegionTicket(visit, pos, 0, pos);
+                helper.getLevel().getChunk(x + offset, z);
+            }
             helper.assertTrue(cache.status().trackedChunks() > 0, "Natural chunk load event was not observed");
-            complete(helper, key);
-            helper.assertTrue(cache.coverage(key) == SnapshotStore.Coverage.KNOWN_AIR, "Empty section not marked known air");
-            helper.runAfterDelay(160, () -> {
+            helper.runAfterDelay(200, leave);
+            helper.runAfterDelay(360, () -> {
                 try {
                     helper.assertTrue(helper.getLevel().getChunkSource().getChunkNow(x, z) == null, "Cache retained a real chunk");
                     helper.assertTrue(cache.coverage(key) == SnapshotStore.Coverage.KNOWN_AIR, "Snapshot disappeared with the real chunk");
+                    for (int offset = 0; offset < 8; offset++) {
+                        var explored = new SectionKey(key.dimension(), x + offset, key.y(), z);
+                        helper.assertTrue(cache.coverage(explored) == SnapshotStore.Coverage.KNOWN_AIR,
+                                "Default-budget passive exploration missed corridor section: " + explored);
+                    }
                     helper.succeed();
-                } finally { restore(previous); }
+                } finally { leave.run(); restore(previous); }
             });
         } catch (RuntimeException | AssertionError failure) {
+            leave.run();
             restore(previous);
             throw failure;
         }

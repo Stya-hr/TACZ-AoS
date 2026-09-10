@@ -8,6 +8,7 @@ public final class SnapshotCollector {
     public interface Source { Reader open(SectionKey key); }
     public interface Reader {
         boolean allAir();
+        default CollisionCell uniform() { return allAir() ? CollisionCell.AIR : null; }
         CollisionCell read(int index);
     }
     public record Work(int cells, int sections) {}
@@ -77,9 +78,10 @@ public final class SnapshotCollector {
             Reader reader = source.open(building);
             attempts++;
             if (reader == null) { forgetWork(building); continue; }
-            if (builder.size() == 0 && reader.allAir()) {
-                store.publish(SectionSnapshot.air(building, ++version, tick));
-                cells++; // Still charge a work unit for an empty section.
+            var uniform = builder.size() == 0 ? reader.uniform() : null;
+            if (uniform != null) {
+                store.publish(SectionSnapshot.uniform(building, ++version, tick, uniform));
+                cells++; // Palette-proven uniform sections still consume work and section budgets.
                 sections++;
                 forgetWork(building);
                 continue;

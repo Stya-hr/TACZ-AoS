@@ -26,6 +26,13 @@ public final class MinecraftSnapshotSource implements SnapshotCollector.Source {
         return new SnapshotCollector.Reader() {
             private final IdentityHashMap<BlockState, CollisionCell> palette = new IdentityHashMap<>();
             @Override public boolean allAir() { return section.hasOnlyAir(); }
+            @Override public CollisionCell uniform() {
+                if (allAir()) return CollisionCell.AIR;
+                var first = section.getBlockState(0, 0, 0);
+                // Native palette membership, not a 4096-cell scan. Unused palette entries can
+                // only reject this optimization; they cannot invent uniform terrain.
+                return section.getStates().maybeHas(state -> state != first) ? null : classify(first);
+            }
             @Override public CollisionCell read(int index) {
                 var state = section.getBlockState(index & 15, (index >> 8) & 15, (index >> 4) & 15);
                 return palette.computeIfAbsent(state, MinecraftSnapshotSource::classify);
