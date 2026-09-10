@@ -12,7 +12,8 @@ import tacz.longrangesniping.config.ServerConfig;
 public abstract class ScopeFarPlaneMixin {
     @Inject(method = "getDepthFar", at = @At("RETURN"), cancellable = true)
     private void taczlrs$scopedFarPlane(CallbackInfoReturnable<Float> callback) {
-        if (ScopedRendering.active() || tacz.longrangesniping.client.ShotTrails.hasDistantTrails())
+        if (!tacz.longrangesniping.client.ShaderCompat.shadowPass()
+                && (ScopedRendering.active() || tacz.longrangesniping.client.ShotTrails.hasDistantTrails()))
             callback.setReturnValue(Math.max(callback.getReturnValue(), ServerConfig.current().maxDistance() + 64f));
     }
 }

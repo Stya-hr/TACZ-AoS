@@ -62,15 +62,31 @@ public final class ScopeClientSmokeTest {
     private static int zoomFrames, zoomBaseline;
     private static boolean zoomRangeObserved;
     private static com.mojang.blaze3d.platform.NativeImage beforeTrail;
+    private static int irisQuery;
 
     @SubscribeEvent(priority = EventPriority.HIGHEST) public static void beforeTrailFrame(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
         if (ENABLED && !trailStageCaptured && event.getStage() == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
                 && tacz.longrangesniping.client.ShotTrails.farthestDrawn() > 140) {
-            beforeTrail = Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
+            if (tacz.longrangesniping.client.ShaderCompat.shadowPass()) return;
+            if (tacz.longrangesniping.client.ShaderCompat.active()) {
+                irisQuery = org.lwjgl.opengl.GL15C.glGenQueries();
+                org.lwjgl.opengl.GL15C.glBeginQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED,irisQuery);
+            } else beforeTrail = Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
         }
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST) public static void trailFrame(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
+        if (ENABLED && irisQuery != 0) {
+            org.lwjgl.opengl.GL15C.glEndQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED);
+            int samples = org.lwjgl.opengl.GL15C.glGetQueryObjecti(irisQuery,org.lwjgl.opengl.GL15C.GL_QUERY_RESULT);
+            org.lwjgl.opengl.GL15C.glDeleteQueries(irisQuery); irisQuery=0;
+            if (tacz.longrangesniping.client.ShotTrails.farthestDrawn()>160) {
+                if(samples<40) throw new AssertionError("Iris smoke failed actual depth test: "+samples);
+                trailStageCaptured=true;
+                TaczLongRangeSniping.LOGGER.info("IRIS_TRAIL_FRAME fragments={}",samples);
+            }
+            return;
+        }
         if (!ENABLED || beforeTrail == null || event.getStage() != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
         try {
             if (tacz.longrangesniping.client.ShotTrails.farthestDrawn() <= 160) return;
@@ -107,6 +123,9 @@ public final class ScopeClientSmokeTest {
                     registry -> registry.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), mc.screen);
         }
         if (mc.player == null || mc.level == null || cowId < 0) return;
+        if (net.neoforged.fml.ModList.get().isLoaded("iris") && !tacz.longrangesniping.client.ShaderCompat.active()) {
+            fail("Iris disabled shaders; this is not a shader compatibility pass"); mc.stop(); return;
+        }
         if (observerFeedback) {
             com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(false);
             IGunOperator.fromLivingEntity(mc.player).aim(false);

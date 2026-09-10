@@ -55,6 +55,7 @@ public final class ShotTrails {
     private static MultiBufferSource.BufferSource buffers;
     private static int lastPieces;
     private static double lastFarthest;
+    private static boolean shaderDraw;
 
     @SubscribeEvent public static void shaders(RegisterShadersEvent event) throws IOException {
         event.registerShader(new ShaderInstance(event.getResourceProvider(),
@@ -100,10 +101,14 @@ public final class ShotTrails {
     }
 
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES || ShaderCompat.shadowPass()) return;
         lastPieces = 0; lastFarthest = 0;
         var mc = Minecraft.getInstance();
         if (!hasTrails() || mc.player == null || smokeShader == null) return;
+        shaderDraw = ShaderCompat.active();
+        if (shaderDraw) ShaderTrailMaterials.prepare();
+        RenderType smokeType = shaderDraw ? ShaderTrailMaterials.SMOKE_TYPE : SMOKE_TYPE;
+        RenderType headType = shaderDraw ? ShaderTrailMaterials.HEAD_TYPE : TYPE;
         if (buffers == null) { bytes = new ByteBufferBuilder(262144); buffers = MultiBufferSource.immediate(bytes); }
         double now = tick + event.getPartialTick().getGameTimeDeltaPartialTick(false);
         var camera = event.getCamera();
@@ -112,7 +117,7 @@ public final class ShotTrails {
         double pixelScale = 2 / (Math.max(1, mc.getWindow().getHeight()) * Math.max(0.01, Math.abs(event.getProjectionMatrix().m11())));
         var heads = new LinkedHashMap<Integer, TrailHistory.Sample>();
         smokeShader.safeGetUniform("SmokeTime").set((float) (now * 0.03));
-        var vertices = buffers.getBuffer(SMOKE_TYPE);
+        var vertices = buffers.getBuffer(smokeType);
         for (var sample : visibleSamples()) {
             var s = sample.segment();
             heads.put(s.shot(), sample);
@@ -147,8 +152,8 @@ public final class ShotTrails {
                 lastPieces++; lastFarthest = Math.max(lastFarthest, b.length());
             }
         }
-        buffers.endBatch(SMOKE_TYPE);
-        vertices = buffers.getBuffer(TYPE);
+        buffers.endBatch(smokeType);
+        vertices = buffers.getBuffer(headType);
         Vec3 right = vector(new Vector3f(1, 0, 0).rotate(camera.rotation()));
         Vec3 up = vector(new Vector3f(0, 1, 0).rotate(camera.rotation()));
         for (var sample : heads.values()) {
@@ -164,7 +169,7 @@ public final class ShotTrails {
             disc(vertices, matrix, point, right, up, width * 3.5, alpha * 0.30f);
             disc(vertices, matrix, point, right, up, width * 2, Math.min(1, alpha * 1.3f));
         }
-        buffers.endBatch(TYPE);
+        buffers.endBatch(headType);
     }
 
     static boolean hasLocalChunk(int x, int z) {
@@ -193,9 +198,13 @@ public final class ShotTrails {
     private static Vec3 vector(Vector3f v) { return new Vec3(v.x, v.y, v.z); }
     private static void vertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float alpha) {
         out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setColor(0.92f, 0.93f, 0.94f, alpha);
+        if (shaderDraw) out.setUv(.5f, .5f).setOverlay(net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY)
+                .setLight(net.minecraft.client.renderer.LightTexture.FULL_BRIGHT).setNormal(0, 1, 0);
     }
     private static void smokeVertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float u, float v, float alpha) {
-        out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setUv(u, v).setColor(0.88f, 0.89f, 0.90f, alpha);
+        out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z)
+                .setUv(shaderDraw ? u * .125f : u, shaderDraw ? (v + 1) * .5f : v).setColor(0.88f, 0.89f, 0.90f, alpha);
+        if (shaderDraw) out.setLight(net.minecraft.client.renderer.LightTexture.FULL_BRIGHT);
     }
     private static void smokeBand(VertexConsumer out, Matrix4f matrix, Vec3 a, Vec3 b, Vec3 side,
                                   double width0, double width1, float u0, float u1, float alpha0, float alpha1) {

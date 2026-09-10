@@ -134,7 +134,7 @@ public final class ScopedRendering {
     }
 
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES) return;
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES || ShaderCompat.shadowPass()) return;
         extraDrawn.clear();
         if (!active || level == null) return;
         ScopeViewReporter.report(event, zoom, tick);

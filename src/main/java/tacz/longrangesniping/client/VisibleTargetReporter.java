@@ -14,14 +14,13 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.joml.Matrix4f;
-import org.joml.Vector4f;
 import tacz.longrangesniping.TaczLongRangeSniping;
 import tacz.longrangesniping.config.ServerConfig;
 import tacz.longrangesniping.network.ScopeAimPayload;
 import static org.lwjgl.opengl.GL33C.*;
 
-/** Native loaded-block picking plus optional asynchronous picking of the composited Voxy world depth.
- * Runs before hands/HUD. Three tiny PBOs, nonblocking fences, no terrain cache and no Voxy class linkage.
+/** Native loaded-block picking plus asynchronous picking of Voxy's own terrain depth.
+ * Three tiny PBOs, nonblocking fences, no terrain cache and no Voxy class linkage.
  */
 @EventBusSubscriber(modid=TaczLongRangeSniping.MOD_ID,value=Dist.CLIENT)
 public final class VisibleTargetReporter {
@@ -37,16 +36,13 @@ public final class VisibleTargetReporter {
     public static double lastDistance=-1;
     private VisibleTargetReporter(){}
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
+        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_LEVEL || ShaderCompat.shadowPass()) return;
         var mc=Minecraft.getInstance();
         if(level!=mc.level) {reset();level=mc.level;}
         if(level==null || mc.player==null || !mc.options.getCameraType().isFirstPerson()
                 || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()) {depthPoint=null;return;}
         long tick=level.getGameTime();
-        if(ModList.get().isLoaded("voxy")) {
-            poll(tick);
-            if(tick!=captured) {capture(event,tick);captured=tick;}
-        }
+        if(ModList.get().isLoaded("voxy")) poll(tick);
         if(tick-sent<2) return;
         Vec3 eye=mc.player.getEyePosition(),direction=mc.player.getViewVector(1).normalize();
         int range=ServerConfig.current().maxDistance();
@@ -96,35 +92,40 @@ public final class VisibleTargetReporter {
                 float depth=data[0];
                 if(r.tick<depthTick) continue;
                 depthTick=r.tick;depthPoint=null;
-                if(!Float.isFinite(depth) || depth==r.clear) continue;
-                var p=new Vector4f(r.nx,r.ny,r.zeroToOne?depth:depth*2-1,1).mul(r.inverse);
-                if(!Float.isFinite(p.w) || Math.abs(p.w)<1e-10) continue;
-                Vec3 point=r.camera.add(p.x/p.w,p.y/p.w,p.z/p.w);
-                if(!Double.isFinite(point.lengthSqr()) || point.subtract(r.eye).dot(r.direction)<=0) continue;
+                Vec3 point=tacz.longrangesniping.scoping.DepthProjection.unproject(depth,r.clear,r.nx,r.ny,r.zeroToOne,r.inverse,r.camera);
+                if(point==null || point.subtract(r.eye).dot(r.direction)<=0) continue;
                 depthPoint=point;depthEye=r.eye;depthDirection=r.direction;
             }
         } finally {glBindBuffer(GL_PIXEL_PACK_BUFFER,previous);}
     }
-    private static void capture(RenderLevelStageEvent event,long tick) {
+    /** Called at the end of the actual Voxy opaque terrain pass, before hands/post-processing.
+     * Depth conventions belong to the producing pipeline, never the GL state left by another pass.
+     */
+    public static void captureTerrain(int framebuffer, int width, int height, Matrix4f mvp,
+                                      Vec3 camera, boolean zeroToOne, float clear) {
+        var mc=Minecraft.getInstance();
+        if (ShaderCompat.shadowPass()) return;
+        if(level!=mc.level) {reset();level=mc.level;}
+        if(level==null || mc.player==null || !mc.options.getCameraType().isFirstPerson()
+                || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()) return;
+        long tick=level.getGameTime();
+        if(tick==captured || width<=0 || height<=0)return;
         Read r=null;for(var entry:ring) if(entry.fence==0){r=entry;break;} if(r==null)return;
-        var mc=Minecraft.getInstance();var target=mc.getMainRenderTarget();
-        if(target.width<=0||target.height<=0)return;
         int previous=glGetInteger(GL_PIXEL_PACK_BUFFER_BINDING),fb=glGetInteger(GL_READ_FRAMEBUFFER_BINDING);
         int row=glGetInteger(GL_PACK_ROW_LENGTH),skipRows=glGetInteger(GL_PACK_SKIP_ROWS),skipPixels=glGetInteger(GL_PACK_SKIP_PIXELS);
         try {
             if(r.buffer==0) r.buffer=glGenBuffers();
             glBindBuffer(GL_PIXEL_PACK_BUFFER,r.buffer);glBufferData(GL_PIXEL_PACK_BUFFER,4,GL_STREAM_READ);
             glPixelStorei(GL_PACK_ROW_LENGTH,0);glPixelStorei(GL_PACK_SKIP_ROWS,0);glPixelStorei(GL_PACK_SKIP_PIXELS,0);
-            glBindFramebuffer(GL_READ_FRAMEBUFFER,target.frameBufferId);
-            int x=target.width/2,y=target.height/2;
+            glBindFramebuffer(GL_READ_FRAMEBUFFER,framebuffer);
+            int x=width/2,y=height/2;
             glReadPixels(x,y,1,1,GL_DEPTH_COMPONENT,GL_FLOAT,0L);
             r.fence=glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE,0);
-            r.level=level;r.tick=tick;r.clear=glGetFloat(GL_DEPTH_CLEAR_VALUE);
-            r.zeroToOne=org.lwjgl.opengl.GL.getCapabilities().GL_ARB_clip_control
-                    && glGetInteger(org.lwjgl.opengl.GL45C.GL_CLIP_DEPTH_MODE)==org.lwjgl.opengl.GL45C.GL_ZERO_TO_ONE;
-            r.inverse=new Matrix4f(event.getProjectionMatrix()).mul(event.getModelViewMatrix()).invert();
-            r.camera=event.getCamera().getPosition();r.eye=mc.player.getEyePosition();r.direction=mc.player.getViewVector(1).normalize();
-            r.nx=2f*(x+.5f)/target.width-1;r.ny=2f*(y+.5f)/target.height-1;
+            r.level=level;r.tick=tick;r.clear=clear;r.zeroToOne=zeroToOne;
+            r.inverse=new Matrix4f(mvp).invert();
+            r.camera=camera;r.eye=mc.player.getEyePosition();r.direction=mc.player.getViewVector(1).normalize();
+            r.nx=2f*(x+.5f)/width-1;r.ny=2f*(y+.5f)/height-1;
+            captured=tick;
         } finally {
             glBindBuffer(GL_PIXEL_PACK_BUFFER,previous);glBindFramebuffer(GL_READ_FRAMEBUFFER,fb);
             glPixelStorei(GL_PACK_ROW_LENGTH,row);glPixelStorei(GL_PACK_SKIP_ROWS,skipRows);glPixelStorei(GL_PACK_SKIP_PIXELS,skipPixels);

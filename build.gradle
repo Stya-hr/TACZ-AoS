@@ -99,6 +99,7 @@ dependencies {
     implementation "maven.modrinth:tacz-1.21.1:${tacz_version}"
     taczBundledApi "maven.modrinth:tacz-1.21.1:${tacz_version}"
     compileOnly files("libs/${voxy_jar}")
+    compileOnly files('libs/iris-neoforge-1.8.14-beta.1+mc1.21.1.jar')
     // NeoVoxy also requires Sodium on the client; see libs/README.md.
     if (providers.gradleProperty('enable_voxy_runtime').get().toBoolean()) {
         if (!file("libs/${voxy_jar}").isFile()) {
@@ -173,18 +174,35 @@ idea {
 
 tasks.named('runClientLongRangeTest').configure {
     def result = layout.projectDirectory.file('build/client-long-range-test/result.txt').asFile
-    def withVoxy = providers.gradleProperty('enable_voxy_runtime').get().toBoolean()
-    def sodium = layout.projectDirectory.file('libs/sodium-neoforge-0.8.13+mc1.21.1.jar').asFile
-    def stagedSodium = layout.projectDirectory.file('build/client-long-range-test/mods/taczlrs-test-sodium.jar').asFile
     doFirst {
         result.parentFile.mkdirs(); result.text = 'RUNNING'
-        // Sodium's nested mod JAR is discovered correctly from mods/, unlike this loader's legacy classpath.
-        if (withVoxy && sodium.isFile()) {
-            stagedSodium.parentFile.mkdirs()
-            java.nio.file.Files.copy(sodium.toPath(), stagedSodium.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        } else java.nio.file.Files.deleteIfExists(stagedSodium.toPath())
+
     }
     doLast {
         if (result.text.trim() != 'PASS') throw new GradleException('Long range client test did not pass; inspect build/client-long-range-test/logs/latest.log')
+    }
+}
+
+// Stage optional client loaders from mods/ so their nested libraries are discovered by NeoForge.
+// Only these generated filenames are removed when a test is run without the corresponding loader.
+['runClientScopeTest': 'build/client-scope-test',
+ 'runClientLongRangeTest': 'build/client-long-range-test'].each { taskName, directory ->
+    tasks.named(taskName).configure {
+        def withIris = providers.gradleProperty('enable_iris_runtime').orElse('false').get().toBoolean()
+        def withVoxy = providers.gradleProperty('enable_voxy_runtime').get().toBoolean()
+        def runtimeDirectory = layout.projectDirectory.dir(directory).asFile
+        def sodium = layout.projectDirectory.file('libs/sodium-neoforge-0.8.13+mc1.21.1.jar').asFile
+        def iris = layout.projectDirectory.file('libs/iris-neoforge-1.8.14-beta.1+mc1.21.1.jar').asFile
+        doFirst {
+            [[sodium, withIris || withVoxy, 'taczlrs-test-sodium.jar'],
+             [iris, withIris, 'taczlrs-test-iris.jar']].each { entry ->
+                def target = new File(runtimeDirectory, 'mods/' + entry[2])
+                if (entry[1]) {
+                    if (!entry[0].isFile()) throw new GradleException('Missing optional runtime ' + entry[0])
+                    target.parentFile.mkdirs()
+                    java.nio.file.Files.copy(entry[0].toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                } else java.nio.file.Files.deleteIfExists(target.toPath())
+            }
+        }
     }
 }

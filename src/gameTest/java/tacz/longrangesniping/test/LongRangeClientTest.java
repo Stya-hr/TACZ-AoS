@@ -45,6 +45,26 @@ public final class LongRangeClientTest {
     private static Cow shotTarget;
     private static volatile boolean shotStarted;
     private static int ticks, stageTick, frames, draws;
+    private static int entitySamples, trailSamples, query, queryKind, shotFrames;
+    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGHEST)
+    public static void beforeDraw(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
+        if (!ENABLED || !tacz.longrangesniping.client.ShaderCompat.active() || tacz.longrangesniping.client.ShaderCompat.shadowPass()) return;
+        var stage = event.getStage();
+        if (stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES
+                && stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+        queryKind = stage == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES ? 1 : 2;
+        query = org.lwjgl.opengl.GL15C.glGenQueries();
+        org.lwjgl.opengl.GL15C.glBeginQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED, query);
+    }
+    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.LOWEST)
+    public static void afterDraw(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
+        if (!ENABLED || query == 0) return;
+        org.lwjgl.opengl.GL15C.glEndQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED);
+        int samples = org.lwjgl.opengl.GL15C.glGetQueryObjecti(query, org.lwjgl.opengl.GL15C.GL_QUERY_RESULT);
+        org.lwjgl.opengl.GL15C.glDeleteQueries(query); query = 0;
+        if (queryKind == 1 && animalId >= 0) entitySamples = Math.max(entitySamples, samples);
+        if (queryKind == 2 && shotStarted) trailSamples = Math.max(trailSamples, samples);
+    }
     private static volatile boolean missedInitialSpawn;
     @SubscribeEvent public static void missingSpawn(net.neoforged.neoforge.event.entity.EntityJoinLevelEvent event) {
         // Reproduce an observer whose first pairing was not installed locally. Holding aim must repair it.
@@ -73,11 +93,18 @@ public final class LongRangeClientTest {
                     r -> r.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), mc.screen);
         }
         if (mc.level == null || mc.player == null) return;
+        if (stage>=3 && net.neoforged.fml.ModList.get().isLoaded("iris") && !tacz.longrangesniping.client.ShaderCompat.active()) {
+            finish(false,"Iris disabled shaders; this is not a shader compatibility pass"); return;
+        }
         if (stage>=3 && frames%40==0) TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT visual active={}, targets={}, entity={}, draws={}",ScopedRendering.active(),ScopedRendering.targetCount(),mc.level.getEntity(animalId),draws);
         if (++frames > 2400) { finish(false,"Client timed out, stage="+stage); return; }
         mc.player.setYRot(-90); mc.player.setYHeadRot(-90); mc.player.setXRot(0);
-        com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(stage >= 3 && !shotStarted);
-        IGunOperator.fromLivingEntity(mc.player).aim(stage >= 3 && !shotStarted);
+        com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(stage >= 3 && (!shotStarted || tacz.longrangesniping.client.ShaderCompat.active() && shotFrames < 8));
+        IGunOperator.fromLivingEntity(mc.player).aim(stage >= 3 && (!shotStarted || tacz.longrangesniping.client.ShaderCompat.active() && shotFrames < 8));
+        if (shotStarted) {
+            shotFrames++;
+            if (shotFrames == 6 && tacz.longrangesniping.client.ShaderCompat.active()) Screenshot.grab(mc.gameDirectory,"iris-scoped-trail.png",mc.getMainRenderTarget(),ignored -> {});
+        }
         if(stage>=3 && !net.neoforged.fml.ModList.get().isLoaded("voxy") && ticks-stageTick>60) {
             if(ScopedRendering.targetCount()!=0 || tacz.longrangesniping.client.VisibleTargetReporter.lastDistance>=0)
                 finish(false,"No-Voxy client selected terrain beyond two-chunk view");
@@ -85,14 +112,21 @@ public final class LongRangeClientTest {
             return;
         }
         if(shotStarted && hitConfirmed) {
+            if (tacz.longrangesniping.client.ShaderCompat.active()) {
+                if (entitySamples <= 0 || trailSamples <= 0) { finish(false, "Iris drew no fragments: entity="+entitySamples+", trail="+trailSamples); return; }
+                Screenshot.grab(mc.gameDirectory,"iris-trail.png",mc.getMainRenderTarget(),ignored -> {});
+                TaczLongRangeSniping.LOGGER.info("IRIS_GPU_PASS entity fragments={}, trail fragments={}",entitySamples,trailSamples);
+            }
             finish(true,"Cold generation index, Voxy depth, real animal AI/render and remote damage after unscoping verified");return;
         }
-        if (stage >= 3 && animalId >= 0 && ScopedRendering.drewExtra(animalId)) {
+        // After releasing aim the entity can legitimately be unpaired before the next render event.
+        if (!shotStarted && stage >= 3 && animalId >= 0 && ScopedRendering.drewExtra(animalId)) {
             var animal = mc.level.getEntity(animalId);
             if (animal == null || !animal.getUUID().equals(uuid) || ScopedRendering.hasRealClientChunk(animal)) {
                 finish(false,"Wrong animal or remote terrain sent to 2-chunk client"); return;
             }
             if (++draws >= 40 && movement && missedInitialSpawn && tacz.longrangesniping.client.ScopeRangeHud.displayedDistance() > 800) {
+                if(!readyToFire) TaczLongRangeSniping.LOGGER.info("IRIS_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
                 if(!readyToFire) Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
                 readyToFire = true;
                 if (!hitConfirmed) return;
@@ -197,6 +231,7 @@ public final class LongRangeClientTest {
         TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT {}: {}",success?"PASS":"FAIL",reason);
         try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("result.txt"),success?"PASS":reason); }
         catch(java.io.IOException e) { throw new RuntimeException(e); }
+        if (!success && mc.level != null) Screenshot.grab(mc.gameDirectory,"failure.png",mc.getMainRenderTarget(),ignored -> {});
         mc.stop();
     }
 }
