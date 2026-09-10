@@ -157,15 +157,15 @@ public final class ShotTrails {
     }
 
     private static double width(double distance, double pixelScale) {
-        // Wider verification setting: apparent half-width 1.25–1.5 pixels, independent of distance and zoom.
+        // Wider verification setting: apparent half-width 2.275–2.73 pixels, independent of distance and zoom.
         return TrailStyle.halfWidth(distance, pixelScale);
     }
     private static Vec3 vector(Vector3f v) { return new Vec3(v.x, v.y, v.z); }
     private static void vertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float alpha) {
-        out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setColor(0.98f, 0.99f, 1f, alpha);
+        out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setColor(0.92f, 0.93f, 0.94f, alpha);
     }
     private static void smokeVertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float u, float v, float alpha) {
-        out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setUv(u, v).setColor(0.96f, 0.97f, 0.98f, alpha);
+        out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setUv(u, v).setColor(0.88f, 0.89f, 0.90f, alpha);
     }
     private static void smokeBand(VertexConsumer out, Matrix4f matrix, Vec3 a, Vec3 b, Vec3 side,
                                   double width0, double width1, float u0, float u1, float alpha0, float alpha1) {
