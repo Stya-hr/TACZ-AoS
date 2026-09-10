@@ -8,6 +8,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
@@ -17,6 +19,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import tacz.longrangesniping.TaczLongRangeSniping;
@@ -26,12 +29,19 @@ import tacz.longrangesniping.trails.TrailHistory;
 import tacz.longrangesniping.trails.TrailStyle;
 
 import java.util.LinkedHashMap;
+import java.io.IOException;
 
 import static net.minecraft.client.renderer.RenderStateShard.*;
 
 /** Unlit, depth-tested particle ribbons. Independent of entity/particle chunk ticking and terrain fog. */
 @EventBusSubscriber(modid = TaczLongRangeSniping.MOD_ID, value = Dist.CLIENT)
 public final class ShotTrails {
+    private static ShaderInstance smokeShader;
+    private static final RenderType SMOKE_TYPE = RenderType.create("taczlrs_smoke_trail", DefaultVertexFormat.POSITION_TEX_COLOR,
+            VertexFormat.Mode.QUADS, 65536, false, false, RenderType.CompositeState.builder()
+                    .setShaderState(new ShaderStateShard(() -> smokeShader)).setTransparencyState(TRANSLUCENT_TRANSPARENCY)
+                    .setCullState(NO_CULL).setDepthTestState(LEQUAL_DEPTH_TEST).setWriteMaskState(COLOR_WRITE)
+                    .createCompositeState(false));
     private static final RenderType TYPE = RenderType.create("taczlrs_shot_trail", DefaultVertexFormat.POSITION_COLOR,
             VertexFormat.Mode.QUADS, 65536, false, false, RenderType.CompositeState.builder()
                     .setShaderState(POSITION_COLOR_SHADER).setTransparencyState(TRANSLUCENT_TRANSPARENCY)
@@ -44,6 +54,12 @@ public final class ShotTrails {
     private static MultiBufferSource.BufferSource buffers;
     private static int lastPieces;
     private static double lastFarthest;
+
+    @SubscribeEvent public static void shaders(RegisterShadersEvent event) throws IOException {
+        event.registerShader(new ShaderInstance(event.getResourceProvider(),
+                ResourceLocation.fromNamespaceAndPath(TaczLongRangeSniping.MOD_ID, "smoke_trail"),
+                DefaultVertexFormat.POSITION_TEX_COLOR), shader -> smokeShader = shader);
+    }
 
     @SubscribeEvent public static void setup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> ScopeNetworking.setTrailReceiver(ShotTrails::receive));
@@ -70,7 +86,7 @@ public final class ShotTrails {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
         lastPieces = 0; lastFarthest = 0;
         var mc = Minecraft.getInstance();
-        if (!hasTrails() || mc.player == null) return;
+        if (!hasTrails() || mc.player == null || smokeShader == null) return;
         if (buffers == null) { bytes = new ByteBufferBuilder(262144); buffers = MultiBufferSource.immediate(bytes); }
         double now = tick + event.getPartialTick().getGameTimeDeltaPartialTick(false);
         var camera = event.getCamera();
@@ -78,7 +94,8 @@ public final class ShotTrails {
         var matrix = event.getPoseStack().last().pose();
         double pixelScale = 2 / (Math.max(1, mc.getWindow().getHeight()) * Math.max(0.01, Math.abs(event.getProjectionMatrix().m11())));
         var heads = new LinkedHashMap<Integer, TrailHistory.Sample>();
-        var vertices = buffers.getBuffer(TYPE);
+        smokeShader.safeGetUniform("SmokeTime").set((float) (now * 0.03));
+        var vertices = buffers.getBuffer(SMOKE_TYPE);
         for (var sample : history.samples()) {
             var s = sample.segment();
             heads.put(s.shot(), sample);
@@ -100,14 +117,21 @@ public final class ShotTrails {
                 if (side.lengthSqr() < 1.0e-12) side = axis.cross(new Vec3(0, 1, 0));
                 if (side.lengthSqr() < 1.0e-12) side = axis.cross(new Vec3(1, 0, 0));
                 side = side.normalize();
-                double width = width((a.length() + b.length()) * 0.5, pixelScale);
-                // A solid center survives subpixel sampling and a pale sky; only the outer edges taper to zero.
-                band(vertices, matrix, a, b, side, -width * 1.8, -width * 0.6, 0, a0, 0, a1);
-                band(vertices, matrix, a, b, side, -width * 0.6, width * 0.6, a0, a0, a1, a1);
-                band(vertices, matrix, a, b, side, width * 0.6, width * 1.8, a0, 0, a1, 0);
+                double age0 = Math.max(0, now - sample.start() - u0), age1 = Math.max(0, now - sample.start() - u1);
+                double phase0 = (s.shot() & 255) * 13.371 + (s.step() - 1 + u0) * 1.8;
+                double phase1 = (s.shot() & 255) * 13.371 + (s.step() - 1 + u1) * 1.8;
+                double width0 = width(a.length(), pixelScale), width1 = width(b.length(), pixelScale);
+                // Older smoke gently spreads and curls; the bullet and its collision path remain untouched.
+                Vec3 smokeA = a.add(side.scale(width0 * TrailStyle.smokeOffset(phase0, age0)));
+                Vec3 smokeB = b.add(side.scale(width1 * TrailStyle.smokeOffset(phase1, age1)));
+                smokeBand(vertices, matrix, smokeA, smokeB, side,
+                        width0 * 1.9 * TrailStyle.smokeWidth(phase0, age0), width1 * 1.9 * TrailStyle.smokeWidth(phase1, age1),
+                        (float) phase0, (float) phase1, a0, a1);
                 lastPieces++; lastFarthest = Math.max(lastFarthest, b.length());
             }
         }
+        buffers.endBatch(SMOKE_TYPE);
+        vertices = buffers.getBuffer(TYPE);
         Vec3 right = vector(new Vector3f(1, 0, 0).rotate(camera.rotation()));
         Vec3 up = vector(new Vector3f(0, 1, 0).rotate(camera.rotation()));
         for (var sample : heads.values()) {
@@ -134,10 +158,15 @@ public final class ShotTrails {
     private static void vertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float alpha) {
         out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setColor(0.98f, 0.99f, 1f, alpha);
     }
-    private static void band(VertexConsumer out, Matrix4f matrix, Vec3 a, Vec3 b, Vec3 side,
-                             double lo, double hi, float aLo, float aHi, float bLo, float bHi) {
-        vertex(out, matrix, a.add(side.scale(lo)), aLo); vertex(out, matrix, a.add(side.scale(hi)), aHi);
-        vertex(out, matrix, b.add(side.scale(hi)), bHi); vertex(out, matrix, b.add(side.scale(lo)), bLo);
+    private static void smokeVertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float u, float v, float alpha) {
+        out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setUv(u, v).setColor(0.96f, 0.97f, 0.98f, alpha);
+    }
+    private static void smokeBand(VertexConsumer out, Matrix4f matrix, Vec3 a, Vec3 b, Vec3 side,
+                                  double width0, double width1, float u0, float u1, float alpha0, float alpha1) {
+        smokeVertex(out, matrix, a.add(side.scale(-width0)), u0, -1, alpha0);
+        smokeVertex(out, matrix, a.add(side.scale(width0)), u0, 1, alpha0);
+        smokeVertex(out, matrix, b.add(side.scale(width1)), u1, 1, alpha1);
+        smokeVertex(out, matrix, b.add(side.scale(-width1)), u1, -1, alpha1);
     }
     private static void disc(VertexConsumer out, Matrix4f matrix, Vec3 point, Vec3 right, Vec3 up, double radius, float alpha) {
         for (int i = 0; i < 8; i++) {
