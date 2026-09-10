@@ -33,6 +33,7 @@ public final class ScopeSubscriptions {
 
     @SubscribeEvent public void tick(ServerTickEvent.Post event) {
         tick++;
+        ScopeRangefinder.beginTick();
         var players = new ArrayList<>(event.getServer().getPlayerList().getPlayers());
         // Rotate priority between refresh rounds so the global activity query cap does not always favor the same players.
         if (!players.isEmpty()) Collections.rotate(players, (int) (tick / ServerConfig.current().scopeRendering().intervalTicks() % players.size()));
@@ -48,6 +49,7 @@ public final class ScopeSubscriptions {
             // Spread players over refresh slots; an initial scope gets an immediate refresh.
             if (lease == null || Math.floorMod(tick + player.getId(), settings.scopeRendering().intervalTicks()) == 0) {
                 var selected = select(player, decision.zoom());
+                ScopeRangefinder.update(player, selected);
                 ScopeActivity.INSTANCE.update(player, selected);
                 replace(player, selected);
             }

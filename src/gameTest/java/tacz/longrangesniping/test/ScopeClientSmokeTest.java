@@ -40,6 +40,7 @@ public final class ScopeClientSmokeTest {
     private static volatile int cowId = -1, itemId = -1, edgeCowId = -1;
     private static boolean edgeObserved;
     private static boolean itemObserved;
+    private static int rangeDrawsAfterRelease = -1;
     private static volatile boolean release, failed;
     private static Cow cow;
     private static boolean navigating;
@@ -105,6 +106,18 @@ public final class ScopeClientSmokeTest {
                 if (!navigating || Math.abs(mc.level.getEntity(cowId).getX() - firstRenderedX) < 0.1) { fail("Remote pose stayed frozen"); return; }
                 if (!itemObserved) { fail("Non-living item did not render remotely"); return; }
                 if (!edgeObserved) { fail("Entity inside lens but outside old aim cone was never drawn"); return; }
+                if (tacz.longrangesniping.client.ScopeRangeHud.draws() == 0) { fail("Lens range HUD never rendered"); return; }
+                float range = tacz.longrangesniping.client.ScopeRangeHud.displayedDistance();
+                if (Math.abs(range - 238) > .1) { fail("Live range to center wall incorrect: " + range); return; }
+                try (var screenshot = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+                    int green = 0, w = screenshot.getWidth(), h = screenshot.getHeight();
+                    for (int y = h * 6 / 10; y < h * 9 / 10; y++) for (int x = w / 4; x < w / 2; x++) {
+                        int pixel = screenshot.getPixelRGBA(x, y);
+                        int r = pixel & 255, g = pixel >> 8 & 255, b = pixel >> 16 & 255;
+                        if (g > 160 && g > r * 1.4 && g > b * 1.4) green++;
+                    }
+                    if (green < 20) { fail("Range text was not visible in lower-left lens pixels"); return; }
+                }
                 Screenshot.grab(mc.gameDirectory, "scope-render.png", mc.getMainRenderTarget(), ignored -> {});
                 requestShot = true;
                 TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST rendered remote cow outside 6-chunk view; firing trace test");
@@ -118,9 +131,14 @@ public final class ScopeClientSmokeTest {
             release = true;
         }
         if (release && !ScopedRendering.active() && tacz.longrangesniping.client.ShotTrails.drawnPieces() > 0) trailAfterRelease = true;
+        if (release && !ScopedRendering.active() && rangeDrawsAfterRelease < 0)
+            rangeDrawsAfterRelease = tacz.longrangesniping.client.ScopeRangeHud.draws();
         if (release && !ScopedRendering.active() && ScopedRendering.targetCount() == 0 && mc.level.getEntity(cowId) == null && mc.level.getEntity(itemId) == null && mc.level.getEntity(edgeCowId) == null
                 && !tacz.longrangesniping.client.ShotTrails.hasTrails()) {
             if (!trailAfterRelease) { fail("In-flight trail vanished on scope release"); return; }
+            if (rangeDrawsAfterRelease != tacz.longrangesniping.client.ScopeRangeHud.draws()) {
+                fail("Range HUD continued drawing after scope release"); return;
+            }
             TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST PASSED: native AI, lens-edge entity beyond old cone, real trail packets/render beyond 6 chunks, scope release and trail expiry");
             try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
             catch (java.io.IOException failure) { throw new RuntimeException(failure); }
@@ -151,6 +169,7 @@ public final class ScopeClientSmokeTest {
             for (int x = 10; x <= 18; x++) for (int z = -4; z <= 4; z++) level.getChunk(x, z);
             for (int x = 220; x <= 246; x++) for (int z = 0; z <= 15; z++)
                 level.setBlock(new net.minecraft.core.BlockPos(x, 79, z), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 2);
+            level.setBlock(new net.minecraft.core.BlockPos(246, 81, 8), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 2);
             // Complete the corridor before short-lived fixture loading tickets can expire.
             for (int attempt = 0; attempt < 2048 && !corridorKnown(level); attempt++) TerrainSnapshots.INSTANCE.tick();
             if (!corridorKnown(level)) { fail("Fixture corridor could not be captured"); return; }
