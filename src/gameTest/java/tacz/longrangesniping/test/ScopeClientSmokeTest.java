@@ -43,6 +43,38 @@ public final class ScopeClientSmokeTest {
     private static Cow cow;
     private static boolean navigating;
     private static double firstRenderedX;
+    private static volatile boolean requestShot, shotFired;
+    private static boolean trailAfterRelease;
+    private static boolean trailStageCaptured;
+    private static com.mojang.blaze3d.platform.NativeImage beforeTrail;
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST) public static void beforeTrailFrame(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
+        if (ENABLED && !trailStageCaptured && event.getStage() == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
+                && tacz.longrangesniping.client.ShotTrails.farthestDrawn() > 140) {
+            beforeTrail = Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST) public static void trailFrame(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
+        if (!ENABLED || beforeTrail == null || event.getStage() != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+        try {
+            if (tacz.longrangesniping.client.ShotTrails.farthestDrawn() <= 160) return;
+            trailStageCaptured = true;
+            var mc = Minecraft.getInstance();
+            try (var after = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+                int changed = 0, strongest = 0;
+                for (int y = 0; y < after.getHeight(); y++) for (int x = 0; x < after.getWidth(); x++) {
+                    int a = beforeTrail.getPixelRGBA(x, y), b = after.getPixelRGBA(x, y);
+                    int difference = (b & 255) - (a & 255);
+                    if (difference > 3) changed++;
+                    strongest = Math.max(strongest, difference);
+                }
+                if (changed < 40 || strongest < 40) { fail("Trail did not visibly affect framebuffer: pixels=" + changed + ", contrast=" + strongest); return; }
+                TaczLongRangeSniping.LOGGER.info("TRAIL_FRAME pixels={}, peak brightness change={}", changed, strongest);
+            }
+            Screenshot.grab(mc.gameDirectory, "shot-trail-stage.png", mc.getMainRenderTarget(), ignored -> {});
+        } finally { beforeTrail.close(); beforeTrail = null; }
+    }
 
     @SubscribeEvent public static void client(ClientTickEvent.Post event) {
         if (!ENABLED) return;
@@ -71,12 +103,22 @@ public final class ScopeClientSmokeTest {
                 if (!navigating || Math.abs(mc.level.getEntity(cowId).getX() - firstRenderedX) < 0.1) { fail("Remote pose stayed frozen"); return; }
                 if (!itemObserved) { fail("Non-living item did not render remotely"); return; }
                 Screenshot.grab(mc.gameDirectory, "scope-render.png", mc.getMainRenderTarget(), ignored -> {});
-                release = true;
-                TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST rendered remote cow outside 6-chunk view; releasing scope");
+                requestShot = true;
+                TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST rendered remote cow outside 6-chunk view; firing trace test");
             }
         }
-        if (release && !ScopedRendering.active() && ScopedRendering.targetCount() == 0 && mc.level.getEntity(cowId) == null && mc.level.getEntity(itemId) == null) {
-            TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST PASSED: real pairing, native AI movement, remote cow/item render, no client chunk, release/removal");
+        if (shotFired && trailStageCaptured && !release && tacz.longrangesniping.client.ShotTrails.farthestDrawn() > 160) {
+            if (mc.level.getChunkSource().getChunk(10, 0, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false) != null) {
+                fail("Trail test unexpectedly received corridor terrain"); return;
+            }
+            Screenshot.grab(mc.gameDirectory, "shot-trail.png", mc.getMainRenderTarget(), ignored -> {});
+            release = true;
+        }
+        if (release && !ScopedRendering.active() && tacz.longrangesniping.client.ShotTrails.drawnPieces() > 0) trailAfterRelease = true;
+        if (release && !ScopedRendering.active() && ScopedRendering.targetCount() == 0 && mc.level.getEntity(cowId) == null && mc.level.getEntity(itemId) == null
+                && !tacz.longrangesniping.client.ShotTrails.hasTrails()) {
+            if (!trailAfterRelease) { fail("In-flight trail vanished on scope release"); return; }
+            TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST PASSED: native AI, remote entities, real trail packets/render beyond 6 chunks, scope release and trail expiry");
             try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
             catch (java.io.IOException failure) { throw new RuntimeException(failure); }
             mc.stop();
@@ -127,6 +169,21 @@ public final class ScopeClientSmokeTest {
                 if (!navigating) { fail("Native cow path could not start"); return; }
             }
             IGunOperator.fromLivingEntity(player).aim(!release);
+            if (requestShot && !shotFired) {
+                var stack = player.getMainHandItem(); var gun = IGun.getIGunOrNull(stack);
+                var data = com.tacz.guns.api.TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
+                var attachmentCache = new com.tacz.guns.resource.modifier.AttachmentCacheProperty(); attachmentCache.eval(stack, data);
+                IGunOperator.fromLivingEntity(player).updateCacheProperty(attachmentCache);
+                var bullet = new com.tacz.guns.entity.EntityKineticBullet(level, player, stack, data.getAmmoId(), gun.getGunId(stack), false, data, data.getBulletData());
+                bullet.setPos(player.getEyePosition().add(0, -0.05, -1.2));
+                bullet.setDeltaMovement(new net.minecraft.world.phys.Vec3(8, 0, 0));
+                LocalBallisticsGameTests.setField(bullet, "gravity", 0.002f);
+                LocalBallisticsGameTests.setField(bullet, "friction", 0f);
+                LocalBallisticsGameTests.setField(bullet, "pierce", 1);
+                LocalBallisticsGameTests.setField(bullet, "startPos", bullet.position());
+                if (level.addFreshEntity(bullet)) { fail("Smoke test bullet did not transfer ownership"); return; }
+                shotFired = true;
+            }
             if (serverTicks % 40 == 0) {
                 TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST state: serverEligible={}, clientActive={}, received={}, draws={}, eye={}, look={}, selectable={}, visible={}",
                         tacz.longrangesniping.compat.tacz.TaczBridge.evaluate(player), ScopedRendering.active(), ScopedRendering.targetCount(), ScopedRendering.extraDraws(),

@@ -2,17 +2,24 @@ package tacz.longrangesniping.ballistics;
 
 import com.tacz.guns.entity.EntityKineticBullet;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.EventHooks;
+import net.neoforged.neoforge.network.PacketDistributor;
 import tacz.longrangesniping.TaczLongRangeSniping;
 import tacz.longrangesniping.compat.tacz.TaczBridge.ShotContext;
 import tacz.longrangesniping.config.ServerConfig;
 import tacz.longrangesniping.mixin.KineticBulletAccessor;
 import tacz.longrangesniping.scoping.ScopeActivity;
+import tacz.longrangesniping.network.ShotTrailsPayload;
+import tacz.longrangesniping.trails.TrailSegment;
 
 import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
 
 /** Owns detached TACZ projectiles; only this scheduler advances accepted shots. Server thread only. */
 public final class LocalBallistics {
@@ -32,6 +39,8 @@ public final class LocalBallistics {
         double traveled;
         int ticks;
         boolean snapshotPhysics;
+        Vec3 visualStart, visualEnd;
+        float visualSpeed;
         Flight(EntityKineticBullet bullet, ShotContext context, ServerConfig.Ballistics limits) {
             this.bullet = bullet;
             this.context = context;
@@ -67,6 +76,7 @@ public final class LocalBallistics {
     }
 
     public void tick() {
+        var visuals = new LinkedHashMap<ServerPlayer, List<TrailSegment>>();
         while (!pending.isEmpty()) {
             Flight flight = pending.remove();
             active.put(flight.bullet.getUUID(), flight);
@@ -77,6 +87,7 @@ public final class LocalBallistics {
             String termination;
             try { termination = advance(flight); }
             catch (RuntimeException | Error failure) { flight.lease.close(); throw failure; }
+            collectVisual(flight, termination != null, visuals);
             if (termination != null) {
                 flight.lease.close();
                 iterator.remove();
@@ -90,9 +101,26 @@ public final class LocalBallistics {
                 }
             }
         }
+        visuals.forEach((player, segments) -> PacketDistributor.sendToPlayer(player,
+                new ShotTrailsPayload(level.dimension().location(), segments)));
+    }
+
+    private void collectVisual(Flight flight, boolean terminal, Map<ServerPlayer, List<TrailSegment>> batches) {
+        if (flight.visualStart == null || flight.visualEnd == null) return;
+        var player = level.getServer().getPlayerList().getPlayer(flight.context.shooterId());
+        if (player == null || player.serverLevel() != level) return;
+        var batch = batches.computeIfAbsent(player, ignored -> new ArrayList<>());
+        if (batch.size() >= ShotTrailsPayload.MAX_SEGMENTS) return;
+        var a = flight.visualStart; var b = flight.visualEnd;
+        try {
+            batch.add(new TrailSegment(flight.bullet.getId(), flight.ticks, a.x, a.y, a.z, b.x, b.y, b.z, flight.visualSpeed, terminal));
+        } catch (IllegalArgumentException ignored) {
+            // Third-party tick callbacks may teleport projectiles. Never draw a fictitious connecting segment.
+        }
     }
 
     private String advance(Flight flight) {
+        flight.visualStart = flight.visualEnd = null;
         EntityKineticBullet bullet = flight.bullet;
         // If a later event handler reversed spawn cancellation, world ticking owns it.
         // Relinquish it without ticking or discarding the now-registered entity.
@@ -117,10 +145,13 @@ public final class LocalBallistics {
         // A tick-pre listener can change the trajectory; validate it again before TACZ reads terrain.
         var guard = LoadedAreaGuard.check(level, bullet, flight.limits.maxDistance() - flight.traveled);
         if (guard == LoadedAreaGuard.Result.INVALID) return stop(bullet, "INVALID");
+        flight.visualStart = bullet.position();
+        flight.visualSpeed = (float) bullet.getDeltaMovement().length();
         if (flight.snapshotPhysics || guard != LoadedAreaGuard.Result.READY) {
             // Stay on this path after crossing; stale base-entity fluid/portal state is never resumed.
             flight.snapshotPhysics = true;
             var step = SnapshotBallistics.tick(level, bullet, flight.limits.maxDistance() - flight.traveled);
+            flight.visualEnd = bullet.position();
             EventHooks.fireEntityTickPost(bullet);
             flight.traveled += step.distance();
             if ("UNKNOWN_AREA".equals(step.termination())) unknown++;
@@ -130,7 +161,12 @@ public final class LocalBallistics {
         double stepLength = bullet.getDeltaMovement().length();
         // Reuse TACZ's exact physics, block ray tracing, headshots, piercing, damage and events.
         // Do not call addFreshEntity, shoot(), or a second damage implementation here.
-        bullet.tick();
+        var capture = (BulletVisualAccess) bullet;
+        capture.taczlrs$beginVisualStep();
+        Vec3 impact;
+        try { bullet.tick(); }
+        finally { impact = capture.taczlrs$endVisualStep(); }
+        flight.visualEnd = impact == null ? bullet.position() : impact;
         EventHooks.fireEntityTickPost(bullet);
         flight.traveled += stepLength;
         return bullet.isRemoved() ? (bullet.tickCount >= ((KineticBulletAccessor) bullet).taczlrs$getLife() - 1
