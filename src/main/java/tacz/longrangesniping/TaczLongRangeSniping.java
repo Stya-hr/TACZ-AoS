@@ -23,6 +23,7 @@ public final class TaczLongRangeSniping {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public TaczLongRangeSniping(IEventBus modEventBus, ModContainer container) {
+        tacz.longrangesniping.block.ModContent.register(modEventBus);
         container.registerConfig(ModConfig.Type.SERVER, ServerConfig.SPEC);
         modEventBus.addListener(ServerConfig::onLoad);
         modEventBus.addListener(ServerConfig::onReload);

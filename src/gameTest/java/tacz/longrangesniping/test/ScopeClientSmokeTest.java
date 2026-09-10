@@ -35,6 +35,8 @@ import java.util.Comparator;
 public final class ScopeClientSmokeTest {
     private static final boolean ENABLED = Boolean.getBoolean("taczlrs.clientScopeTest");
     private static final TicketType<ChunkPos> TARGET = TicketType.create("scope_smoke_target", Comparator.comparingLong(ChunkPos::toLong));
+    private static volatile boolean blockPreview, blockPrepared, blockFront, blockFrontReady;
+    private static int blockFrames;
     private static boolean started;
     private static int clientTicks, serverTicks, drawnTicks;
     private static volatile int cowId = -1, itemId = -1, edgeCowId = -1;
@@ -93,6 +95,40 @@ public final class ScopeClientSmokeTest {
                     registry -> registry.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), mc.screen);
         }
         if (mc.player == null || mc.level == null || cowId < 0) return;
+        if (blockPreview) {
+            com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(false);
+            if (!blockPrepared) return;
+            mc.options.fov().set(45);
+            mc.options.hideGui = true;
+            mc.player.setYRot(blockFront ? 31 : 149); mc.player.setYHeadRot(blockFront ? 31 : 149); mc.player.setXRot(13);
+            if (++blockFrames == 60) {
+                var pos = new net.minecraft.core.BlockPos(8, 79, 8);
+                var state = mc.level.getBlockState(pos.above());
+                if (!state.is(tacz.longrangesniping.block.ModContent.RANGEFINDER.get())) { fail("Rangefinder model block missing on client"); return; }
+                var model = mc.getBlockRenderer().getBlockModel(state);
+                var quads = model.getQuads(state, null, net.minecraft.util.RandomSource.create(1));
+                if (quads.isEmpty() || quads.stream().anyMatch(q -> q.getSprite().contents().name().getPath().equals("missingno"))) {
+                    fail("Rangefinder has empty/missing texture quads"); return;
+                }
+                var item = new net.minecraft.world.item.ItemStack(tacz.longrangesniping.block.ModContent.RANGEFINDER_ITEM.get());
+                var itemModel = mc.getItemRenderer().getModel(item, mc.level, mc.player, 0);
+                if (itemModel.getQuads(null, null, net.minecraft.util.RandomSource.create(1)).isEmpty()) { fail("Rangefinder item model missing"); return; }
+                net.minecraft.world.item.CreativeModeTabs.tryRebuildTabContents(mc.player.connection.enabledFeatures(), true, mc.level.registryAccess());
+                if (!com.tacz.guns.init.ModCreativeTabs.OTHER_TAB.get().contains(item)) { fail("Rangefinder missing from TACZ workbench tab"); return; }
+                Screenshot.grab(mc.gameDirectory, "rangefinder-block.png", mc.getMainRenderTarget(), ignored -> {});
+                blockFront = true;
+            }
+            if (blockFrontReady && blockFrames == 100) {
+                Screenshot.grab(mc.gameDirectory, "rangefinder-front.png", mc.getMainRenderTarget(), ignored -> {});
+                TaczLongRangeSniping.LOGGER.info("RANGEFINDER_BLOCK_CLIENT_TEST PASSED: world/item models, textures, TACZ tab");
+                mc.options.hideGui = false;
+                mc.options.fov().set(70);
+                try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
+                catch (java.io.IOException failure) { throw new RuntimeException(failure); }
+                mc.stop();
+            }
+            return;
+        }
         mc.player.setYRot(-90); mc.player.setYHeadRot(-90); mc.player.setXRot(0);
         com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(!release);
         IGunOperator.fromLivingEntity(mc.player).aim(!release);
@@ -140,9 +176,7 @@ public final class ScopeClientSmokeTest {
                 fail("Range HUD continued drawing after scope release"); return;
             }
             TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST PASSED: native AI, lens-edge entity beyond old cone, real trail packets/render beyond 6 chunks, scope release and trail expiry");
-            try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
-            catch (java.io.IOException failure) { throw new RuntimeException(failure); }
-            mc.stop();
+            blockPreview = true;
         }
     }
 
@@ -151,6 +185,27 @@ public final class ScopeClientSmokeTest {
         ServerPlayer player = event.getServer().getPlayerList().getPlayers().getFirst();
         var level = player.serverLevel();
         serverTicks++;
+        if (blockPreview) {
+            if (!blockPrepared) {
+                for (int x = 3; x <= 14; x++) for (int z = 3; z <= 14; z++)
+                    level.setBlockAndUpdate(new net.minecraft.core.BlockPos(x, 78, z), net.minecraft.world.level.block.Blocks.SMOOTH_STONE.defaultBlockState());
+                var pos = new net.minecraft.core.BlockPos(8, 79, 8);
+                var block = tacz.longrangesniping.block.ModContent.RANGEFINDER.get();
+                var state = block.defaultBlockState();
+                level.setBlockAndUpdate(pos, state);
+                block.setPlacedBy(level, pos, state, player, new net.minecraft.world.item.ItemStack(block));
+                player.setItemInHand(InteractionHand.MAIN_HAND, net.minecraft.world.item.ItemStack.EMPTY);
+                player.getInventory().setItem(1, new net.minecraft.world.item.ItemStack(block));
+                player.connection.teleport(11.5, 79.7, 13.5, 149, 13);
+                level.setDayTime(6000);
+                blockPrepared = true;
+            }
+            if (blockFront && !blockFrontReady) {
+                player.connection.teleport(11.5, 79.7, 3.5, 31, 13);
+                blockFrontReady = true;
+            }
+            return;
+        }
         if (serverTicks == 30) {
             level.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false, event.getServer());
             player.connection.teleport(8, 80, 8, -90, 0);
