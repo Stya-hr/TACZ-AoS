@@ -24,10 +24,10 @@ import java.util.ArrayList;
 /** Owns detached TACZ projectiles; only this scheduler advances accepted shots. Server thread only. */
 public final class LocalBallistics {
     public enum Admission { ACCEPTED, DISABLED, UNSUPPORTED, CAPACITY, ALREADY_REGISTERED }
-    public record Status(int active, long accepted, long finished, long unknown, long rangeLimited,
+    public record Status(int active, long accepted, long finished, long rangeLimited,
                          long lifetimeLimited, long blocked, String lastTermination) {
-        public Status(int active, long accepted, long finished, long unknown, long rangeLimited) {
-            this(active, accepted, finished, unknown, rangeLimited, 0, 0, "none");
+        public Status(int active, long accepted, long finished, long rangeLimited) {
+            this(active, accepted, finished, rangeLimited, 0, 0, "none");
         }
     }
     private static final class Flight {
@@ -35,12 +35,10 @@ public final class LocalBallistics {
         final ShotContext context;
         final ServerConfig.Ballistics limits;
         final ScopeActivity.FlightLease lease;
-        final tacz.longrangesniping.terrain.SnapshotLease snapshots = tacz.longrangesniping.terrain.TerrainSnapshots.INSTANCE.lease();
         final java.util.Set<UUID> heardBy = new java.util.HashSet<>();
         final int originalLife, installedLife;
         double traveled;
         int ticks;
-        boolean snapshotPhysics;
         Vec3 visualStart, visualEnd;
         float visualSpeed;
         Flight(EntityKineticBullet bullet, ShotContext context, ServerConfig.Ballistics limits) {
@@ -60,7 +58,7 @@ public final class LocalBallistics {
     private final Map<UUID, Flight> active = new LinkedHashMap<>();
     // A hit callback may spawn another bullet while the active map is being iterated.
     private final ArrayDeque<Flight> pending = new ArrayDeque<>();
-    private long accepted, finished, unknown, rangeLimited, lifetimeLimited, blocked;
+    private long accepted, finished, rangeLimited, lifetimeLimited, blocked;
     private String lastTermination = "none";
 
     public LocalBallistics(ServerLevel level) { this.level = level; }
@@ -89,10 +87,10 @@ public final class LocalBallistics {
             Flight flight = iterator.next();
             String termination;
             try { termination = advance(flight); }
-            catch (RuntimeException | Error failure) { flight.lease.close(); flight.snapshots.close(); throw failure; }
+            catch (RuntimeException | Error failure) { flight.lease.close(); throw failure; }
             collectVisual(flight, termination != null, visuals);
             if (termination != null) {
-                flight.lease.close(); flight.snapshots.close();
+                flight.lease.close();
                 iterator.remove();
                 finished++;
                 lastTermination = termination;
@@ -169,8 +167,6 @@ public final class LocalBallistics {
         if (owner == null || !owner.isAlive() || owner.isRemoved() || owner.level() != level) {
             return stop(bullet, "owner_unavailable");
         }
-        if (!(owner instanceof net.minecraft.world.entity.player.Player player)
-                || !tacz.longrangesniping.block.RangefinderAccess.nearby(player)) return stop(bullet, "rangefinder_unavailable");
         if (flight.ticks++ >= flight.limits.maxFlightTicks()) return stop(bullet, "timeout");
         // Mirror ServerLevel.tickNonPassenger, including NeoForge tick cancellation.
         bullet.setOldPosAndRot();
@@ -178,37 +174,14 @@ public final class LocalBallistics {
         if (EventHooks.fireEntityTickPre(bullet).isCanceled()) return null;
         if (bullet.isRemoved()) return "removed_by_tick_event";
         if (!plainKinetic(bullet)) return stop(bullet, "unsupported_ammunition_changed");
-        // A tick-pre listener can change the trajectory; validate it again before TACZ reads terrain.
-        tacz.longrangesniping.terrain.TerrainSnapshots.INSTANCE.prepare(level, bullet.position(),
-                bullet.position().add(bullet.getDeltaMovement().scale(2)), flight.snapshots);
-        var guard = LoadedAreaGuard.check(level, bullet, flight.limits.maxDistance() - flight.traveled);
-        if (guard == LoadedAreaGuard.Result.INVALID) return stop(bullet, "INVALID");
         flight.visualStart = bullet.position();
         flight.visualSpeed = (float) bullet.getDeltaMovement().length();
-        if (flight.snapshotPhysics || guard != LoadedAreaGuard.Result.READY) {
-            // Stay on this path after crossing; stale base-entity fluid/portal state is never resumed.
-            flight.snapshotPhysics = true;
-            var step = SnapshotBallistics.tick(level, bullet, flight.limits.maxDistance() - flight.traveled, flight.snapshots);
-            flight.visualEnd = bullet.position();
-            EventHooks.fireEntityTickPost(bullet);
-            flight.traveled += step.distance();
-            if ("UNKNOWN_AREA".equals(step.termination())) unknown++;
-            if ("RANGE_LIMIT".equals(step.termination())) rangeLimited++;
-            return step.termination();
-        }
-        double stepLength = bullet.getDeltaMovement().length();
-        // Reuse TACZ's exact physics, block ray tracing, headshots, piercing, damage and events.
-        // Do not call addFreshEntity, shoot(), or a second damage implementation here.
-        var capture = (BulletVisualAccess) bullet;
-        capture.taczlrs$beginVisualStep();
-        Vec3 impact;
-        try { bullet.tick(); }
-        finally { impact = capture.taczlrs$endVisualStep(); }
-        flight.visualEnd = impact == null ? bullet.position() : impact;
+        var step = TargetBallistics.tick(level, bullet, flight.limits.maxDistance()-flight.traveled,new TargetCollisionSource(level,flight.lease.bounds()));
+        flight.visualEnd=bullet.position();
         EventHooks.fireEntityTickPost(bullet);
-        flight.traveled += stepLength;
-        return bullet.isRemoved() ? (bullet.tickCount >= ((KineticBulletAccessor) bullet).taczlrs$getLife() - 1
-                ? "lifetime" : "native_hit") : null;
+        flight.traveled+=step.distance();
+        if ("RANGE_LIMIT".equals(step.termination())) rangeLimited++;
+        return step.termination();
     }
 
     private static String stop(EntityKineticBullet bullet, String reason) {
@@ -221,12 +194,12 @@ public final class LocalBallistics {
         return !fields.taczlrs$isExplosive() && !fields.taczlrs$ignitesEntities() && !fields.taczlrs$ignitesBlocks();
     }
 
-    public Status status() { return new Status(active.size() + pending.size(), accepted, finished, unknown, rangeLimited,
+    public Status status() { return new Status(active.size() + pending.size(), accepted, finished, rangeLimited,
             lifetimeLimited, blocked, lastTermination); }
 
     public void clear() {
-        active.values().forEach(f -> { f.lease.close(); f.snapshots.close(); f.bullet.discard(); });
-        pending.forEach(f -> { f.lease.close(); f.snapshots.close(); f.bullet.discard(); });
+        active.values().forEach(f -> { f.lease.close(); f.bullet.discard(); });
+        pending.forEach(f -> { f.lease.close(); f.bullet.discard(); });
         active.clear();
         pending.clear();
     }

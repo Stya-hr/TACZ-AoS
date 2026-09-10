@@ -9,9 +9,9 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import tacz.longrangesniping.mixin.ChunkMapAccessor;
 import tacz.longrangesniping.terrain.CollisionCell;
-import tacz.longrangesniping.terrain.MinecraftSnapshotSource;
+import tacz.longrangesniping.terrain.StaticCollisionShapes;
 
-/** Restores native cosmetic feedback after snapshot flight; never invokes live block callbacks or loads terrain. */
+/** Restores native cosmetic feedback for target-core impacts; never invokes live block callbacks or loads terrain. */
 public final class BlockImpactEffects {
     private BlockImpactEffects() {}
 
@@ -26,7 +26,7 @@ public final class BlockImpactEffects {
             var chunk = level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4);
             if (chunk == null) continue;
             var state = chunk.getBlockState(pos);
-            if (MinecraftSnapshotSource.classify(state).kind() == CollisionCell.Kind.CONSERVATIVE) continue;
+            if (StaticCollisionShapes.classify(state).kind() == CollisionCell.Kind.CONSERVATIVE) continue;
             var hit = state.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).clip(start,
                     start.add(movement).add(movement.normalize().scale(0.001)), pos);
             if (hit != null && hit.getLocation().distanceToSqr(impact) < 0.000001
@@ -35,7 +35,7 @@ public final class BlockImpactEffects {
         return best;
     }
 
-    public static void snapshotHit(ServerLevel level, EntityKineticBullet bullet, Vec3 start, Vec3 movement, double fraction) {
+    public static void targetHit(ServerLevel level, EntityKineticBullet bullet, Vec3 start, Vec3 movement, double fraction) {
         var hit = liveHit(level, start, movement, fraction);
         if (hit == null) return; // A cached/conservative stop is not proof of a present-day surface.
         var p = hit.getLocation(); var block = hit.getBlockPos();

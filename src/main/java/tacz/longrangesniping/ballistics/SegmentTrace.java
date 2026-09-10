@@ -6,7 +6,7 @@ import tacz.longrangesniping.terrain.CollisionCell;
 public final class SegmentTrace {
     public enum End { CLEAR, BLOCK, UNKNOWN, INVALID }
     public record Result(End end, double fraction) {}
-    /** Null means unknown, including an incomplete or evicted snapshot. */
+    /** Null means unavailable geometry; selected-core callers provide air outside their regions. */
     @FunctionalInterface public interface Source { CollisionCell cell(int x, int y, int z); }
     private SegmentTrace() {}
 

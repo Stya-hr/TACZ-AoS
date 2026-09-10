@@ -123,7 +123,7 @@ public final class ObserverFeedbackGameTests {
     }
 
     @GameTest(template = "ballistics", batch = "observer_feedback")
-    public static void snapshotImpactUsesNativeDecalOnlyOnConfirmedLoadedSurface(GameTestHelper h) {
+    public static void targetImpactUsesNativeDecalOnlyOnConfirmedLoadedSurface(GameTestHelper h) {
         var f = new LocalBallisticsGameTests.Fixture(h);
         var visible = viewer(h, new Vec3(12, 5, 7), true);
         var untracked = viewer(h, new Vec3(12, 5, 7), false);
@@ -135,7 +135,7 @@ public final class ObserverFeedbackGameTests {
             h.assertTrue(hit != null && hit.getBlockPos().equals(h.absolutePos(new BlockPos(10,7,4)))
                     && hit.getDirection() == net.minecraft.core.Direction.WEST, "Wrong surface or decal face");
             var bullet = f.bullet(new Vec3(4,7.5,4.5), new Vec3(12,0,0));
-            BlockImpactEffects.snapshotHit(h.getLevel(), bullet, start, new Vec3(12,0,0), .5);
+            BlockImpactEffects.targetHit(h.getLevel(), bullet, start, new Vec3(12,0,0), .5);
             h.assertTrue(visible.packets.stream().filter(p -> p instanceof ClientboundLevelParticlesPacket q
                     && q.getParticle() instanceof com.tacz.guns.particles.BulletHoleOption).count() == 1, "Missing native decal packet");
             h.assertTrue(untracked.packets.stream().noneMatch(p -> p instanceof ClientboundLevelParticlesPacket), "Untracked player received decal");

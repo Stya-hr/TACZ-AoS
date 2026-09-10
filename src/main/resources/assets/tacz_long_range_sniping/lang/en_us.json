@@ -1,8 +1,6 @@
 {
-  "tacz_long_range_sniping.cache_status": "Collision cache: %s; complete sections: %s; queued: %s; estimated MiB: %s; evictions: %s; dropped requests: %s; previous tick cells/sections: %s/%s",
-  "tacz_long_range_sniping.cache_section": "Current section %s [%s, %s, %s]: %s; version: %s; conservative cells: %s",
   "tacz_long_range_sniping.status": "Long-range eligibility: %s; gun: %s; scope: %s; slot: %s; zoom: %s",
-  "tacz_long_range_sniping.prototype_status": "Ballistics: enabled=%s, range=%s, active=%s, accepted=%s, unknown=%s, range stops=%s",
+  "tacz_long_range_sniping.prototype_status": "Ballistics: enabled=%s, range=%s, active=%s, accepted=%s, range stops=%s",
   "tacz_long_range_sniping.scope_status": "Scoped entity rendering: %s; subscriptions: %s/%s; range: %s blocks; interval: %s ticks.",
   "tacz_long_range_sniping.reason.eligible": "Eligible",
   "tacz_long_range_sniping.reason.config_unavailable": "Configuration unavailable or invalid",
@@ -20,11 +18,9 @@
   "tacz_long_range_sniping.reason.gun_operator_unavailable": "TACZ player interface unavailable",
   "tacz_long_range_sniping.reason.client_layout_mismatch": "Client scope zoom layout differs from server configuration",
   "tacz_long_range_sniping.activity_status": "Remote simulation: enabled=%s, ready/regions=%s/%s, FULL chunks=%s/%s, dependency chunks=%s, unknown refusals=%s, budget refusals=%s, loading timeouts=%s, flight pins=%s",
-  "tacz_long_range_sniping.flight_status": "Flight: extend lifetime=%s, tick cap=%s, lifetime/timeouts=%s, cached blocks=%s, last end=%s, last admission=%s",
-  "tacz_long_range_sniping.disk_status": "Disk cache: %s, index %s sections / %s MiB, queue %s jobs / %s MiB, dropped %s, corrupt/missing %s; flight pins %s sections / %s MiB",
+  "tacz_long_range_sniping.flight_status": "Flight: extend lifetime=%s, tick cap=%s, lifetime/timeouts=%s, target blocks=%s, last end=%s, last admission=%s",
   "tacz_long_range_sniping.prediction_status": "Impact prediction: %s; refresh at least %s ticks; global soft budget %s ms/tick",
   "block.tacz_long_range_sniping.rangefinder": "Rangefinder",
   "tacz_long_range_sniping.reason.no_nearby_rangefinder": "No complete rangefinder within 3 blocks",
-  "subtitle.tacz_long_range_sniping.bullet_flyby": "Bullet whizzes past",
-  "tacz_long_range_sniping.recovery_status": "Saved terrain recovery: %s | queued %s, reading %s, cached columns %s (%s MiB), scans %s, section decodes %s, rejected %s"
+  "subtitle.tacz_long_range_sniping.bullet_flyby": "Bullet whizzes past"
 }

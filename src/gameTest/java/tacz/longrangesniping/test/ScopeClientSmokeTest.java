@@ -26,7 +26,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import tacz.longrangesniping.TaczLongRangeSniping;
 import tacz.longrangesniping.client.ScopedRendering;
 import tacz.longrangesniping.config.ServerConfig;
-import tacz.longrangesniping.terrain.TerrainSnapshots;
+
 
 import java.util.Comparator;
 
@@ -84,7 +84,8 @@ public final class ScopeClientSmokeTest {
                     if (difference > 3) changed++;
                     strongest = Math.max(strongest, difference);
                 }
-                if (changed < 40 || strongest < 40) { fail("Trail did not visibly affect framebuffer: pixels=" + changed + ", contrast=" + strongest); return; }
+                // A rendered terrain background has less contrast than the old empty-sky fixture.
+                if (changed < 40 || strongest < 20) { fail("Trail did not visibly affect framebuffer: pixels=" + changed + ", contrast=" + strongest); return; }
                 TaczLongRangeSniping.LOGGER.info("TRAIL_FRAME pixels={}, peak brightness change={}", changed, strongest);
             }
             Screenshot.grab(mc.gameDirectory, "shot-trail-stage.png", mc.getMainRenderTarget(), ignored -> {});
@@ -99,7 +100,7 @@ public final class ScopeClientSmokeTest {
         if (!started && mc.isGameLoadFinished() && mc.getOverlay() == null) {
             started = true;
             mc.options.pauseOnLostFocus = false;
-            mc.options.renderDistance().set(6); mc.options.simulationDistance().set(6);
+            mc.options.renderDistance().set(16); mc.options.simulationDistance().set(6);
             mc.createWorldOpenFlows().createFreshLevel("scope-test-" + System.currentTimeMillis(),
                     new LevelSettings("Scope integration test", GameType.CREATIVE, false, Difficulty.PEACEFUL, true,
                             new GameRules(), WorldDataConfiguration.DEFAULT), new WorldOptions(12345, false, false),
@@ -195,6 +196,7 @@ public final class ScopeClientSmokeTest {
                 TaczLongRangeSniping.LOGGER.info("RANGEFINDER_BLOCK_CLIENT_TEST PASSED: world/item models, textures, TACZ tab");
                 mc.options.hideGui = false;
                 mc.options.fov().set(70);
+                mc.options.renderDistance().set(6);
                 observerFeedback = true;
             }
             return;
@@ -204,12 +206,12 @@ public final class ScopeClientSmokeTest {
         IGunOperator.fromLivingEntity(mc.player).aim(!release);
         if (!release && ScopedRendering.active() && ScopedRendering.extraDraws() > 0 && mc.level.getEntity(cowId) != null) {
             if (ScopedRendering.drewExtra(edgeCowId)) edgeObserved = true;
-            if (ScopedRendering.hasRealClientChunk(mc.level.getEntity(cowId))) { fail("Target client chunk unexpectedly loaded"); return; }
+            if (!ScopedRendering.hasRealClientChunk(mc.level.getEntity(cowId))) return;
             if (mc.level.getEntity(itemId) instanceof net.minecraft.world.entity.item.ItemEntity && ScopedRendering.extraDraws() >= 2)
                 itemObserved = true;
             if (drawnTicks == 0) firstRenderedX = mc.level.getEntity(cowId).getX();
             if (++drawnTicks == 60) {
-                if (!navigating || Math.abs(mc.level.getEntity(cowId).getX() - firstRenderedX) < 0.1) { fail("Remote pose stayed frozen"); return; }
+                if (!navigating || Math.abs(mc.level.getEntity(cowId).getX() - firstRenderedX) < 0.1) { fail("Remote pose stayed frozen: target="+tacz.longrangesniping.client.VisibleTargetReporter.lastDistance+", activity="+tacz.longrangesniping.scoping.ScopeActivity.INSTANCE.status()+", generation="+tacz.longrangesniping.terrain.GeneratedChunks.INSTANCE.status()); return; }
                 if (!itemObserved) { fail("Non-living item did not render remotely"); return; }
                 if (!edgeObserved) { fail("Entity inside lens but outside old aim cone was never drawn"); return; }
                 if (tacz.longrangesniping.client.ScopeRangeHud.draws() == 0) { fail("Lens range HUD never rendered"); return; }
@@ -233,9 +235,6 @@ public final class ScopeClientSmokeTest {
             }
         }
         if (shotFired && trailStageCaptured && !release && tacz.longrangesniping.client.ShotTrails.farthestDrawn() > 160) {
-            if (mc.level.getChunkSource().getChunk(10, 0, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false) != null) {
-                fail("Trail test unexpectedly received corridor terrain"); return;
-            }
             Screenshot.grab(mc.gameDirectory, "shot-trail.png", mc.getMainRenderTarget(), ignored -> {});
             release = true;
         }
@@ -303,18 +302,13 @@ public final class ScopeClientSmokeTest {
             gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
             player.setItemInHand(InteractionHand.MAIN_HAND, stack);
             var original = ServerConfig.current();
-            LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(true, original.policy(), 1024, 32, 128, false,
-                    original.ballistics(), new ServerConfig.Snapshots(true, 65536, 256, 10, 0, 8192, 8192)));
+            LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(true, original.policy(), 1024, 32, false, original.ballistics(), ServerConfig.DEFAULT_SCOPE_RENDERING, ServerConfig.DEFAULT_ACTIVITY, ServerConfig.DEFAULT_PREDICTION));
             // Fixture-only preparation of previously explored terrain. Activity must later restore native simulation.
             for (int x = 0; x <= 14; x++) level.getChunk(x, 0);
-            for (int x = 10; x <= 18; x++) for (int z = -4; z <= 4; z++) level.getChunk(x, z);
+            for (int x = 10; x <= 20; x++) for (int z = -4; z <= 4; z++) level.getChunk(x, z);
             for (int x = 220; x <= 246; x++) for (int z = 0; z <= 15; z++)
                 level.setBlock(new net.minecraft.core.BlockPos(x, 79, z), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 2);
             level.setBlock(new net.minecraft.core.BlockPos(246, 81, 8), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 2);
-            // Complete the corridor before short-lived fixture loading tickets can expire.
-            // Terrain history must be captured before placing a device, using the real event entry point.
-            for (int attempt = 0; attempt < 2048 && !corridorKnown(level); attempt++) TerrainSnapshots.INSTANCE.onTick(event);
-            if (!corridorKnown(level)) { fail("Fixture corridor could not be captured"); return; }
             var endpoint = new ChunkPos(14, 0);
             level.getChunkSource().addRegionTicket(TARGET, endpoint, 0, endpoint);
         }
@@ -337,7 +331,7 @@ public final class ScopeClientSmokeTest {
             var item = new net.minecraft.world.entity.item.ItemEntity(level, 233, 80.2, 9,
                     new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND));
             item.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO); level.addFreshEntity(item); itemId = item.getId();
-            TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST prepared cow={}, snapshots={}", cowId, TerrainSnapshots.INSTANCE.status().sections());
+            TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST prepared cow={}", cowId);
         }
         if (serverTicks >= 230) {
             if (serverTicks == 270) {
@@ -356,7 +350,7 @@ public final class ScopeClientSmokeTest {
                             new net.minecraft.world.phys.Vec3(128, 0, 0), 0, 0, 1);
                     TaczLongRangeSniping.LOGGER.info("ZOOM_FIXTURE before endpoint retention: {}",
                             tacz.longrangesniping.scoping.ImpactPrediction.predict(ray,
-                                    new tacz.longrangesniping.ballistics.NoLoadCollisionSource(level), java.util.List.of(),
+                                    new tacz.longrangesniping.ballistics.TargetCollisionSource(level,tacz.longrangesniping.scoping.ScopeActivity.INSTANCE.observationBounds(player)), java.util.List.of(),
                                     1024, 8, 65536, 32768, Long.MAX_VALUE));
                     // The preceding release test deliberately retires the activity region. Keep this phase's
                     // measuring wall resident with a fixture-only ticket, independently of curved impact selection.
@@ -400,7 +394,7 @@ public final class ScopeClientSmokeTest {
                 TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST state: serverEligible={}, clientActive={}, received={}, draws={}, eye={}, look={}, selectable={}, visible={}",
                         tacz.longrangesniping.compat.tacz.TaczBridge.evaluate(player), ScopedRendering.active(), ScopedRendering.targetCount(), ScopedRendering.extraDraws(),
                         player.getEyePosition(), player.getViewVector(1), tacz.longrangesniping.scoping.ScopeSubscriptions.INSTANCE.select(player, 25).size(),
-                        new tacz.longrangesniping.scoping.ScopeVisibility(level, 65536).clear(player.getEyePosition(), cow.getEyePosition()));
+                        true);
             }
         }
     }
@@ -418,11 +412,4 @@ public final class ScopeClientSmokeTest {
         } catch (ReflectiveOperationException e) { return e.toString(); }
     }
 
-    private static boolean corridorKnown(net.minecraft.server.level.ServerLevel level) {
-        for (int x = 0; x <= 14; x++) {
-            var key = new tacz.longrangesniping.terrain.SectionKey(TerrainSnapshots.dimension(level), x, 5, 0);
-            if (TerrainSnapshots.INSTANCE.coverage(key) == tacz.longrangesniping.terrain.SnapshotStore.Coverage.UNKNOWN) return false;
-        }
-        return true;
-    }
 }

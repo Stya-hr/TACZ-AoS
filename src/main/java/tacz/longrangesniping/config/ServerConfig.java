@@ -21,15 +21,11 @@ public final class ServerConfig {
     private static final ModConfigSpec.ConfigValue<List<? extends String>> SCOPES;
     private static final ModConfigSpec.IntValue MAX_DISTANCE;
     private static final ModConfigSpec.IntValue MAX_ENTITIES;
-    private static final ModConfigSpec.IntValue CACHE_MIB;
     private static final ModConfigSpec.BooleanValue DIAGNOSTICS;
     private static final ModConfigSpec.BooleanValue BALLISTICS, EXTEND_LIFETIME;
     private static final ModConfigSpec.IntValue BALLISTICS_DISTANCE;
     private static final ModConfigSpec.IntValue MAX_BULLETS;
     private static final ModConfigSpec.IntValue MAX_FLIGHT_TICKS;
-    private static final ModConfigSpec.BooleanValue SNAPSHOTS;
-    private static final ModConfigSpec.IntValue SNAPSHOT_BLOCKS, SNAPSHOT_SECTIONS, REFRESH_DELAY, PENDING_SECTIONS, TRACKED_CHUNKS;
-    private static final ModConfigSpec.DoubleValue SNAPSHOT_MILLIS;
     private static final ModConfigSpec.BooleanValue SCOPE_RENDERING;
     private static final ModConfigSpec.IntValue SCOPE_INTERVAL, SCOPE_CANDIDATES, SCOPE_TRACE_CELLS;
     private static final ModConfigSpec.BooleanValue ACTIVITY;
@@ -41,26 +37,11 @@ public final class ServerConfig {
     public record Prediction(int intervalTicks, double maxMillisPerTick, int maxEntityChecks) {}
     public static final Prediction DEFAULT_PREDICTION = new Prediction(8, 4.0, 8192);
 
-    private static final ModConfigSpec.BooleanValue DISK;
-    private static final ModConfigSpec.BooleanValue RECOVERY;
-    private static final ModConfigSpec.IntValue RECOVERY_READS, RECOVERY_CONCURRENT, RECOVERY_CACHE;
-    public record Recovery(boolean enabled, int readsPerSecond, int maxConcurrentReads, int cacheMiB) {}
-    private static volatile Recovery recovery = new Recovery(false, 16, 4, 16);
-    public static Recovery recovery() { return recovery; }
-    private static final ModConfigSpec.IntValue DISK_MIB, DISK_SECTIONS, IO_QUEUE, IO_QUEUE_MIB, IO_MIB, IO_OPS, RESTORE_SECTIONS, PIN_MIB, PIN_SECTIONS;
-    public record Persistence(boolean enabled, int diskMiB, int maxDiskSections, int maxQueuedSections,
-                              int queueMiB, int ioMiBPerSecond, int operationsPerSecond, int restoresPerTick,
-                              int pinMiB, int maxPinnedSections) {}
-    public static final Persistence DEFAULT_PERSISTENCE = new Persistence(true, 256, 65536, 128, 32, 8, 128, 8, 32, 2048);
-
     public record Ballistics(boolean enabled, int maxDistance, int maxActiveBullets, int maxFlightTicks, boolean extendLifetime) {
         public Ballistics(boolean enabled, int maxDistance, int maxActiveBullets, int maxFlightTicks) {
             this(enabled, maxDistance, maxActiveBullets, maxFlightTicks, false);
         }
     }
-    public record Snapshots(boolean enabled, int blocksPerTick, int sectionsPerTick, double maxMillisPerTick,
-                            int refreshDelayTicks, int maxPendingSections, int maxTrackedChunks) {}
-    public static final Snapshots DEFAULT_SNAPSHOTS = new Snapshots(true, 4096, 16, 2.0, 5, 8192, 8192);
     public record ScopeRendering(boolean enabled, int intervalTicks, int maxCandidates, int maxTraceCells) {}
     public static final ScopeRendering DEFAULT_SCOPE_RENDERING = new ScopeRendering(true, 4, 256, 65536);
     public record Activity(boolean enabled, int radius, int stableTicks, int retentionTicks, int maxFullChunks,
@@ -71,38 +52,21 @@ public final class ServerConfig {
                     startsPerSecond, loadTimeoutTicks, 2);
         }
     }
-    public static final Activity DEFAULT_ACTIVITY = new Activity(true, 1, 8, 40, 196, 4096, 4, 2, 100);
+    public static final Activity DEFAULT_ACTIVITY = new Activity(true, 1, 3, 60, 196, 4096, 4, 2, 100);
 
     public record Settings(boolean available, EligibilityPolicy policy, int maxDistance,
-                           int maxTrackedEntities, int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics,
-                           Snapshots snapshots, ScopeRendering scopeRendering, Activity activity, Persistence persistence, Prediction prediction) {
-        public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
-                        int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots,
-                        ScopeRendering scopeRendering, Activity activity, Persistence persistence) {
-            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, ballistics,
-                    snapshots, scopeRendering, activity, persistence, DEFAULT_PREDICTION);
-        }
-        public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
-                        int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots,
-                        ScopeRendering scopeRendering, Activity activity) {
-            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, ballistics,
-                    snapshots, scopeRendering, activity, DEFAULT_PERSISTENCE);
-        }
-        public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
-                        int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots,
-                        ScopeRendering scopeRendering) {
-            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, ballistics,
-                    snapshots, scopeRendering, DEFAULT_ACTIVITY);
-        }
-        public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
-                        int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots) {
-            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, ballistics, snapshots,
-                    DEFAULT_SCOPE_RENDERING);
-        }
-    }
+                           int maxTrackedEntities, boolean diagnostics, Ballistics ballistics,
+                           ScopeRendering scopeRendering, Activity activity, Prediction prediction) {}
+    private static final Settings UNAVAILABLE = new Settings(false, EligibilityPolicy.disabled(), 1024, 32, false,
+            new Ballistics(false,1024,128,600), DEFAULT_SCOPE_RENDERING, DEFAULT_ACTIVITY, DEFAULT_PREDICTION);
+    public record Targeting(double stableDegreesPerSecond, int requestIntervalTicks, int checksPerSecond,
+                            int concurrentChecks, int maxQueuedChecks, int maxIndexedChunks) {}
+    private static final ModConfigSpec.DoubleValue TARGET_SPEED;
+    private static final ModConfigSpec.IntValue TARGET_INTERVAL, TARGET_CHECKS, TARGET_CONCURRENT, TARGET_QUEUE, TARGET_INDEX;
+    private static final Targeting DEFAULT_TARGETING = new Targeting(10,5,512,32,4096,131072);
+    private static volatile Targeting targeting=DEFAULT_TARGETING;
+    public static Targeting targeting() { return targeting; }
 
-    private static final Settings UNAVAILABLE = new Settings(false, EligibilityPolicy.disabled(), 1024, 32, 128, false,
-            new Ballistics(false, 128, 128, 600), DEFAULT_SNAPSHOTS);
     private static volatile Settings current = UNAVAILABLE;
 
     static {
@@ -155,11 +119,9 @@ public final class ServerConfig {
                 .push("limits");
         MAX_DISTANCE = builder.defineInRange("maxDistance", 1024, 16, 16384);
         MAX_ENTITIES = builder.defineInRange("maxTrackedEntities", 32, 1, 256);
-        CACHE_MIB = builder.comment("Server-wide estimated memory budget for complete collision snapshots; evicted sections become unknown.")
-                .defineInRange("snapshotMemoryMiB", 128, 16, 4096);
         builder.pop();
-        builder.comment("Server-authoritative scoped kinetic bullets; unloaded corridors use collision snapshots.",
-                        "Replaces the old prototype section. Legacy prototype settings no longer control this feature.")
+        builder.comment("Scoped kinetic bullets collide only in retained target cores. Terrain/entities outside them are ignored.",
+                        "No corridor chunk loading or collision snapshots.")
                 .push("ballistics");
         BALLISTICS = builder.comment("Take over eligible ordinary kinetic bullets. Does not spawn native tracer entities.")
                 .define("enabled", true);
@@ -173,46 +135,6 @@ public final class ServerConfig {
                         "Speed, gravity, drag, damage falloff and the traveled-distance limit remain in force.")
                 .define("extendLifetime", true);
         builder.pop();
-        builder.comment("Collision snapshots with optional asynchronous persistence. Independent of ballistic takeover; never loads real chunks.")
-                .push("snapshots");
-        SNAPSHOTS = builder.define("enabled", true);
-        SNAPSHOT_BLOCKS = builder.comment("Maximum sampled cells per server tick, shared across dimensions.")
-                .defineInRange("blocksPerTick", 4096, 64, 65536);
-        SNAPSHOT_SECTIONS = builder.comment("Maximum completed sections per tick; a palette-proven uniform section costs one cell work unit.")
-                .defineInRange("sectionsPerTick", 16, 1, 256);
-        SNAPSHOT_MILLIS = builder.comment("Soft acquisition time budget, checked every 64 cells; this is not a hard tick-time guarantee.")
-                .defineInRange("maxMillisPerTick", 2.0, 0.1, 10.0);
-        REFRESH_DELAY = builder.comment("Coalesce edits for this many server ticks. Invalidated sections are unknown until rebuilt.")
-                .defineInRange("refreshDelayTicks", 5, 0, 200);
-        PENDING_SECTIONS = builder.comment("Bound on queued section addresses; omitted work is retried for tracked loaded chunks.")
-                .defineInRange("maxPendingSections", 8192, 64, 65536);
-        TRACKED_CHUNKS = builder.comment("Bound on coordinate-only loaded-chunk index. Overflow forgets oldest tracked coordinates.")
-                .defineInRange("maxTrackedChunks", 8192, 64, 65536);
-        builder.pop();
-        builder.comment("World-local collision cache. Reads/writes/compression run off-thread; disk-only sections are not yet usable.",
-                        "Changes to these limits apply after restarting the server. A dirty shutdown discards the disk cache conservatively.")
-                .push("persistence");
-        DISK = builder.define("enabled", true);
-        DISK_MIB = builder.defineInRange("diskMiB", 256, 16, 4096);
-        DISK_SECTIONS = builder.defineInRange("maxDiskSections", 65536, 256, 262144);
-        IO_QUEUE = builder.defineInRange("maxQueuedSections", 128, 8, 2048);
-        IO_QUEUE_MIB = builder.defineInRange("queueMiB", 32, 8, 256);
-        IO_MIB = builder.defineInRange("ioMiBPerSecond", 8, 1, 128);
-        IO_OPS = builder.defineInRange("operationsPerSecond", 128, 8, 2048);
-        RESTORE_SECTIONS = builder.defineInRange("restoresPerTick", 8, 1, 64);
-        PIN_MIB = builder.comment("Subset of the memory cache reserved for in-flight snapshot leases, not extra memory.")
-                .defineInRange("pinMiB", 32, 0, 1024);
-        PIN_SECTIONS = builder.defineInRange("maxPinnedSections", 2048, 0, 32768);
-        builder.pop();
-        builder.comment("Recover missing collision snapshots from existing server region files, including worlds viewed with LOD renderers.",
-                        "Asynchronous terrain-only scans; never generates, loads or simulates corridor chunks. Unconfirmed data stays unknown.",
-                        "Decoded collision sampling shares snapshots CPU/cell budgets. Temporary palette storage is separately bounded.")
-                .push("savedTerrainRecovery");
-        RECOVERY = builder.define("enabled", true);
-        RECOVERY_READS = builder.defineInRange("readsPerSecond", 16, 1, 64);
-        RECOVERY_CONCURRENT = builder.defineInRange("maxConcurrentReads", 4, 1, 8);
-        RECOVERY_CACHE = builder.defineInRange("cacheMiB", 16, 2, 64);
-        builder.pop();
         builder.comment("Additional entity tracking/rendering while near a rangefinder with an allowed gun/scope and aiming, at every zoom.",
                         "All entity types may be displayed; activity controls bounded server-side target loading.")
                 .push("scopeRendering");
@@ -221,18 +143,18 @@ public final class ServerConfig {
                 .defineInRange("intervalTicks", 4, 2, 20);
         SCOPE_CANDIDATES = builder.comment("Maximum entity candidates inspected per refresh and player.")
                 .defineInRange("maxCandidates", 256, 16, 2048);
-        SCOPE_TRACE_CELLS = builder.comment("Maximum distinct collision cells read per refresh/player; exhausted checks fail closed.")
+        SCOPE_TRACE_CELLS = builder.comment("Maximum collision cells inspected per local impact prediction.")
                 .defineInRange("maxTraceCells", 65536, 1024, 1048576);
         builder.pop();
         builder.comment("Temporary real simulation around known scope targets; shared server-wide budgets.",
-                        "Unknown sight lines never trigger loading. Full terrain and its loading halo require live/session evidence or valid collision cache records.")
+                        "Sight line and target loading halo must consist of fully generated chunks; only generation metadata is read.")
                 .push("activity");
         ACTIVITY = builder.define("enabled", true);
         ACTIVITY_RADIUS = builder.comment("Entity-ticking core radius in chunks; 1 means 3x3 core and 7x7 FULL footprint.")
                 .defineInRange("radius", 1, 0, 2);
-        ACTIVITY_STABLE = builder.defineInRange("stableTicks", 8, 2, 100);
+        ACTIVITY_STABLE = builder.defineInRange("stableTicks", 3, 2, 100);
         ACTIVITY_RETENTION = builder.comment("Scope release grace. Accepted in-flight bullets can retain their target regions beyond this grace.")
-                .defineInRange("retentionTicks", 40, 1, 200);
+                .defineInRange("retentionTicks", 60, 1, 200);
         ACTIVITY_CHUNKS = builder.comment("Union of reserved FULL chunk footprints, including loading regions, release grace and in-flight shots.")
                 .defineInRange("maxFullChunks", 196, 25, 2048);
         ACTIVITY_DEPENDENCIES = builder.comment("Additional conservative budget for the entire ticket dependency footprint (including FULL chunks).")
@@ -246,8 +168,8 @@ public final class ServerConfig {
         ACTIVITY_QUERIES = builder.comment("Server-wide ballistic impact predictions per tick, in addition to the entity visibility budget.")
                 .defineInRange("maxQueriesPerTick", 2, 1, 16);
         builder.pop();
-        builder.comment("Read-only TACZ mean-trajectory prediction; only the first known impact can admit a target region.",
-                        "Uses live terrain/snapshots, never loads a flight corridor. Unsupported dynamic firing scripts skip prediction.")
+        builder.comment("TACZ mean-trajectory prediction renews existing target regions on local impact.",
+                        "Only retained target cores participate in collision. Unsupported firing scripts skip prediction.")
                 .push("prediction");
         PREDICTION_INTERVAL = builder.comment("Minimum ticks between predictions per player, rounded up to a subscription refresh.")
                 .defineInRange("intervalTicks", 8, 2, 20);
@@ -255,6 +177,14 @@ public final class ServerConfig {
                         "Exhausted predictions do not admit targets. Actual bullet simulation has its own budgets.")
                 .defineInRange("maxMillisPerTick", 4.0, 0.25, 10.0);
         PREDICTION_ENTITY_CHECKS = builder.defineInRange("maxEntityChecks", 8192, 256, 65536);
+        builder.pop();
+        builder.comment("Stable reticle requests and asynchronous generated-chunk metadata checks. No block snapshots.").push("targeting");
+        TARGET_SPEED=builder.defineInRange("stableDegreesPerSecond",10.0,0.1,180.0);
+        TARGET_INTERVAL=builder.defineInRange("requestIntervalTicks",5,2,40);
+        TARGET_CHECKS=builder.defineInRange("checksPerSecond",512,16,4096);
+        TARGET_CONCURRENT=builder.defineInRange("concurrentChecks",32,1,128);
+        TARGET_QUEUE=builder.defineInRange("maxQueuedChecks",4096,256,16384);
+        TARGET_INDEX=builder.defineInRange("maxIndexedChunks",131072,1024,1048576);
         builder.pop();
         builder.push("diagnostics");
         DIAGNOSTICS = builder.comment("Log eligibility changes, bullet parameters, takeover and termination reasons.")
@@ -280,13 +210,13 @@ public final class ServerConfig {
             current = UNAVAILABLE;
             wind = tacz.longrangesniping.wind.WindSettings.DISABLED;
             gunOverrides = java.util.Map.of();
-            recovery = new Recovery(false, 16, 4, 16);
+            targeting = DEFAULT_TARGETING;
         }
     }
 
     private static void reload(ModConfigEvent event) {
         if (event.getConfig().getSpec() != SPEC) return;
-        recovery = new Recovery(RECOVERY.get(), RECOVERY_READS.get(), RECOVERY_CONCURRENT.get(), RECOVERY_CACHE.get());
+        targeting = new Targeting(TARGET_SPEED.get(),TARGET_INTERVAL.get(),TARGET_CHECKS.get(),TARGET_CONCURRENT.get(),TARGET_QUEUE.get(),TARGET_INDEX.get());
         try {
             wind = new tacz.longrangesniping.wind.WindSettings(WIND_ENABLED.get(), WIND_WEATHER.get(), WIND_SEED.get(),
                     windProfile(0), windProfile(1), windProfile(2));
@@ -302,17 +232,13 @@ public final class ServerConfig {
         }
         try {
             current = new Settings(true, EligibilityPolicy.parse(ENABLED.get(), GUNS.get(), SCOPES.get()),
-                    MAX_DISTANCE.get(), MAX_ENTITIES.get(), CACHE_MIB.get(), DIAGNOSTICS.get(),
+                    MAX_DISTANCE.get(), MAX_ENTITIES.get(), DIAGNOSTICS.get(),
                     new Ballistics(BALLISTICS.get(), BALLISTICS_DISTANCE.get() == 0 ? MAX_DISTANCE.get() : Math.min(MAX_DISTANCE.get(), BALLISTICS_DISTANCE.get()),
                             MAX_BULLETS.get(), MAX_FLIGHT_TICKS.get(), EXTEND_LIFETIME.get()),
-                    new Snapshots(SNAPSHOTS.get(), SNAPSHOT_BLOCKS.get(), SNAPSHOT_SECTIONS.get(), SNAPSHOT_MILLIS.get(),
-                            REFRESH_DELAY.get(), PENDING_SECTIONS.get(), TRACKED_CHUNKS.get()),
                     new ScopeRendering(SCOPE_RENDERING.get(), SCOPE_INTERVAL.get(), SCOPE_CANDIDATES.get(), SCOPE_TRACE_CELLS.get()),
                     new Activity(ACTIVITY.get(), ACTIVITY_RADIUS.get(), ACTIVITY_STABLE.get(), ACTIVITY_RETENTION.get(),
                             ACTIVITY_CHUNKS.get(), ACTIVITY_DEPENDENCIES.get(), ACTIVITY_REGIONS.get(), ACTIVITY_STARTS.get(),
                             ACTIVITY_TIMEOUT.get(), ACTIVITY_QUERIES.get()),
-                    new Persistence(DISK.get(), DISK_MIB.get(), DISK_SECTIONS.get(), IO_QUEUE.get(), IO_QUEUE_MIB.get(),
-                            IO_MIB.get(), IO_OPS.get(), RESTORE_SECTIONS.get(), PIN_MIB.get(), PIN_SECTIONS.get()),
                     new Prediction(PREDICTION_INTERVAL.get(), PREDICTION_MILLIS.get(), PREDICTION_ENTITY_CHECKS.get()));
         } catch (IllegalArgumentException exception) {
             current = UNAVAILABLE;

@@ -70,7 +70,7 @@ public final class RangefinderAccessGameTests {
     }
 
     @GameTest(template = "ballistics", batch = "rangefinder_access")
-    public static void leavingOrRemovingDeviceStopsDetachedFlight(GameTestHelper helper) {
+    public static void leavingOrRemovingDeviceDoesNotCancelAcceptedFlight(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var scheduler = new LocalBallistics(helper.getLevel());
         var limits = new ServerConfig.Ballistics(true, 256, 4, 600, true);
@@ -80,14 +80,14 @@ public final class RangefinderAccessGameTests {
         helper.assertTrue(!bullet.isRemoved() && bullet.tickCount == 1, "Near-device flight did not advance");
         fixture.player.setPos(fixture.player.position().add(8, 0, 0));
         scheduler.tick();
-        helper.assertTrue(bullet.isRemoved() && bullet.tickCount == 1 && scheduler.status().active() == 0
-                && scheduler.status().lastTermination().equals("rangefinder_unavailable"), "Leaving device let a shot continue");
+        helper.assertTrue(!bullet.isRemoved() && bullet.tickCount == 2 && scheduler.status().active() == 1, "Leaving device canceled an accepted shot");
         var next = fixture.bullet(new Vec3(4, 5, 4), new Vec3(.1, 0, 0));
         LocalBallisticsGameTests.accept(helper, scheduler, next, limits);
         helper.getLevel().removeBlock(TestRangefinders.placeNear(fixture.player).above(), false);
         scheduler.tick();
-        helper.assertTrue(next.isRemoved() && next.tickCount == 0 && scheduler.status().active() == 0,
-                "Device removal retained a pending flight");
+        helper.assertTrue(!next.isRemoved() && next.tickCount == 1 && scheduler.status().active() == 2,
+                "Device removal canceled a pending accepted flight");
+        scheduler.clear();
         helper.succeed();
     }
 }

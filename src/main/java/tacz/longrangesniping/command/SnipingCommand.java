@@ -6,9 +6,9 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import tacz.longrangesniping.compat.tacz.TaczBridge;
 import tacz.longrangesniping.config.ServerConfig;
-import tacz.longrangesniping.ballistics.PrototypeBallistics;
-import tacz.longrangesniping.terrain.TerrainSnapshots;
-import tacz.longrangesniping.terrain.SectionKey;
+import tacz.longrangesniping.ballistics.ScopedBallistics;
+
+
 
 public final class SnipingCommand {
     @SubscribeEvent
@@ -24,14 +24,14 @@ public final class SnipingCommand {
                             decision.slot() < 0 ? "-" : decision.slot() + 1,
                             decision.zoom() == 0 ? "-" : decision.zoom()), false);
                     var config = ServerConfig.current();
-                    var status = PrototypeBallistics.INSTANCE.status(context.getSource().getLevel());
+                    var status = ScopedBallistics.INSTANCE.status(context.getSource().getLevel());
                     context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.prototype_status",
                             config.ballistics().enabled(), config.ballistics().maxDistance(), status.active(),
-                            status.accepted(), status.unknown(), status.rangeLimited()), false);
+                            status.accepted(), status.rangeLimited()), false);
                     context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.flight_status",
                             config.ballistics().extendLifetime(), config.ballistics().maxFlightTicks(),
                             status.lifetimeLimited(), status.blocked(), status.lastTermination(),
-                            PrototypeBallistics.INSTANCE.lastAdmission(context.getSource().getLevel())), false);
+                            ScopedBallistics.INSTANCE.lastAdmission(context.getSource().getLevel())), false);
                     context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.scope_status",
                             config.scopeRendering().enabled(),
                             tacz.longrangesniping.scoping.ScopeSubscriptions.INSTANCE.count(player),
@@ -46,33 +46,8 @@ public final class SnipingCommand {
                             config.prediction().intervalTicks(), config.prediction().maxMillisPerTick()), false);
                     return decision.eligible() ? 1 : 0;
                 }))
-                .then(Commands.literal("cache").requires(source -> source.hasPermission(2)).executes(context -> {
-                    var source = context.getSource();
-                    var position = net.minecraft.core.BlockPos.containing(source.getPosition());
-                    var key = SectionKey.atBlock(TerrainSnapshots.dimension(source.getLevel()),
-                            position.getX(), position.getY(), position.getZ());
-                    var cache = TerrainSnapshots.INSTANCE;
-                    var status = cache.status();
-                    source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.cache_status",
-                            ServerConfig.current().snapshots().enabled(), status.sections(), status.queued(),
-                            String.format(java.util.Locale.ROOT, "%.2f", status.bytes() / 1048576.0),
-                            status.evictions(), status.droppedRequests(), status.lastCells(), status.lastSections()), false);
-                    var disk = cache.diskStatus();
-                    source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.disk_status",
-                            disk == null ? "off" : disk.failed() ? "failed" : disk.ready() ? "ready" : "indexing",
-                            disk == null ? 0 : disk.indexed(), disk == null ? 0 : disk.diskBytes() / 1048576,
-                            disk == null ? 0 : disk.queued(), disk == null ? 0 : disk.queueBytes() / 1048576,
-                            disk == null ? 0 : disk.dropped(), disk == null ? 0 : disk.corrupt(),
-                            cache.pinnedSections(), cache.pinnedBytes() / 1048576), false);
-                    var snapshot = cache.find(key);
-                    var recovery = cache.recoveryStatus();
-                    source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.recovery_status",
-                            ServerConfig.recovery().enabled(), recovery.queued(), recovery.inFlight(), recovery.cachedColumns(),
-                            String.format(java.util.Locale.ROOT, "%.2f", recovery.bytes()/1048576.0), recovery.reads(), recovery.restored(), recovery.rejected()), false);
-                    source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.cache_section",
-                            key.dimension(), key.x(), key.y(), key.z(), cache.coverage(key).name(),
-                            snapshot.map(s -> Long.toString(s.version())).orElse("-"),
-                            snapshot.map(s -> Integer.toString(s.conservativeCells())).orElse("-")), false);
+                .then(Commands.literal("generation").requires(source -> source.hasPermission(2)).executes(context -> {
+                    context.getSource().sendSuccess(() -> Component.literal(tacz.longrangesniping.terrain.GeneratedChunks.INSTANCE.status()),false);
                     return 1;
                 })));
     }

@@ -29,7 +29,7 @@ import java.util.UUID;
 @PrefixGameTestTemplate(false)
 public final class ScopeViewGameTests {
     @GameTest(template = "ballistics", batch = "scope_views")
-    public static void lensMarginRetainsTargetsWithoutBypassingWallsOrCountLimit(GameTestHelper helper) {
+    public static void lensMarginRetainsTargetsWithoutCorridorQueriesOrExceedingCountLimit(GameTestHelper helper) {
         var level = helper.getLevel();
         var player = FakePlayerFactory.get(level, new GameProfile(UUID.randomUUID(), "scope-margin"));
         new LocalBallisticsGameTests.Fixture(helper, player);
@@ -44,9 +44,7 @@ public final class ScopeViewGameTests {
         var subscriptions = ScopeSubscriptions.INSTANCE;
         int loaded = level.getChunkSource().getLoadedChunksCount();
         try {
-            LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(original.available(), original.policy(), 20, 1,
-                    original.snapshotMemoryMiB(), original.diagnostics(), original.ballistics(), original.snapshots(),
-                    original.scopeRendering(), original.activity()));
+            LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(original.available(), original.policy(), 20, 1, original.diagnostics(), original.ballistics(), original.scopeRendering(), original.activity(), ServerConfig.DEFAULT_PREDICTION));
             ScopeViews.INSTANCE.receive(player, new ScopeViewPayload(level.dimension().location(), 25, 0.1f));
             helper.assertTrue(subscriptions.select(player, 25).contains(target), "Prefetch outside viewport failed");
             subscriptions.replace(player, List.of(target));
@@ -64,7 +62,7 @@ public final class ScopeViewGameTests {
             helper.assertTrue(!subscriptions.select(player, 25).contains(target), "New target used retention margin");
             subscriptions.replace(player, List.of(target));
             helper.setBlock(new BlockPos(9, 5, 4), Blocks.STONE);
-            helper.assertTrue(!subscriptions.select(player, 25).contains(target), "Retention bypassed current wall");
+            helper.assertTrue(subscriptions.select(player, 25).contains(target), "Selection unexpectedly required corridor visibility");
             helper.assertTrue(level.getChunkSource().getLoadedChunksCount() == loaded, "Expanded selection loaded chunks");
         } finally {
             IGunOperator.fromLivingEntity(player).aim(false);

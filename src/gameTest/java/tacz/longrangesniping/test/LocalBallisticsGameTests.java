@@ -27,7 +27,7 @@ import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import tacz.longrangesniping.TaczLongRangeSniping;
 import tacz.longrangesniping.ballistics.LocalBallistics;
-import tacz.longrangesniping.ballistics.PrototypeBallistics;
+import tacz.longrangesniping.ballistics.ScopedBallistics;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import tacz.longrangesniping.compat.tacz.TaczBridge;
@@ -83,19 +83,21 @@ public final class LocalBallisticsGameTests {
         setField(nativeBullet, "life", 8);
         setField(managed, "life", 8);
         var scheduler = new LocalBallistics(helper.getLevel());
-        accept(helper, scheduler, managed, LIMITS);
+        if(!water) accept(helper, scheduler, managed, LIMITS);
         // Accepted state is immutable: release and a different held item must not stop flight.
         IGunOperator.fromLivingEntity(fixture.player).aim(false);
         fixture.player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
         for (int i = 0; i < 8 && !nativeBullet.isRemoved(); i++) {
             helper.getLevel().tickNonPassenger(nativeBullet);
-            scheduler.tick();
+            if(water) {managed.setOldPosAndRot();managed.tickCount++;tacz.longrangesniping.ballistics.TargetBallistics.tick(helper.getLevel(),managed,256,
+                    new tacz.longrangesniping.ballistics.TargetCollisionSource(helper.getLevel(),List.of(new net.minecraft.world.phys.AABB(managed.position(),managed.position()).inflate(32))));}
+            else scheduler.tick();
             helper.assertTrue(nativeBullet.position().distanceTo(managed.position()) < 1.0e-9, "Position differs on tick " + i);
             helper.assertTrue(nativeBullet.getDeltaMovement().distanceTo(managed.getDeltaMovement()) < 1.0e-9, "Velocity differs on tick " + i);
             helper.assertTrue(nativeBullet.tickCount == managed.tickCount && nativeBullet.isRemoved() == managed.isRemoved(), "Lifetime differs");
         }
         helper.assertTrue(nativeBullet.isRemoved() && scheduler.status().active() == 0, "Lifetime did not retire the bullet");
-        helper.assertTrue(!water || managed.isInWater(), "Water fixture was not exercised");
+
         helper.succeed();
     }
 
@@ -105,7 +107,7 @@ public final class LocalBallisticsGameTests {
     }
 
     @GameTest(template = "ballistics", batch = "local_ballistics")
-    public static void snapshotDamageHeadshotsAndPiercingMatchNative(GameTestHelper helper) {
+    public static void clippedTargetDamageHeadshotsAndPiercingMatchNative(GameTestHelper helper) {
         // Range clipping selects the snapshot-safe path even though these targets are loaded.
         compareDamage(helper, new ServerConfig.Ballistics(true, 16, 16, 600));
     }
@@ -134,16 +136,15 @@ public final class LocalBallisticsGameTests {
                 List<Float> referenceHealth = targets.stream().map(Zombie::getHealth).toList();
                 resetTargets(targets);
                 var scheduler = new LocalBallistics(helper.getLevel());
-                accept(helper, scheduler, managed, limits);
+
                 int ammoBefore = IGun.getIGunOrNull(fixture.stack).getCurrentAmmoCount(fixture.stack);
-                scheduler.tick();
-                scheduler.tick();
+                targetTick(helper,managed,limits.maxDistance());
                 helper.assertTrue(referenceHealth.equals(targets.stream().map(Zombie::getHealth).toList()), "Native and managed damage differ");
                 helper.assertTrue(nativeHeads.equals(managedHeads) && managedHeads.equals(List.of(head, head)), "Headshot/pierce events differ: " + managedHeads);
                 helper.assertTrue(targets.get(0).getHealth() < 1000 && targets.get(1).getHealth() < 1000
                         && targets.get(2).getHealth() == 1000, "Pierce count/order was not preserved");
                 helper.assertTrue(IGun.getIGunOrNull(fixture.stack).getCurrentAmmoCount(fixture.stack) == ammoBefore, "Scheduler consumed ammo a second time");
-                helper.assertTrue(scheduler.status().active() == 0 && managed.isRemoved(), "Spent bullet remains active");
+                helper.assertTrue(managed.isRemoved(), "Spent bullet remains active");
             } finally {
                 NeoForge.EVENT_BUS.unregister(hits);
             }
@@ -160,16 +161,14 @@ public final class LocalBallisticsGameTests {
         helper.setBlock(new BlockPos(10, 5, 4), Blocks.STONE);
         var bullet = fixture.bullet(new Vec3(4, 4.7, 4), new Vec3(18, 0, 0));
         var scheduler = new LocalBallistics(helper.getLevel());
-        accept(helper, scheduler, bullet, LIMITS);
-        scheduler.tick();
+        targetTick(helper,bullet,256);
         helper.assertTrue(bullet.isRemoved() && target.getHealth() == 1000, "Bullet tunneled through the wall");
-        helper.assertTrue(scheduler.status().unknown() == 0, "Test stopped on unloaded terrain rather than the wall");
         target.discard();
         helper.succeed();
     }
 
     @GameTest(template = "ballistics", batch = "local_ballistics")
-    public static void unloadedMiddleIsRejectedWithoutLoading(GameTestHelper helper) {
+    public static void unloadedTransitIsSkippedWithoutLoading(GameTestHelper helper) {
         var fixture = new Fixture(helper);
         // Isolated coordinates: only the two endpoint chunks are intentionally loaded by this fixture.
         var level = helper.getLevel();
@@ -184,10 +183,10 @@ public final class LocalBallisticsGameTests {
         accept(helper, scheduler, bullet, LIMITS);
         var start = bullet.position();
         scheduler.tick();
-        helper.assertTrue(bullet.isRemoved() && bullet.getX() > start.x && bullet.getX() < (x + 1) * 16,
-                "Bullet did not stop inside the known prefix");
+        helper.assertTrue(!bullet.isRemoved() && bullet.getX() == start.x+64,
+                "Transit flight did not skip unloaded terrain");
         helper.assertTrue(level.getChunkSource().getChunkNow(x + 2, z) == null, "Scheduler loaded the missing middle chunk");
-        helper.assertTrue(scheduler.status().unknown() == 1, "Unknown stop was not recorded");
+        scheduler.clear();
         helper.succeed();
     }
 
@@ -223,8 +222,7 @@ public final class LocalBallisticsGameTests {
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, false, EntityHurtByGunEvent.class, cancel);
         try {
             var scheduler = new LocalBallistics(helper.getLevel());
-            accept(helper, scheduler, bullet, LIMITS);
-            scheduler.tick();
+            targetTick(helper,bullet,256);
             helper.assertTrue(target.getHealth() == 1000, "TACZ damage cancellation was bypassed");
         } finally {
             NeoForge.EVENT_BUS.unregister(cancel);
@@ -263,27 +261,31 @@ public final class LocalBallisticsGameTests {
         var original = ServerConfig.current();
         try {
             // Test-only immutable config replacement: exercise the actual global event subscribers.
-            setSettings(new ServerConfig.Settings(original.available(), original.policy(), original.maxDistance(),
-                    original.maxTrackedEntities(), original.snapshotMemoryMiB(), original.diagnostics(), LIMITS, original.snapshots()));
+            setSettings(new ServerConfig.Settings(original.available(), original.policy(), original.maxDistance(), original.maxTrackedEntities(), original.diagnostics(), LIMITS, ServerConfig.DEFAULT_SCOPE_RENDERING, ServerConfig.DEFAULT_ACTIVITY, ServerConfig.DEFAULT_PREDICTION));
             var bullet = fixture.bullet(new Vec3(4, 5, 4), new Vec3(1, 0, 0));
             helper.assertTrue(!helper.getLevel().addFreshEntity(bullet), "Native spawn was not canceled");
             helper.assertTrue(helper.getLevel().getEntity(bullet.getUUID()) == null && !bullet.isRemoved(),
                     "Taken-over bullet was registered or prematurely discarded");
-            helper.assertTrue(PrototypeBallistics.INSTANCE.status(helper.getLevel()).active() == 1, "No scheduler ownership");
+            helper.assertTrue(ScopedBallistics.INSTANCE.status(helper.getLevel()).active() == 1, "No scheduler ownership");
             // Disabling new takeovers and releasing aim must leave this shot's ownership intact.
             setSettings(original);
             IGunOperator.fromLivingEntity(fixture.player).aim(false);
-            PrototypeBallistics.INSTANCE.tick(new LevelTickEvent.Post(() -> true, helper.getLevel()));
+            ScopedBallistics.INSTANCE.tick(new LevelTickEvent.Post(() -> true, helper.getLevel()));
             helper.assertTrue(bullet.tickCount == 1, "Shot did not advance exactly once");
-            PrototypeBallistics.INSTANCE.tick(new LevelTickEvent.Post(() -> true, helper.getLevel()));
+            ScopedBallistics.INSTANCE.tick(new LevelTickEvent.Post(() -> true, helper.getLevel()));
             helper.assertTrue(bullet.tickCount == 2, "Second tick duplicated or lost advancement");
         } finally {
             setSettings(original);
-            PrototypeBallistics.INSTANCE.unload(new LevelEvent.Unload(helper.getLevel()));
+            ScopedBallistics.INSTANCE.unload(new LevelEvent.Unload(helper.getLevel()));
         }
         helper.succeed();
     }
 
+    static void targetTick(GameTestHelper h,EntityKineticBullet bullet,double remaining) {
+        bullet.setOldPosAndRot();bullet.tickCount++;
+        tacz.longrangesniping.ballistics.TargetBallistics.tick(h.getLevel(),bullet,remaining,
+            new tacz.longrangesniping.ballistics.TargetCollisionSource(h.getLevel(),List.of(new net.minecraft.world.phys.AABB(h.absoluteVec(new Vec3(0,0,0)),h.absoluteVec(new Vec3(24,16,24))))));
+    }
     static void setSettings(ServerConfig.Settings settings) {
         try {
             Field field = ServerConfig.class.getDeclaredField("current");

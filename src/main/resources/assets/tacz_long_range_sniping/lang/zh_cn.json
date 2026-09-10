@@ -1,8 +1,6 @@
 {
-  "tacz_long_range_sniping.cache_status": "碰撞缓存：%s；完整区块段：%s；待办：%s；估算内存：%s MiB；淘汰：%s；丢弃请求：%s；上一 tick 采集格数／完成段数：%s／%s",
-  "tacz_long_range_sniping.cache_section": "当前位置区块段 %s [%s, %s, %s]：%s；版本：%s；保守阻挡格数：%s",
   "tacz_long_range_sniping.status": "远距狙击资格：%s；枪械：%s；瞄准镜：%s；档位：%s；倍率：%s",
-  "tacz_long_range_sniping.prototype_status": "远端弹道：启用=%s，射程=%s，飞行中=%s，累计接管=%s，未知截断=%s，射程终止=%s",
+  "tacz_long_range_sniping.prototype_status": "远端弹道：启用=%s，射程=%s，飞行中=%s，累计接管=%s，射程终止=%s",
   "tacz_long_range_sniping.scope_status": "开镜实体显示：%s；当前订阅：%s／%s；距离上限：%s 格；刷新间隔：%s tick。",
   "tacz_long_range_sniping.reason.eligible": "符合条件",
   "tacz_long_range_sniping.reason.config_unavailable": "配置未加载或存在错误",
@@ -20,11 +18,9 @@
   "tacz_long_range_sniping.reason.gun_operator_unavailable": "TACZ 玩家接口不可用",
   "tacz_long_range_sniping.reason.client_layout_mismatch": "客户端瞄准镜倍率表与服务端配置不一致",
   "tacz_long_range_sniping.activity_status": "远端模拟：启用=%s，就绪/区域=%s/%s，FULL区块预算=%s/%s，依赖区块=%s，未知拒绝=%s，预算拒绝=%s，加载超时=%s，飞行保留引用=%s",
-  "tacz_long_range_sniping.flight_status": "弹道：延长寿命=%s，最多飞行=%s tick，寿命/超时终止=%s，快照挡弹=%s，上次终止=%s，上次接管=%s",
-  "tacz_long_range_sniping.disk_status": "磁盘缓存：%s，索引 %s 段 / %s MiB，队列 %s 项 / %s MiB，省略 %s，损坏或缺失 %s；在途保留 %s 段 / %s MiB",
+  "tacz_long_range_sniping.flight_status": "弹道：延长寿命=%s，最多飞行=%s tick，寿命/超时终止=%s，目标区挡弹=%s，上次终止=%s，上次接管=%s",
   "tacz_long_range_sniping.prediction_status": "弹着点预测：%s；刷新间隔至少 %s tick；全服预测软预算 %s 毫秒/tick",
   "block.tacz_long_range_sniping.rangefinder": "测距仪",
   "tacz_long_range_sniping.reason.no_nearby_rangefinder": "3 格以内没有完整的测距仪",
-  "subtitle.tacz_long_range_sniping.bullet_flyby": "子弹掠过",
-  "tacz_long_range_sniping.recovery_status": "存档地形恢复：%s | 排队 %s，读取中 %s，缓存区块柱 %s（%s MiB），扫描 %s，区段解码 %s，拒绝 %s"
+  "subtitle.tacz_long_range_sniping.bullet_flyby": "子弹掠过"
 }

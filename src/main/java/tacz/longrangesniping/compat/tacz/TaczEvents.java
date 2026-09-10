@@ -11,7 +11,7 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import tacz.longrangesniping.TaczLongRangeSniping;
 import tacz.longrangesniping.ballistics.LocalBallistics;
-import tacz.longrangesniping.ballistics.PrototypeBallistics;
+import tacz.longrangesniping.ballistics.ScopedBallistics;
 import tacz.longrangesniping.config.ServerConfig;
 import tacz.longrangesniping.eligibility.Eligibility.Decision;
 
@@ -28,7 +28,7 @@ public final class TaczEvents {
                 || !(event.getEntity() instanceof EntityKineticBullet bullet)) return;
         TaczBridge.inspectNewBullet(bullet).ifPresent(context -> {
             NeoForge.EVENT_BUS.post(new TaczShotObservedEvent(bullet, context));
-            var admission = PrototypeBallistics.INSTANCE.admit(bullet, context);
+            var admission = ScopedBallistics.INSTANCE.admit(bullet, context);
             if (admission == LocalBallistics.Admission.ACCEPTED) event.setCanceled(true);
             if (ServerConfig.current().diagnostics()) {
                 TaczLongRangeSniping.LOGGER.info("Eligible TACZ shot: ballistics={}, {}", admission, context);

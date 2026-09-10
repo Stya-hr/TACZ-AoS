@@ -69,13 +69,12 @@ public final class SnipingPhysicsGameTests {
                     fields.taczlrs$setGravity(data.getBulletData().getGravity());
                 }
                 var scheduler = new tacz.longrangesniping.ballistics.LocalBallistics(level);
-                if (mode == 2) {
-                    TestRangefinders.placeNear(player);
-                    LocalBallisticsGameTests.accept(helper, scheduler, bullet,
-                            new tacz.longrangesniping.config.ServerConfig.Ballistics(true, 1024, 16, 600));
-                }
                 for (int tick = 0; tick < 11 && !bullet.isRemoved(); tick++) {
-                    if (mode == 2) scheduler.tick(); else level.tickNonPassenger(bullet);
+                    if (mode == 2) {
+                        bullet.setOldPosAndRot();bullet.tickCount++;
+                        tacz.longrangesniping.ballistics.TargetBallistics.tick(level,bullet,1024,
+                            new tacz.longrangesniping.ballistics.TargetCollisionSource(level,java.util.List.of(target.getBoundingBox().inflate(8))));
+                    } else level.tickNonPassenger(bullet);
                 }
                 helper.assertTrue(mode == 0 ? target.getHealth() == 1000 : target.getHealth() < 1000,
                         "Actual damage disagrees with predicted curve, mode=" + mode + " health=" + target.getHealth());
@@ -93,8 +92,8 @@ public final class SnipingPhysicsGameTests {
                 tacz.longrangesniping.config.EligibilityPolicy.parse(true,
                         tacz.longrangesniping.config.EligibilityPolicy.DEFAULT_GUNS,
                         tacz.longrangesniping.config.EligibilityPolicy.DEFAULT_SCOPES),
-                old.maxDistance(), old.maxTrackedEntities(), old.snapshotMemoryMiB(), old.diagnostics(),
-                old.ballistics(), old.snapshots(), old.scopeRendering(), old.activity(), old.persistence(), old.prediction()));
+                old.maxDistance(), old.maxTrackedEntities(), old.diagnostics(),
+                old.ballistics(), old.scopeRendering(), old.activity(), old.prediction()));
         try {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var player = fixture.player;

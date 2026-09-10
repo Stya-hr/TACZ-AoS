@@ -27,7 +27,6 @@ public final class ScopeActivity {
             Comparator.comparingLong(ChunkPos::toLong));
     private record Address(ServerLevel level, int x, int z) {}
     private record Key(ServerLevel level, int x, int z, int radius) {}
-    private record Pending(Key key, long since) {}
     private record View(Vec3 eye, Vec3 direction) {}
     private record FlightHold(UUID owner, long deadline) {}
     private static final class Region {
@@ -43,8 +42,8 @@ public final class ScopeActivity {
                          long unknown, long budgetDenied, long timedOut) {}
     private final Map<Key, Region> regions = new LinkedHashMap<>();
     private final Map<Address, Integer> cores = new HashMap<>();
-    private final Set<Address> known = new LinkedHashSet<>();
-    private final Map<UUID, Pending> pending = new HashMap<>();
+    private final Map<UUID,AimStability> stability = new HashMap<>();
+    private final Map<UUID,Long> nextRequest = new HashMap<>();
     private final Deque<Long> starts = new ArrayDeque<>();
     private ServerConfig.Activity previous;
     private long clock, admitted, unknown, budgetDenied, timedOut;
@@ -58,20 +57,9 @@ public final class ScopeActivity {
     }
     private ScopeActivity() {}
 
-    @SubscribeEvent public void loaded(ChunkEvent.Load event) {
-        if (!(event.getChunk() instanceof LevelChunk chunk) || !(chunk.getLevel() instanceof ServerLevel level)
-                || !level.getServer().isSameThread()) return;
-        var pos = chunk.getPos();
-        // Scope loading must not grow its own permission footprint into unexplored territory.
-        var address = new Address(level, pos.x, pos.z);
-        if (known.contains(address) || regions.keySet().stream().noneMatch(k -> contains(k, address, k.radius + 3))) {
-            known.remove(address); known.add(address);
-            while (known.size() > 65536) known.remove(known.iterator().next());
-        }
-    }
-
     @SubscribeEvent public void tick(ServerTickEvent.Pre event) {
         if (event.getServer().tickRateManager().runsNormally()) clock++;
+        ScopeAim.prune(event.getServer());
         queries = 0;
         predictionNanos = 0;
         predictions.entrySet().removeIf(e -> {
@@ -84,30 +72,23 @@ public final class ScopeActivity {
             releaseAll(); previous = config;
         }
         starts.removeIf(t -> clock - t >= 20);
-        pending.entrySet().removeIf(e -> {
-            var player = event.getServer().getPlayerList().getPlayer(e.getKey());
-            return player == null || !TaczBridge.evaluate(player).eligible() || player.serverLevel() != e.getValue().key.level;
-        });
         for (var iterator = regions.values().iterator(); iterator.hasNext();) {
             var region = iterator.next();
             region.owners.entrySet().removeIf(e -> {
                 var player = event.getServer().getPlayerList().getPlayer(e.getKey());
                 var view = region.views.get(e.getKey());
-                // Reload invalidates old collision snapshots before the new live chunks become queryable.
                 // A still-held, unchanged reticle may finish its already-authorized load, bounded by the loading deadline.
                 if (!region.ready && player != null && enabled(player) && player.serverLevel() == region.key.level
                         && view != null && player.getEyePosition().distanceToSqr(view.eye) < 1
                         && player.getViewVector(1).dot(view.direction) > 0.99996) {
                     e.setValue(clock + config.retentionTicks());
                 }
-                return e.getValue() < clock || player == null || player.serverLevel() != region.key.level
-                        || !tacz.longrangesniping.block.RangefinderAccess.nearby(player);
+                return e.getValue() < clock || player == null || player.serverLevel() != region.key.level;
             });
             region.views.keySet().retainAll(region.owners.keySet());
             region.flights.values().removeIf(hold -> {
                 var player = event.getServer().getPlayerList().getPlayer(hold.owner);
-                return hold.deadline < clock || player == null || player.serverLevel() != region.key.level
-                        || !tacz.longrangesniping.block.RangefinderAccess.nearby(player);
+                return hold.deadline < clock || player == null || player.serverLevel() != region.key.level;
             });
             region.ready = ready(region.key);
             boolean timeout = !region.ready && clock - region.started >= config.loadTimeoutTicks();
@@ -116,12 +97,29 @@ public final class ScopeActivity {
                 removeTickets(region.key); iterator.remove();
             }
         }
+        for(var player:event.getServer().getPlayerList().getPlayers()) {
+            UUID id=player.getUUID();
+            if(!enabled(player)) { stability.remove(id); nextRequest.remove(id); ScopeAim.remove(id); continue; }
+            Vec3 direction=player.getViewVector(1).normalize();
+            boolean stable=stability.computeIfAbsent(id,k->new AimStability()).update(direction.x,direction.y,direction.z,clock,
+                    ServerConfig.targeting().stableDegreesPerSecond(),config.stableTicks());
+            Vec3 target=ScopeAim.target(player);
+            if(stable && target!=null && clock>=nextRequest.getOrDefault(id,0L)) {
+                var generation=tacz.longrangesniping.terrain.GeneratedChunks.INSTANCE.path(player.serverLevel(),player.getEyePosition(),target);
+                if(generation==tacz.longrangesniping.terrain.GeneratedChunks.State.FULL) {
+                    consider(player,target);
+                    nextRequest.put(id,clock+ServerConfig.targeting().requestIntervalTicks());
+                }
+            }
+        }
+        stability.keySet().removeIf(id->event.getServer().getPlayerList().getPlayer(id)==null);
+        nextRequest.keySet().retainAll(stability.keySet());
     }
 
     /** Called on the server's bounded subscription refresh, using server-validated visible candidates. */
     public void update(ServerPlayer player, List<? extends Entity> visible) {
         var id = player.getUUID();
-        if (!enabled(player)) { pending.remove(id); predictions.remove(id); return; }
+        if (!enabled(player)) { predictions.remove(id); return; }
         var settings = ServerConfig.current();
         var last = predictions.get(id);
         if (last != null && last.level == player.serverLevel() && clock < last.nextTick) return;
@@ -138,9 +136,10 @@ public final class ScopeActivity {
             int ticks = limits.enabled() && limits.extendLifetime() ? limits.maxFlightTicks()
                     : Math.min(life, limits.maxFlightTicks());
             double distance = limits.enabled() ? Math.min(settings.maxDistance(), limits.maxDistance()) : settings.maxDistance();
-            var boxes = visible.stream().filter(e -> !e.isRemoved() && e != player && e.isPickable())
+            var targetBounds=observationBounds(player);
+            var boxes = visible.stream().filter(e -> !e.isRemoved() && e != player && e.isPickable() && targetBounds.stream().anyMatch(b->b.intersects(e.getBoundingBox())))
                     .limit(settings.maxTrackedEntities()).map(Entity::getBoundingBox).toList();
-            var result = ImpactPrediction.predict(shot, new tacz.longrangesniping.ballistics.NoLoadCollisionSource(player.serverLevel()),
+            var result = ImpactPrediction.predict(shot, new tacz.longrangesniping.ballistics.TargetCollisionSource(player.serverLevel(),targetBounds),
                     boxes, distance, ticks, settings.scopeRendering().maxTraceCells(),
                     settings.prediction().maxEntityChecks(), started + budget - predictionNanos);
             target = result.target(); reason = result.end().name();
@@ -151,19 +150,20 @@ public final class ScopeActivity {
                     player.getGameProfile().getName(), reason, target);
         }
         predictions.put(id, new PredictionState(player.serverLevel(), clock + settings.prediction().intervalTicks(), reason));
-        consider(player, target, last == null);
+        if(target!=null) for(var region:regions.values()) {
+            var k=region.key;
+            if(k.level==player.serverLevel() && region.owners.containsKey(id)
+                && contains(k,new Address(k.level,net.minecraft.util.Mth.floor(target.x/16),net.minecraft.util.Mth.floor(target.z/16)),k.radius))
+                region.owners.put(id,clock+settings.activity().retentionTicks());
+        }
     }
 
-    /** Admission entry point; caller has already established a known, unobstructed target. No client coordinates accepted. */
+    /** Admission entry point for server-validated candidates. Every new region requires generated terrain metadata. */
     public void consider(ServerPlayer player, Vec3 target) {
-        consider(player, target, false);
-    }
-
-    private void consider(ServerPlayer player, Vec3 target, boolean activating) {
         var id = player.getUUID();
         if (!enabled(player) || target == null || !Double.isFinite(target.x + target.y + target.z)
                 || target.distanceToSqr(player.getEyePosition()) > Math.pow(ServerConfig.current().maxDistance(), 2)) {
-            pending.remove(id); return;
+            return;
         }
         var config = ServerConfig.current().activity();
         var pos = new ChunkPos(BlockPos.containing(target));
@@ -173,12 +173,7 @@ public final class ScopeActivity {
                 && contains(region.key, new Address(key.level, key.x, key.z), region.key.radius)) {
             region.owners.put(id, clock + config.retentionTicks());
             region.views.put(id, new View(player.getEyePosition(), player.getViewVector(1)));
-            pending.remove(id); return;
-        }
-        var wait = pending.get(id);
-        if (!activating) {
-            if (wait == null || !wait.key.equals(key)) { pending.put(id, new Pending(key, clock)); return; }
-            if (clock - wait.since < config.stableTicks()) return;
+            return;
         }
         long owned = regions.values().stream().filter(r -> ownedBy(r, id)).count();
         if (owned >= 2) { budgetDenied++; return; }
@@ -186,22 +181,23 @@ public final class ScopeActivity {
         if (shared != null) {
             shared.owners.put(id, clock + config.retentionTicks());
             shared.views.put(id, new View(player.getEyePosition(), player.getViewVector(1)));
-            pending.remove(id); return;
+            return;
         }
         if (regions.size() >= config.maxRegions() || starts.size() >= config.startsPerSecond()
                 || footprint(key, 2).size() > config.maxFullChunks()
                 || footprint(key, 2 + ChunkLevel.RADIUS_AROUND_FULL_CHUNK).size() > config.maxDependencyChunks()) {
             budgetDenied++; return;
         }
-        // Completed chunks + one light-loading neighbor ring. A valid persisted snapshot also proves
-        // prior residency after a restart; this is only an index lookup, not a disk read or a load.
-        for (var address : square(key, key.radius + 3)) {
-            if (!key.level.getWorldBorder().isWithinBounds(new ChunkPos(address.x, address.z))
-                    || !known.contains(address) && key.level.getChunkSource().getChunkNow(address.x, address.z) == null
-                    && !tacz.longrangesniping.terrain.TerrainSnapshots.INSTANCE.knownChunk(key.level, address.x, address.z)) {
-                unknown++; return;
-            }
+        // Batch all halo checks, not one unknown column per refresh. Never generate a frontier.
+        boolean complete=true;
+        var generated=tacz.longrangesniping.terrain.GeneratedChunks.INSTANCE;
+        if(generated.path(player.serverLevel(),player.getEyePosition(),target)!=tacz.longrangesniping.terrain.GeneratedChunks.State.FULL) {unknown++;return;}
+        for (var address:square(key,key.radius+3)) {
+            var state=generated.state(key.level,address.x,address.z);
+            if(state==tacz.longrangesniping.terrain.GeneratedChunks.State.ABSENT){unknown++;return;}
+            complete &= state==tacz.longrangesniping.terrain.GeneratedChunks.State.FULL;
         }
+        if(!complete){unknown++;return;}
         var region = new Region(key, clock);
         region.owners.put(id, clock + config.retentionTicks());
         region.views.put(id, new View(player.getEyePosition(), player.getViewVector(1)));
@@ -213,7 +209,7 @@ public final class ScopeActivity {
                 key.level.getChunkSource().addRegionTicket(TICKET, chunk, 2, chunk, true);
             }
         }
-        starts.addLast(clock); admitted++; pending.remove(id);
+        starts.addLast(clock); admitted++;
         if (ServerConfig.current().diagnostics()) tacz.longrangesniping.TaczLongRangeSniping.LOGGER.info(
                 "Scope activity admitted {} at tick {}", key, clock);
     }
@@ -245,22 +241,17 @@ public final class ScopeActivity {
         return region.owners.containsKey(player) || region.flights.values().stream().anyMatch(hold -> hold.owner.equals(player));
     }
 
-    /** Holds only already budgeted regions on the shot's horizontal path. Never adds a ticket or searches the corridor. */
+    /** Holds the shooter's already budgeted regions for this flight. Never adds a ticket or searches the corridor. */
     public FlightLease retainForShot(Entity bullet, Entity owner, int maxFlightTicks, int maxDistance) {
         var held = new ArrayList<Region>();
         Vec3 start = bullet.position(), velocity = bullet.getDeltaMovement();
         if (owner == null || !Double.isFinite(velocity.lengthSqr()) || velocity.lengthSqr() == 0) return new FlightLease(bullet.getUUID(), held);
-        // Gravity changes height; retain the target column, not a straight 3D ray that could miss a compensated shot.
-        Vec3 end = start.add(velocity.normalize().scale(maxDistance));
+        // Capture all owned cores, already bounded to two; wind can bend the horizontal path.
         for (var region : regions.values()) {
             var key = region.key;
             if (key.level != bullet.level() || !region.owners.containsKey(owner.getUUID())) continue;
-            var bounds = new AABB((key.x-key.radius)*16, -30_000_000, (key.z-key.radius)*16,
-                    (key.x+key.radius+1)*16, 30_000_000, (key.z+key.radius+1)*16).inflate(1);
-            if (bounds.contains(start) || bounds.clip(start, end).isPresent()) {
                 region.flights.put(bullet.getUUID(), new FlightHold(owner.getUUID(), clock + maxFlightTicks + 2L));
                 held.add(region);
-            }
         }
         return new FlightLease(bullet.getUUID(), held);
     }
@@ -269,6 +260,11 @@ public final class ScopeActivity {
         private final UUID bullet;
         private final List<Region> held;
         private FlightLease(UUID bullet, List<Region> held) { this.bullet = bullet; this.held = held; }
+        public List<AABB> bounds() {
+            return held.stream().filter(r->r.flights.containsKey(bullet)).map(r->{var k=r.key;
+                return new AABB((k.x-k.radius)*16,k.level.getMinBuildHeight(),(k.z-k.radius)*16,
+                        (k.x+k.radius+1)*16,k.level.getMaxBuildHeight(),(k.z+k.radius+1)*16);}).toList();
+        }
         @Override public void close() {
             for (var region : held) region.flights.remove(bullet);
             held.clear();
@@ -315,7 +311,7 @@ public final class ScopeActivity {
     }
     public void releaseAll() {
         for (var key : regions.keySet()) removeTickets(key);
-        regions.clear(); pending.clear(); starts.clear(); predictions.clear();
+        regions.clear(); starts.clear(); predictions.clear();
     }
     @SubscribeEvent public void unload(LevelEvent.Unload event) {
         regions.entrySet().removeIf(e -> {
@@ -323,10 +319,9 @@ public final class ScopeActivity {
             removeTickets(e.getKey()); return true;
         });
         predictions.values().removeIf(p -> p.level == event.getLevel());
-        known.removeIf(a -> a.level == event.getLevel());
-        pending.values().removeIf(p -> p.key.level == event.getLevel());
+        ScopeAim.clear(); stability.clear(); nextRequest.clear();
     }
     @SubscribeEvent public void stopped(ServerStoppedEvent event) {
-        releaseAll(); known.clear(); previous = null; clock = admitted = unknown = budgetDenied = timedOut = 0;
+        releaseAll(); ScopeAim.clear(); stability.clear(); nextRequest.clear(); previous = null; clock = admitted = unknown = budgetDenied = timedOut = 0;
     }
 }

@@ -9,10 +9,10 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 import tacz.longrangesniping.command.SnipingCommand;
-import tacz.longrangesniping.ballistics.PrototypeBallistics;
+import tacz.longrangesniping.ballistics.ScopedBallistics;
 import tacz.longrangesniping.compat.tacz.TaczEvents;
 import tacz.longrangesniping.config.ServerConfig;
-import tacz.longrangesniping.terrain.TerrainSnapshots;
+import tacz.longrangesniping.terrain.GeneratedChunks;
 import tacz.longrangesniping.scoping.ScopeSubscriptions;
 import tacz.longrangesniping.network.ScopeNetworking;
 
@@ -32,8 +32,8 @@ public final class TaczLongRangeSniping {
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(ScopeNetworking::register);
         NeoForge.EVENT_BUS.register(new TaczEvents());
-        NeoForge.EVENT_BUS.register(PrototypeBallistics.INSTANCE);
-        NeoForge.EVENT_BUS.register(TerrainSnapshots.INSTANCE);
+        NeoForge.EVENT_BUS.register(ScopedBallistics.INSTANCE);
+        NeoForge.EVENT_BUS.register(GeneratedChunks.INSTANCE);
         NeoForge.EVENT_BUS.register(tacz.longrangesniping.scoping.ScopeActivity.INSTANCE);
         NeoForge.EVENT_BUS.register(ScopeSubscriptions.INSTANCE);
         NeoForge.EVENT_BUS.register(tacz.longrangesniping.scoping.ScopeViews.INSTANCE);

@@ -5,7 +5,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
-import tacz.longrangesniping.ballistics.NoLoadCollisionSource;
+
 import tacz.longrangesniping.ballistics.SegmentTrace;
 import tacz.longrangesniping.compat.tacz.BallisticPreview;
 import tacz.longrangesniping.config.ServerConfig;
@@ -28,8 +28,14 @@ public final class ScopeRangefinder {
         Vec3 eye = player.getEyePosition(), direction = player.getViewVector(1).normalize();
         var boxes = visible.stream().filter(e -> e != player && !e.isRemoved() && e.isPickable())
                 .limit(settings.maxTrackedEntities()).map(Entity::getBoundingBox).toList();
-        float distance = measure(eye, direction, new NoLoadCollisionSource(player.serverLevel()), boxes,
-                settings.maxDistance(), settings.scopeRendering().maxTraceCells(), started + 2_000_000 - nanos);
+        Vec3 target=ScopeAim.target(player);
+        float distance=target==null?-1:(float)eye.distanceTo(target);
+        double closest=distance<0?settings.maxDistance():distance;
+        Vec3 end=eye.add(direction.scale(closest));
+        for(var box:boxes) {
+            var hit=box.clip(eye,end);
+            if(hit.isPresent() && eye.distanceTo(hit.get())<closest) {closest=eye.distanceTo(hit.get());distance=(float)closest;}
+        }
         nanos += System.nanoTime() - started;
         var wind = tacz.longrangesniping.wind.WindField.current(player.serverLevel());
         PacketDistributor.sendToPlayer(player, new RangePayload(player.serverLevel().dimension().location(), eye, direction, distance,

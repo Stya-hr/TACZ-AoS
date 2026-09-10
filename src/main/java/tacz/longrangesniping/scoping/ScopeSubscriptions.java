@@ -112,13 +112,7 @@ public final class ScopeSubscriptions {
             Vec3 offset = entity.getBoundingBox().getCenter().subtract(start);
             return 1 - offset.normalize().dot(direction);
         }).thenComparingDouble(player::distanceToSqr).thenComparingInt(Entity::getId));
-        var visibility = new ScopeVisibility(level, config.maxTraceCells());
-        var selected = new ArrayList<Entity>();
-        for (var candidate : candidates) {
-            if (selected.size() >= settings.maxTrackedEntities() || visibility.remaining() <= 0) break;
-            if (visibility.clear(start, candidate.getEyePosition())
-                    || visibility.clear(start, candidate.getBoundingBox().getCenter())) selected.add(candidate);
-        }
+        var selected = candidates.stream().limit(settings.maxTrackedEntities()).toList();
         return List.copyOf(selected);
     }
 

@@ -12,7 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Bounded, read-only integration. A target is accepted only before any unknown terrain on the curved path. */
+/** Bounded, read-only integration. Only selected live cores participate; transit geometry is deliberately ignored. */
 public final class ImpactPrediction {
     public enum End { BLOCK, ENTITY, UNKNOWN, RANGE, LIFETIME, BUDGET, INVALID }
     public record Result(End end, Vec3 position, int steps, int cells) {
@@ -34,7 +34,9 @@ public final class ImpactPrediction {
                 return new Result(End.INVALID, point, tick, source.cells.size());
             boolean rangeEnd = length >= maxDistance - traveled;
             Vec3 movement = rangeEnd && length > 0 ? velocity.scale((maxDistance - traveled) / length) : velocity;
-            var trace = SegmentTrace.trace(source, point.x, point.y, point.z, movement.x, movement.y, movement.z);
+            var trace = terrain instanceof tacz.longrangesniping.ballistics.TargetCollisionSource selected && !selected.intersects(point,point.add(movement))
+                    ? new SegmentTrace.Result(SegmentTrace.End.CLEAR,1)
+                    : SegmentTrace.trace(source, point.x, point.y, point.z, movement.x, movement.y, movement.z);
             if (source.exhausted) return new Result(End.BUDGET, point, tick, source.cells.size());
             double fraction = trace.fraction();
             // Match the live-flight guard: a terrain/unknown tie cannot expose an entity behind the boundary.
@@ -62,7 +64,7 @@ public final class ImpactPrediction {
             point = point.add(movement);
             traveled += movement.length();
             if (rangeEnd) return new Result(End.RANGE, point, tick + 1, source.cells.size());
-            // Native TACZ order and float rounding: move, drag, gravity. Water follows snapshot flight semantics.
+            // Native TACZ order and float rounding: move, drag, gravity. Water is sampled only inside target cores.
             float friction = shot.friction(), gravity = shot.gravity();
             if (medium != null && medium.water()) { friction = 0.4f; gravity *= 0.6f; }
             velocity = velocity.scale((double) (1f - friction)).add(0, (double) -gravity, 0);

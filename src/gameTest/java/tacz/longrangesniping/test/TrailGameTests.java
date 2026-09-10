@@ -11,7 +11,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import tacz.longrangesniping.TaczLongRangeSniping;
-import tacz.longrangesniping.ballistics.BulletVisualAccess;
+
 import tacz.longrangesniping.network.ShotTrailsPayload;
 import tacz.longrangesniping.trails.TrailSegment;
 
@@ -37,21 +37,19 @@ public final class TrailGameTests {
     }
 
     @GameTest(template = "ballistics", batch = "trails")
-    public static void nativeVisualEndpointStopsAtImpactWithoutChangingPhysics(GameTestHelper helper) {
+    public static void targetVisualEndpointStopsAtActualImpact(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         helper.setBlock(new BlockPos(10, 5, 4), Blocks.STONE);
         var bullet = fixture.bullet(new Vec3(4, 5.5, 4.5), new Vec3(12, 0, 0));
-        var capture = (BulletVisualAccess) bullet;
-        capture.taczlrs$beginVisualStep(); bullet.tick(); var impact = capture.taczlrs$endVisualStep();
+        LocalBallisticsGameTests.targetTick(helper,bullet,128); var impact=bullet.position();
         helper.assertTrue(impact != null && Math.abs(impact.x - helper.absoluteVec(new Vec3(10, 0, 0)).x) < 0.001,
                 "Native trail did not end at wall");
-        helper.assertTrue(bullet.isRemoved() && bullet.position().x > impact.x, "Visual capture changed native tick movement");
+        helper.assertTrue(bullet.isRemoved() && bullet.position().equals(impact), "Visual endpoint differs from actual impact");
         helper.setBlock(new BlockPos(10, 5, 4), Blocks.AIR);
         var cow = helper.spawn(EntityType.COW, new Vec3(10, 4.5, 4.5)); cow.setNoAi(true); cow.setNoGravity(true);
         bullet = fixture.bullet(new Vec3(4, 5.5, 4.5), new Vec3(12, 0, 0));
         LocalBallisticsGameTests.setField(bullet, "pierce", 1);
-        capture = (BulletVisualAccess) bullet;
-        capture.taczlrs$beginVisualStep(); bullet.tick(); impact = capture.taczlrs$endVisualStep();
+        LocalBallisticsGameTests.targetTick(helper,bullet,128); impact=bullet.position();
         helper.assertTrue(bullet.isRemoved() && impact != null && impact.x <= cow.getBoundingBox().maxX,
                 "Native trail overshot entity impact");
         cow.discard(); helper.succeed();
