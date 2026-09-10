@@ -41,6 +41,9 @@ public final class SnipingCommand {
                             config.activity().enabled(), activity.ready(), activity.regions(), activity.fullChunks(),
                             config.activity().maxFullChunks(), activity.dependencyChunks(), activity.unknown(),
                             activity.budgetDenied(), activity.timedOut(), activity.flightPins()), false);
+                    context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.prediction_status",
+                            tacz.longrangesniping.scoping.ScopeActivity.INSTANCE.predictionStatus(player.getUUID()),
+                            config.prediction().intervalTicks(), config.prediction().maxMillisPerTick()), false);
                     return decision.eligible() ? 1 : 0;
                 }))
                 .then(Commands.literal("cache").requires(source -> source.hasPermission(2)).executes(context -> {

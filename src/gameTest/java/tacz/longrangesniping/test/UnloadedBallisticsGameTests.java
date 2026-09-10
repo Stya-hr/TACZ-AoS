@@ -86,6 +86,19 @@ public final class UnloadedBallisticsGameTests {
                     int loadedBefore = level.getChunkSource().getLoadedChunksCount();
                     long queuedBefore = cache.status().queued();
 
+                    var parameters = tacz.longrangesniping.compat.tacz.BallisticPreview.read(fixture.player).orElseThrow();
+                    var preview = new tacz.longrangesniping.compat.tacz.BallisticPreview(new Vec3(wx + 8, 85, wz + 4),
+                            new Vec3(parameters.velocity().length(), 0, 0), parameters.gravity(), parameters.friction(), parameters.lifeTicks());
+                    var predicted = tacz.longrangesniping.scoping.ImpactPrediction.predict(preview,
+                            new tacz.longrangesniping.ballistics.NoLoadCollisionSource(level), List.of(),
+                            1024, 600, 65536, 8192, System.nanoTime() + 1_000_000_000L);
+                    helper.assertTrue(predicted.end() == tacz.longrangesniping.scoping.ImpactPrediction.End.BLOCK
+                                    && Math.abs(predicted.position().x - (wx + 40)) < .001,
+                            "Impact prediction ignored unloaded cached wall: " + predicted);
+                    helper.assertTrue(level.getChunkSource().getLoadedChunksCount() == loadedBefore
+                                    && cache.status().queued() == queuedBefore,
+                            "Impact prediction loaded terrain or requested collision acquisition");
+
                     // A single movement segment crosses three unloaded chunks and reaches a real live target.
                     var direct = shot(fixture, new Vec3(wx + 8, 85, wz + 8), new Vec3(64, 0, 0));
                     var scheduler = new LocalBallistics(level);

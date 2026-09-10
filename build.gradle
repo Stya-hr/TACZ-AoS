@@ -83,6 +83,7 @@ neoForge {
 // Development-only runtime dependencies are not published to consumers.
 configurations {
     runtimeClasspath.extendsFrom localRuntime
+    taczBundledApi { transitive = false }
 }
 
 dependencies {
@@ -90,6 +91,7 @@ dependencies {
     testImplementation 'com.google.code.gson:gson:2.11.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     implementation "maven.modrinth:tacz-1.21.1:${tacz_version}"
+    taczBundledApi "maven.modrinth:tacz-1.21.1:${tacz_version}"
     compileOnly files("libs/${voxy_jar}")
     // NeoVoxy also requires Sodium on the client; see libs/README.md.
     if (providers.gradleProperty('enable_voxy_runtime').get().toBoolean()) {
@@ -98,6 +100,16 @@ dependencies {
         }
         localRuntime files("libs/${voxy_jar}")
     }
+}
+
+// TACZ ships its Lua API as nested jars. Compile against exactly those versions; TACZ supplies runtime classes.
+def extractTaczLuaApi = tasks.register('extractTaczLuaApi', Sync) {
+    from(zipTree(configurations.taczBundledApi.singleFile)) { include 'META-INF/jarjar/luaj-*.jar' }
+    into layout.buildDirectory.dir('tacz-lua-api')
+}
+dependencies {
+    compileOnly files(fileTree(layout.buildDirectory.dir('tacz-lua-api')) { include '**/*.jar' }).builtBy(extractTaczLuaApi)
+    gameTestCompileOnly files(fileTree(layout.buildDirectory.dir('tacz-lua-api')) { include '**/*.jar' }).builtBy(extractTaczLuaApi)
 }
 
 tasks.named('test', Test).configure { useJUnitPlatform() }

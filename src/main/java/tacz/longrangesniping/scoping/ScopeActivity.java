@@ -49,6 +49,13 @@ public final class ScopeActivity {
     private ServerConfig.Activity previous;
     private long clock, admitted, unknown, budgetDenied, timedOut;
     private int queries;
+    private long predictionNanos;
+    private record PredictionState(ServerLevel level, long nextTick, String reason) {}
+    private final Map<UUID, PredictionState> predictions = new HashMap<>();
+    public String predictionStatus(UUID player) {
+        var value = predictions.get(player);
+        return value == null ? "none" : value.reason;
+    }
     private ScopeActivity() {}
 
     @SubscribeEvent public void loaded(ChunkEvent.Load event) {
@@ -66,6 +73,11 @@ public final class ScopeActivity {
     @SubscribeEvent public void tick(ServerTickEvent.Pre event) {
         if (event.getServer().tickRateManager().runsNormally()) clock++;
         queries = 0;
+        predictionNanos = 0;
+        predictions.entrySet().removeIf(e -> {
+            var player = event.getServer().getPlayerList().getPlayer(e.getKey());
+            return player == null || player.serverLevel() != e.getValue().level || !enabled(player);
+        });
         var settings = ServerConfig.current();
         var config = settings.activity();
         if (!Objects.equals(previous, config) || !settings.available() || !config.enabled() || !settings.scopeRendering().enabled()) {
@@ -103,21 +115,37 @@ public final class ScopeActivity {
 
     /** Called on the server's bounded subscription refresh, using server-validated visible candidates. */
     public void update(ServerPlayer player, List<? extends Entity> visible) {
-        if (!enabled(player)) { pending.remove(player.getUUID()); return; }
-        if (queries >= ServerConfig.current().activity().maxQueriesPerTick()) return;
-        queries++;
-        Vec3 start = player.getEyePosition(), direction = player.getViewVector(1);
+        var id = player.getUUID();
+        if (!enabled(player)) { pending.remove(id); predictions.remove(id); return; }
         var settings = ServerConfig.current();
-        var visibility = new ScopeVisibility(player.serverLevel(), settings.scopeRendering().maxTraceCells());
-        Vec3 target = visibility.firstBlock(start, start.add(direction.scale(settings.maxDistance()))).orElse(null);
-        double nearest = target == null ? settings.maxDistance() : target.distanceTo(start);
-        // A visible entity intersecting the actual reticle can locate an air target before the terrain hit.
-        for (var entity : visible) {
-            var hit = entity.getBoundingBox().inflate(0.25).clip(start, start.add(direction.scale(nearest)));
-            if (hit.isPresent() && hit.get().distanceTo(start) < nearest) {
-                target = entity.position(); nearest = hit.get().distanceTo(start);
-            }
+        var last = predictions.get(id);
+        if (last != null && last.level == player.serverLevel() && clock < last.nextTick) return;
+        long budget = (long) (settings.prediction().maxMillisPerTick() * 1_000_000);
+        if (queries >= settings.activity().maxQueriesPerTick() || predictionNanos >= budget) return;
+        queries++;
+        long started = System.nanoTime();
+        var shot = tacz.longrangesniping.compat.tacz.BallisticPreview.read(player).orElse(null);
+        Vec3 target = null;
+        String reason = "UNSUPPORTED_PARAMETERS";
+        if (shot != null) {
+            var limits = settings.ballistics();
+            int life = Math.max(1, shot.lifeTicks() - 1);
+            int ticks = limits.enabled() && limits.extendLifetime() ? limits.maxFlightTicks()
+                    : Math.min(life, limits.maxFlightTicks());
+            double distance = limits.enabled() ? Math.min(settings.maxDistance(), limits.maxDistance()) : settings.maxDistance();
+            var boxes = visible.stream().filter(e -> !e.isRemoved() && e != player && e.isPickable())
+                    .limit(settings.maxTrackedEntities()).map(Entity::getBoundingBox).toList();
+            var result = ImpactPrediction.predict(shot, new tacz.longrangesniping.ballistics.NoLoadCollisionSource(player.serverLevel()),
+                    boxes, distance, ticks, settings.scopeRendering().maxTraceCells(),
+                    settings.prediction().maxEntityChecks(), started + budget - predictionNanos);
+            target = result.target(); reason = result.end().name();
         }
+        predictionNanos += System.nanoTime() - started;
+        if (settings.diagnostics() && (last == null || !last.reason.equals(reason))) {
+            tacz.longrangesniping.TaczLongRangeSniping.LOGGER.info("Scope prediction for {}: {}, target={}",
+                    player.getGameProfile().getName(), reason, target);
+        }
+        predictions.put(id, new PredictionState(player.serverLevel(), clock + settings.prediction().intervalTicks(), reason));
         consider(player, target);
     }
 
@@ -262,13 +290,14 @@ public final class ScopeActivity {
     }
     public void releaseAll() {
         for (var key : regions.keySet()) removeTickets(key);
-        regions.clear(); pending.clear(); starts.clear();
+        regions.clear(); pending.clear(); starts.clear(); predictions.clear();
     }
     @SubscribeEvent public void unload(LevelEvent.Unload event) {
         regions.entrySet().removeIf(e -> {
             if (e.getKey().level != event.getLevel()) return false;
             removeTickets(e.getKey()); return true;
         });
+        predictions.values().removeIf(p -> p.level == event.getLevel());
         known.removeIf(a -> a.level == event.getLevel());
         pending.values().removeIf(p -> p.key.level == event.getLevel());
     }

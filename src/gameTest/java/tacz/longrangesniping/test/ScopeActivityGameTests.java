@@ -79,6 +79,7 @@ public final class ScopeActivityGameTests {
             // server's idle work/time here; production activity never polls tasks or blocks on loading.
             for (int work = 0; work < 1024 && level.getChunkSource().pollTask(); work++) {}
             try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+            player.setOldPosAndRot(); second.setOldPosAndRot();
             operator.aim(aiming[0]); player.setYRot(-90); player.setYHeadRot(-90); player.setXRot(0);
             secondOperator.aim(sharing[0]); second.setYRot(-90); second.setYHeadRot(-90); second.setXRot(0);
         } });
@@ -90,11 +91,12 @@ public final class ScopeActivityGameTests {
             for (int x = cx - 14; x < cx; x++) level.getChunk(x, cz);
             for (int x = wx - 8; x < wx + 24; x++) for (int z = wz - 8; z < wz + 24; z++)
                 level.setBlock(new BlockPos(x, 79, z), Blocks.STONE.defaultBlockState(), 2);
-            level.setBlock(new BlockPos(wx + 14, 81, wz + 8), Blocks.STONE.defaultBlockState(), 2);
+            for (int y = 79; y <= 84; y++) level.setBlock(new BlockPos(wx + 14, y, wz + 8), Blocks.STONE.defaultBlockState(), 2);
             saved.setPos(wx + 8, 80, wz + 12); level.addFreshEntity(saved);
             var key = new SectionKey(TerrainSnapshots.dimension(level), cx, 5, cz);
             var corridor = new java.util.ArrayList<SectionKey>();
-            for (int x = cx - 14; x <= cx; x++) corridor.add(new SectionKey(TerrainSnapshots.dimension(level), x, 5, cz));
+            for (int x = cx - 14; x <= cx; x++) for (int y = 4; y <= 5; y++)
+                corridor.add(new SectionKey(TerrainSnapshots.dimension(level), x, y, cz));
             for (int i = 0; i < 4096 && corridor.stream().anyMatch(k -> cache.coverage(k) == SnapshotStore.Coverage.UNKNOWN); i++) cache.tick();
             helper.assertTrue(cache.coverage(key) != SnapshotStore.Coverage.UNKNOWN, "Target snapshot missing");
             helper.assertTrue(new ScopeVisibility(level, 65536).firstBlock(player.getEyePosition(),
@@ -110,7 +112,7 @@ public final class ScopeActivityGameTests {
         helper.runAfterDelay(230, () -> checked.accept(() -> {
             helper.assertTrue(activity.status().regions() == 0 && activity.status().budgetDenied() > 0,
                     "FULL footprint budget was bypassed: " + activity.status()
-                            + ", decision=" + tacz.longrangesniping.compat.tacz.TaczBridge.evaluate(player)
+                            + ", prediction=" + activity.predictionStatus(player.getUUID()) + ", decision=" + tacz.longrangesniping.compat.tacz.TaczBridge.evaluate(player)
                             + ", look=" + player.getViewVector(1) + ", target=" + new ScopeVisibility(level, 65536).firstBlock(
                             player.getEyePosition(), player.getEyePosition().add(player.getViewVector(1).scale(1024)))
                             + ", registered=" + (level.getServer().getPlayerList().getPlayer(player.getUUID()) == player));

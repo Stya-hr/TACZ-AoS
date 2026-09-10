@@ -28,6 +28,11 @@ public final class ServerConfig {
     private static final ModConfigSpec.IntValue ACTIVITY_RADIUS, ACTIVITY_STABLE, ACTIVITY_RETENTION,
             ACTIVITY_CHUNKS, ACTIVITY_DEPENDENCIES, ACTIVITY_REGIONS, ACTIVITY_STARTS, ACTIVITY_TIMEOUT, ACTIVITY_QUERIES;
 
+    private static final ModConfigSpec.IntValue PREDICTION_INTERVAL, PREDICTION_ENTITY_CHECKS;
+    private static final ModConfigSpec.DoubleValue PREDICTION_MILLIS;
+    public record Prediction(int intervalTicks, double maxMillisPerTick, int maxEntityChecks) {}
+    public static final Prediction DEFAULT_PREDICTION = new Prediction(8, 4.0, 8192);
+
     private static final ModConfigSpec.BooleanValue DISK;
     private static final ModConfigSpec.IntValue DISK_MIB, DISK_SECTIONS, IO_QUEUE, IO_QUEUE_MIB, IO_MIB, IO_OPS, RESTORE_SECTIONS, PIN_MIB, PIN_SECTIONS;
     public record Persistence(boolean enabled, int diskMiB, int maxDiskSections, int maxQueuedSections,
@@ -57,7 +62,13 @@ public final class ServerConfig {
 
     public record Settings(boolean available, EligibilityPolicy policy, int maxDistance,
                            int maxTrackedEntities, int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics,
-                           Snapshots snapshots, ScopeRendering scopeRendering, Activity activity, Persistence persistence) {
+                           Snapshots snapshots, ScopeRendering scopeRendering, Activity activity, Persistence persistence, Prediction prediction) {
+        public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
+                        int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots,
+                        ScopeRendering scopeRendering, Activity activity, Persistence persistence) {
+            this(available, policy, maxDistance, maxTrackedEntities, snapshotMemoryMiB, diagnostics, ballistics,
+                    snapshots, scopeRendering, activity, persistence, DEFAULT_PREDICTION);
+        }
         public Settings(boolean available, EligibilityPolicy policy, int maxDistance, int maxTrackedEntities,
                         int snapshotMemoryMiB, boolean diagnostics, Ballistics ballistics, Snapshots snapshots,
                         ScopeRendering scopeRendering, Activity activity) {
@@ -177,8 +188,18 @@ public final class ServerConfig {
                 .defineInRange("startsPerSecond", 2, 1, 20);
         ACTIVITY_TIMEOUT = builder.comment("Release tickets if the entire core does not become entity-ticking before this deadline.")
                 .defineInRange("loadTimeoutTicks", 100, 20, 600);
-        ACTIVITY_QUERIES = builder.comment("Server-wide target-ray queries per tick, in addition to the entity visibility budget.")
+        ACTIVITY_QUERIES = builder.comment("Server-wide ballistic impact predictions per tick, in addition to the entity visibility budget.")
                 .defineInRange("maxQueriesPerTick", 2, 1, 16);
+        builder.pop();
+        builder.comment("Read-only TACZ mean-trajectory prediction; only the first known impact can admit a target region.",
+                        "Uses live terrain/snapshots, never loads a flight corridor. Unsupported dynamic firing scripts skip prediction.")
+                .push("prediction");
+        PREDICTION_INTERVAL = builder.comment("Minimum ticks between predictions per player, rounded up to a subscription refresh.")
+                .defineInRange("intervalTicks", 8, 2, 20);
+        PREDICTION_MILLIS = builder.comment("Soft server-wide prediction budget per tick; checked every 64 collision lookups.",
+                        "Exhausted predictions do not admit targets. Actual bullet simulation has its own budgets.")
+                .defineInRange("maxMillisPerTick", 4.0, 0.25, 10.0);
+        PREDICTION_ENTITY_CHECKS = builder.defineInRange("maxEntityChecks", 8192, 256, 65536);
         builder.pop();
         builder.push("diagnostics");
         DIAGNOSTICS = builder.comment("Log eligibility changes, bullet parameters, takeover and termination reasons.")
@@ -212,7 +233,8 @@ public final class ServerConfig {
                             ACTIVITY_CHUNKS.get(), ACTIVITY_DEPENDENCIES.get(), ACTIVITY_REGIONS.get(), ACTIVITY_STARTS.get(),
                             ACTIVITY_TIMEOUT.get(), ACTIVITY_QUERIES.get()),
                     new Persistence(DISK.get(), DISK_MIB.get(), DISK_SECTIONS.get(), IO_QUEUE.get(), IO_QUEUE_MIB.get(),
-                            IO_MIB.get(), IO_OPS.get(), RESTORE_SECTIONS.get(), PIN_MIB.get(), PIN_SECTIONS.get()));
+                            IO_MIB.get(), IO_OPS.get(), RESTORE_SECTIONS.get(), PIN_MIB.get(), PIN_SECTIONS.get()),
+                    new Prediction(PREDICTION_INTERVAL.get(), PREDICTION_MILLIS.get(), PREDICTION_ENTITY_CHECKS.get()));
         } catch (IllegalArgumentException exception) {
             current = UNAVAILABLE;
             TaczLongRangeSniping.LOGGER.error("Invalid sniping eligibility config; eligibility disabled: {}", exception.getMessage());
