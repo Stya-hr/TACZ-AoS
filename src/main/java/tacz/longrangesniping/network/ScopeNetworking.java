@@ -16,7 +16,7 @@ public final class ScopeNetworking {
     public static void setClientReceiver(Consumer<ScopeTargetsPayload> handler) { receiver = handler; }
     public static void setTrailReceiver(Consumer<ShotTrailsPayload> handler) { trailReceiver = handler; }
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("7");
+        var registrar = event.registrar("8");
         registrar.playToClient(NearMissPayload.TYPE, NearMissPayload.STREAM_CODEC,
                 (payload, context) -> nearMissReceiver.accept(payload));
         registrar.playToClient(RangePayload.TYPE, RangePayload.STREAM_CODEC,
@@ -25,6 +25,11 @@ public final class ScopeNetworking {
                 (payload, context) -> receiver.accept(payload));
         registrar.playToClient(ShotTrailsPayload.TYPE, ShotTrailsPayload.STREAM_CODEC,
                 (payload, context) -> trailReceiver.accept(payload));
+        registrar.playToServer(ScopeEntityRepairPayload.TYPE, ScopeEntityRepairPayload.STREAM_CODEC,
+                (payload, context) -> {
+                    if (context.player() instanceof net.minecraft.server.level.ServerPlayer player)
+                        tacz.longrangesniping.scoping.ScopeSubscriptions.INSTANCE.repair(player, payload);
+                });
         registrar.playToServer(ScopeViewPayload.TYPE, ScopeViewPayload.STREAM_CODEC,
                 (payload, context) -> {
                     if (context.player() instanceof net.minecraft.server.level.ServerPlayer player)

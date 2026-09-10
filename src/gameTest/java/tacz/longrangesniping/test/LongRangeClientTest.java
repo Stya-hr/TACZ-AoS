@@ -41,6 +41,14 @@ public final class LongRangeClientTest {
     private static volatile String failure;
     private static volatile boolean movement;
     private static int ticks, stageTick, frames, draws;
+    private static volatile boolean missedInitialSpawn;
+    @SubscribeEvent public static void missingSpawn(net.neoforged.neoforge.event.entity.EntityJoinLevelEvent event) {
+        // Reproduce an observer whose first pairing was not installed locally. Holding aim must repair it.
+        if (ENABLED && event.getLevel().isClientSide() && uuid != null && event.getEntity().getUUID().equals(uuid) && !missedInitialSpawn) {
+            missedInitialSpawn = true; event.setCanceled(true);
+            TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT deliberately skipped first remote pairing");
+        }
+    }
     private static boolean started;
     private static Cow original;
     private static UUID uuid;
@@ -70,7 +78,7 @@ public final class LongRangeClientTest {
             if (animal == null || !animal.getUUID().equals(uuid) || ScopedRendering.hasRealClientChunk(animal)) {
                 finish(false,"Wrong animal or remote terrain sent to 2-chunk client"); return;
             }
-            if (++draws >= 40 && movement) {
+            if (++draws >= 40 && movement && missedInitialSpawn) {
                 Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
                 TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT PASS distance={}, view={}, uuid={}, extraDraws={}",
                         animal.distanceTo(mc.player),mc.options.renderDistance().get(),uuid,ScopedRendering.extraDraws());

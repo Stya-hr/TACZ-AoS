@@ -223,6 +223,18 @@ public final class ScopeActivity {
         return settings.available() && settings.activity().enabled() && settings.scopeRendering().enabled()
                 && player.isAlive() && !player.isSpectator() && TaczBridge.evaluate(player).eligible();
     }
+    /** Small, already budgeted cores first; querying these boxes cannot request any terrain. */
+    public List<AABB> observationBounds(ServerPlayer player) {
+        var result = new ArrayList<AABB>();
+        for (var region : regions.values()) {
+            var k=region.key;
+            if (k.level != player.serverLevel() || !region.owners.containsKey(player.getUUID())) continue;
+            result.add(new AABB((k.x-k.radius)*16,k.level.getMinBuildHeight(),(k.z-k.radius)*16,
+                    (k.x+k.radius+1)*16,k.level.getMaxBuildHeight(),(k.z+k.radius+1)*16));
+        }
+        return result;
+    }
+
     public boolean active(Entity entity) {
         var settings = ServerConfig.current();
         return settings.available() && settings.activity().enabled() && settings.scopeRendering().enabled()

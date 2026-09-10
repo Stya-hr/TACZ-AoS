@@ -167,6 +167,18 @@ public final class ScopeActivityGameTests {
             helper.assertTrue(restored[0] != null && restored[0] != saved && restored[0].tickCount > 0,
                     "Saved entity was not restored/ticked");
             helper.assertTrue(!restored[0].isNoAi() && restored[0].getNoActionTime() < 100, "Remote idle goal gating remains");
+            // A broad-phase scan must not spend every candidate on off-axis objects near the shooter.
+            var clutter = new java.util.ArrayList<net.minecraft.world.entity.Entity>();
+            try {
+                for (int i=0;i<300;i++) {
+                    var stand=EntityType.ARMOR_STAND.create(level);
+                    stand.setPos(player.position().add(1,0,5)); stand.setNoGravity(true);
+                    level.addFreshEntity(stand); clutter.add(stand);
+                }
+                ScopeSubscriptions.INSTANCE.replace(player, java.util.List.of());
+                helper.assertTrue(ScopeSubscriptions.INSTANCE.select(player,25).contains(restored[0]),
+                        "First acquisition starved behind off-axis nearby candidates");
+            } finally { clutter.forEach(net.minecraft.world.entity.Entity::discard); }
             initial[0] = restored[0].position();
             helper.assertTrue(restored[0].getNavigation().moveTo(wx + 17, 80, wz + 12, 1), "Native navigation could not create path");
             wolf[0] = EntityType.WOLF.create(level); wolf[0].setPos(wx + 1, 80, wz + 2); level.addFreshEntity(wolf[0]);

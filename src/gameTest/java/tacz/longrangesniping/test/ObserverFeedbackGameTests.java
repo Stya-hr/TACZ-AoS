@@ -51,6 +51,48 @@ public final class ObserverFeedbackGameTests {
     }
 
     @GameTest(template = "ballistics", batch = "observer_feedback")
+    public static void missingScopeEntityRepairIsAuthorizedBoundedAndUsesNativePairing(GameTestHelper h) {
+        var viewer = viewer(h, new Vec3(4,5,4), false);
+        new LocalBallisticsGameTests.Fixture(h, viewer.player);
+        var subscriptions = tacz.longrangesniping.scoping.ScopeSubscriptions.INSTANCE;
+        var cow = h.spawn(net.minecraft.world.entity.EntityType.COW, new Vec3(12,5,4));
+        var other = h.spawn(net.minecraft.world.entity.EntityType.COW, new Vec3(13,5,4));
+        var dimension = h.getLevel().dimension().location();
+        try {
+            subscriptions.replace(viewer.player, List.of(cow));
+            var tracker = tacz.longrangesniping.scoping.ScopeSubscriptions.tracker(h.getLevel(), cow.getId());
+            h.assertTrue(tracker.taczlrs$seenBy().contains(viewer.player.connection), "Fixture did not start native observation");
+            int observers = tracker.taczlrs$seenBy().size();
+            int chunks = h.getLevel().getChunkSource().getLoadedChunksCount();
+            viewer.packets.clear();
+            var requested = new tacz.longrangesniping.network.ScopeEntityRepairPayload.Target(cow.getId(), cow.getUUID());
+            var request = new tacz.longrangesniping.network.ScopeEntityRepairPayload(dimension, List.of(
+                    requested, requested,
+                    new tacz.longrangesniping.network.ScopeEntityRepairPayload.Target(other.getId(), other.getUUID()),
+                    new tacz.longrangesniping.network.ScopeEntityRepairPayload.Target(cow.getId(), UUID.randomUUID())));
+            subscriptions.repair(viewer.player, request);
+            h.assertTrue(viewer.packets.size() == 1 && viewer.packets.getFirst() instanceof net.minecraft.network.protocol.game.ClientboundBundlePacket,
+                    "Repair duplicated or disclosed an unauthorized target");
+            var bundle = (net.minecraft.network.protocol.game.ClientboundBundlePacket) viewer.packets.getFirst();
+            int spawns = 0;
+            for (var packet : bundle.subPackets()) if (packet instanceof net.minecraft.network.protocol.game.ClientboundAddEntityPacket spawn) {
+                h.assertTrue(spawn.getId() == cow.getId() && spawn.getUUID().equals(cow.getUUID()), "Repair spawned the wrong identity");
+                spawns++;
+            }
+            h.assertTrue(spawns == 1, "Missing native spawn packet");
+            subscriptions.repair(viewer.player, request);
+            h.assertTrue(viewer.packets.size() == 1, "Repair rate limit was bypassed");
+            h.assertTrue(tracker.taczlrs$seenBy().size() == observers, "Repair changed observation ownership");
+            h.assertTrue(h.getLevel().getChunkSource().getLoadedChunksCount() == chunks, "Repair loaded chunks");
+        } finally {
+            subscriptions.replace(viewer.player, List.of());
+            h.getLevel().players().remove(viewer.player);
+            cow.discard(); other.discard();
+        }
+        h.succeed();
+    }
+
+    @GameTest(template = "ballistics", batch = "observer_feedback")
     public static void bystanderReceivesLocalTrailAndOneFlybyWithoutRangefinder(GameTestHelper h) {
         var f = new LocalBallisticsGameTests.Fixture(h);
         var visible = viewer(h, new Vec3(12, 5.38, 7), true);

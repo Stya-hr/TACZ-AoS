@@ -32,6 +32,8 @@ import java.util.Set;
 public final class ScopedRendering {
     private record Pose(ScopeTargetsPayload.Target target, Vec3 from, float fromYaw, float fromPitch, long received) {}
     private static final Map<Integer, Pose> targets = new HashMap<>();
+    private static final Map<tacz.longrangesniping.network.ScopeEntityRepairPayload.Target, Long> missing = new HashMap<>();
+    private static long nextRepair;
     private static ClientLevel level;
     private static long tick, received;
     private static int interval = 4;
@@ -50,7 +52,7 @@ public final class ScopedRendering {
     private static void receive(ScopeTargetsPayload payload) {
         var minecraft = Minecraft.getInstance();
         if (minecraft.level == null || !minecraft.level.dimension().location().equals(payload.dimension())) return;
-        if (level != minecraft.level) { targets.clear(); level = minecraft.level; }
+        if (level != minecraft.level) { targets.clear(); missing.clear(); nextRepair=0; level = minecraft.level; }
         var next = new HashMap<Integer, Pose>();
         for (var target : payload.targets()) {
             Entity entity = level.getEntity(target.id());
@@ -80,14 +82,15 @@ public final class ScopedRendering {
     @SubscribeEvent public static void tick(ClientTickEvent.Post event) {
         tick++;
         var minecraft = Minecraft.getInstance();
-        if (minecraft.level != level) { targets.clear(); level = minecraft.level; }
+        if (minecraft.level != level) { targets.clear(); missing.clear(); nextRepair=0; level = minecraft.level; }
         active = false;
         if (minecraft.player != null && level != null && ServerConfig.current().scopeRendering().enabled()) {
             var decision = TaczClientBridge.evaluateForDisplay(minecraft.player);
             active = decision.eligible(); zoom = decision.zoom();
         }
         if (tick - received > Math.max(40, interval * 3)) targets.clear();
-        if (!active || level == null) return;
+        if (!active || level == null) { missing.clear(); return; }
+        repairMissing();
         for (var pose : targets.values()) {
             var entity = level.getEntity(pose.target.id());
             if (entity == null || !entity.getUUID().equals(pose.target.uuid())
@@ -107,6 +110,26 @@ public final class ScopedRendering {
                 if (living.hurtTime > 0) living.hurtTime--;
             }
             entity.tickCount++;
+        }
+    }
+
+    private static void repairMissing() {
+        var absent = new HashSet<tacz.longrangesniping.network.ScopeEntityRepairPayload.Target>();
+        var request = new java.util.ArrayList<tacz.longrangesniping.network.ScopeEntityRepairPayload.Target>();
+        for (var pose:targets.values()) {
+            var t=pose.target; var entity=level.getEntity(t.id());
+            if (entity!=null && !entity.isRemoved() && entity.getUUID().equals(t.uuid())) continue;
+            var key=new tacz.longrangesniping.network.ScopeEntityRepairPayload.Target(t.id(),t.uuid());
+            absent.add(key);
+            long since=missing.computeIfAbsent(key,ignored -> tick);
+            if (tick>=nextRepair && tick-since>=tacz.longrangesniping.network.ScopeEntityRepairPayload.GRACE_TICKS
+                    && request.size()<tacz.longrangesniping.network.ScopeEntityRepairPayload.MAX_TARGETS) request.add(key);
+        }
+        missing.keySet().retainAll(absent);
+        if (!request.isEmpty()) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(new tacz.longrangesniping.network.ScopeEntityRepairPayload(level.dimension().location(),request));
+            nextRepair=tick+tacz.longrangesniping.network.ScopeEntityRepairPayload.INTERVAL_TICKS;
+            for (var key:request) missing.put(key,tick);
         }
     }
 
@@ -154,7 +177,7 @@ public final class ScopedRendering {
     @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
         ScopeViewReporter.reset();
         extraDrawn.clear();
-        targets.clear(); level = null; active = false;
+        targets.clear(); missing.clear(); nextRepair=0; level = null; active = false;
         if (byteBuffer != null) { byteBuffer.close(); byteBuffer = null; buffers = null; }
     }
 }

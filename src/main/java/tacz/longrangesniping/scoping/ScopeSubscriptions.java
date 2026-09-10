@@ -23,16 +23,18 @@ import tacz.longrangesniping.network.ScopeTargetsPayload;
 
 import java.util.*;
 
-/** Server-authoritative selective observers; no chunk tickets, disk reads or client-supplied entity IDs. */
+/** Server-authoritative selective observers; no chunk tickets, disk reads or client-selected subscriptions. */
 public final class ScopeSubscriptions {
     public static final ScopeSubscriptions INSTANCE = new ScopeSubscriptions();
     private record Lease(ServerLevel level, Map<Integer, UUID> targets) {}
     private final Map<UUID, Lease> leases = new HashMap<>();
+    private final Map<UUID, Long> repairAttempts = new HashMap<>();
     private long tick;
     private ScopeSubscriptions() {}
 
     @SubscribeEvent public void tick(ServerTickEvent.Post event) {
         tick++;
+        repairAttempts.values().removeIf(when -> tick-when > 100);
         ScopeRangefinder.beginTick();
         var players = new ArrayList<>(event.getServer().getPlayerList().getPlayers());
         // Rotate priority between refresh rounds so the global activity query cap does not always favor the same players.
@@ -92,12 +94,19 @@ public final class ScopeSubscriptions {
             if (entity != null && seen.add(id)) { visited[0]++; inspect.accept(entity); }
         }
         // The entity section index visits existing entities only, and the callback can abort without building an unbounded list.
-        level.getEntities().get(EntityTypeTest.forClass(Entity.class), bounds, entity -> {
+        java.util.function.Consumer<AABB> scan = area -> level.getEntities().get(EntityTypeTest.forClass(Entity.class), area, entity -> {
             if (!seen.add(entity.getId())) return AbortableIterationConsumer.Continuation.CONTINUE;
             if (++visited[0] > config.maxCandidates()) return AbortableIterationConsumer.Continuation.ABORT;
             inspect.accept(entity);
             return AbortableIterationConsumer.Continuation.CONTINUE;
         });
+        // First acquisition has no retained IDs. Otherwise nearby off-axis clutter can consume the entire
+        // broad-phase budget on every refresh before the newly loaded impact region is ever visited.
+        for (var core : ScopeActivity.INSTANCE.observationBounds(player)) {
+            if (visited[0] >= config.maxCandidates()) break;
+            if (core.intersects(bounds)) scan.accept(core.intersect(bounds));
+        }
+        if (visited[0] < config.maxCandidates()) scan.accept(bounds);
         // Centerline targets first, then nearer targets; deterministic tie-break avoids packet churn.
         candidates.sort(Comparator.<Entity>comparingDouble(entity -> {
             Vec3 offset = entity.getBoundingBox().getCenter().subtract(start);
@@ -158,6 +167,29 @@ public final class ScopeSubscriptions {
                 ServerConfig.current().scopeRendering().intervalTicks(), poses));
     }
 
+    /** Repair a missing client object without changing observation ownership or creating chunks. */
+    public void repair(ServerPlayer player, tacz.longrangesniping.network.ScopeEntityRepairPayload request) {
+        var id=player.getUUID();
+        var last=repairAttempts.get(id);
+        if (last!=null && tick-last<tacz.longrangesniping.network.ScopeEntityRepairPayload.INTERVAL_TICKS) return;
+        repairAttempts.put(id,tick);
+        if (!request.dimension().equals(player.level().dimension().location()) || !TaczBridge.evaluate(player).eligible()) return;
+        var seen=new HashSet<Integer>();
+        for (var requested:request.targets()) {
+            if (!seen.add(requested.id())) continue;
+            var entity=player.serverLevel().getEntity(requested.id());
+            if (entity==null || !entity.getUUID().equals(requested.uuid()) || !authorized(player,entity)) continue;
+            var tracker=tracker(player.serverLevel(),entity.getId());
+            if (tracker==null) continue;
+            if (!tracker.taczlrs$seenBy().contains(player.connection)) { tracker.taczlrs$updatePlayer(player); continue; }
+            // Resend the native spawn/metadata/equipment bundle; do not duplicate StartTracking callbacks.
+            var packets=new ArrayList<net.minecraft.network.protocol.Packet<? super net.minecraft.network.protocol.game.ClientGamePacketListener>>();
+            tracker.taczlrs$serverEntity().sendPairingData(player,
+                    new net.neoforged.neoforge.network.bundle.PacketAndPayloadAcceptor<>(packets::add));
+            player.connection.send(new net.minecraft.network.protocol.game.ClientboundBundlePacket(packets));
+        }
+    }
+
     private static boolean normallyTracked(ServerPlayer player, Entity entity, TrackedEntityAccessor tracker) {
         var map = (ChunkMapAccessor) player.serverLevel().getChunkSource().chunkMap;
         Vec3 offset = entity.position().subtract(player.position());
@@ -170,10 +202,10 @@ public final class ScopeSubscriptions {
         return (TrackedEntityAccessor) ((ChunkMapAccessor) level.getChunkSource().chunkMap).taczlrs$trackers().get(id);
     }
     public int count(ServerPlayer player) { var lease = leases.get(player.getUUID()); return lease == null ? 0 : lease.targets.size(); }
-    @SubscribeEvent public void logout(PlayerEvent.PlayerLoggedOutEvent event) { leases.remove(event.getEntity().getUUID()); }
+    @SubscribeEvent public void logout(PlayerEvent.PlayerLoggedOutEvent event) { leases.remove(event.getEntity().getUUID()); repairAttempts.remove(event.getEntity().getUUID()); }
     @SubscribeEvent public void dimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) replace(player, List.of());
     }
     @SubscribeEvent public void unload(LevelEvent.Unload event) { leases.values().removeIf(lease -> lease.level == event.getLevel()); }
-    @SubscribeEvent public void stopped(ServerStoppedEvent event) { leases.clear(); tick = 0; }
+    @SubscribeEvent public void stopped(ServerStoppedEvent event) { leases.clear(); repairAttempts.clear(); tick = 0; }
 }
