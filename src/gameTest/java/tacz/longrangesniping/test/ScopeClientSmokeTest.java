@@ -37,9 +37,11 @@ public final class ScopeClientSmokeTest {
     private static final TicketType<ChunkPos> TARGET = TicketType.create("scope_smoke_target", Comparator.comparingLong(ChunkPos::toLong));
     private static boolean started;
     private static int clientTicks, serverTicks, drawnTicks;
-    private static volatile int cowId = -1;
+    private static volatile int cowId = -1, itemId = -1;
+    private static boolean itemObserved;
     private static volatile boolean release, failed;
     private static Cow cow;
+    private static boolean navigating;
     private static double firstRenderedX;
 
     @SubscribeEvent public static void client(ClientTickEvent.Post event) {
@@ -62,16 +64,19 @@ public final class ScopeClientSmokeTest {
         IGunOperator.fromLivingEntity(mc.player).aim(!release);
         if (!release && ScopedRendering.active() && ScopedRendering.extraDraws() > 0 && mc.level.getEntity(cowId) != null) {
             if (ScopedRendering.hasRealClientChunk(mc.level.getEntity(cowId))) { fail("Target client chunk unexpectedly loaded"); return; }
+            if (mc.level.getEntity(itemId) instanceof net.minecraft.world.entity.item.ItemEntity && ScopedRendering.extraDraws() >= 2)
+                itemObserved = true;
             if (drawnTicks == 0) firstRenderedX = mc.level.getEntity(cowId).getX();
-            if (++drawnTicks == 30) {
-                if (Math.abs(mc.level.getEntity(cowId).getX() - firstRenderedX) < 0.1) { fail("Remote pose stayed frozen"); return; }
+            if (++drawnTicks == 60) {
+                if (!navigating || Math.abs(mc.level.getEntity(cowId).getX() - firstRenderedX) < 0.1) { fail("Remote pose stayed frozen"); return; }
+                if (!itemObserved) { fail("Non-living item did not render remotely"); return; }
                 Screenshot.grab(mc.gameDirectory, "scope-render.png", mc.getMainRenderTarget(), ignored -> {});
                 release = true;
                 TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST rendered remote cow outside 6-chunk view; releasing scope");
             }
         }
-        if (release && !ScopedRendering.active() && ScopedRendering.targetCount() == 0 && mc.level.getEntity(cowId) == null) {
-            TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST PASSED: real pairing, remote render, no client chunk, release/removal");
+        if (release && !ScopedRendering.active() && ScopedRendering.targetCount() == 0 && mc.level.getEntity(cowId) == null && mc.level.getEntity(itemId) == null) {
+            TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST PASSED: real pairing, native AI movement, remote cow/item render, no client chunk, release/removal");
             try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
             catch (java.io.IOException failure) { throw new RuntimeException(failure); }
             mc.stop();
@@ -96,8 +101,11 @@ public final class ScopeClientSmokeTest {
             var original = ServerConfig.current();
             LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(true, original.policy(), 1024, 32, 128, false,
                     original.prototype(), new ServerConfig.Snapshots(true, 65536, 256, 10, 0, 8192, 8192)));
-            // Fixture-only terrain preparation; production subscriptions have no ticket/loading path.
+            // Fixture-only preparation of previously explored terrain. Activity must later restore native simulation.
             for (int x = 0; x <= 14; x++) level.getChunk(x, 0);
+            for (int x = 10; x <= 18; x++) for (int z = -4; z <= 4; z++) level.getChunk(x, z);
+            for (int x = 220; x <= 246; x++) for (int z = 0; z <= 15; z++)
+                level.setBlock(new net.minecraft.core.BlockPos(x, 79, z), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 2);
             // Complete the corridor before short-lived fixture loading tickets can expire.
             for (int attempt = 0; attempt < 2048 && !corridorKnown(level); attempt++) TerrainSnapshots.INSTANCE.tick();
             if (!corridorKnown(level)) { fail("Fixture corridor could not be captured"); return; }
@@ -105,12 +113,19 @@ public final class ScopeClientSmokeTest {
             level.getChunkSource().addRegionTicket(TARGET, endpoint, 0, endpoint);
         }
         if (serverTicks == 230) {
-            cow = EntityType.COW.create(level); cow.setPos(232, 80.32, 8); cow.setOldPosAndRot();
-            cow.setNoAi(true); cow.setNoGravity(true); level.addFreshEntity(cow); cowId = cow.getId();
+            cow = EntityType.COW.create(level); cow.setPos(232, 80, 8); cow.setOldPosAndRot();
+            level.addFreshEntity(cow); cowId = cow.getId();
+            var item = new net.minecraft.world.entity.item.ItemEntity(level, 233, 80.2, 9,
+                    new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND));
+            item.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO); level.addFreshEntity(item); itemId = item.getId();
             TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST prepared cow={}, snapshots={}", cowId, TerrainSnapshots.INSTANCE.status().sections());
         }
         if (serverTicks >= 230) {
-            cow.setPos(232 + Math.sin((serverTicks - 230) / 20.0), 80.32, 8);
+            if (!navigating && cow.onGround() && tacz.longrangesniping.scoping.ScopeActivity.INSTANCE.active(cow)
+                    && level.isPositionEntityTicking(cow.blockPosition())) {
+                navigating = cow.getNavigation().moveTo(242, 80, 8, 1.0);
+                if (!navigating) { fail("Native cow path could not start"); return; }
+            }
             IGunOperator.fromLivingEntity(player).aim(!release);
             if (serverTicks % 40 == 0) {
                 TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST state: serverEligible={}, clientActive={}, received={}, draws={}, eye={}, look={}, selectable={}, visible={}",

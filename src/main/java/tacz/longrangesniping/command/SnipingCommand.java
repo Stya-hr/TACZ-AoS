@@ -32,6 +32,11 @@ public final class SnipingCommand {
                             config.scopeRendering().enabled(),
                             tacz.longrangesniping.scoping.ScopeSubscriptions.INSTANCE.count(player),
                             config.maxTrackedEntities(), config.maxDistance(), config.scopeRendering().intervalTicks()), false);
+                    var activity = tacz.longrangesniping.scoping.ScopeActivity.INSTANCE.status();
+                    context.getSource().sendSuccess(() -> Component.translatable("tacz_long_range_sniping.activity_status",
+                            config.activity().enabled(), activity.ready(), activity.regions(), activity.fullChunks(),
+                            config.activity().maxFullChunks(), activity.dependencyChunks(), activity.unknown(),
+                            activity.budgetDenied(), activity.timedOut()), false);
                     return decision.eligible() ? 1 : 0;
                 }))
                 .then(Commands.literal("cache").requires(source -> source.hasPermission(2)).executes(context -> {

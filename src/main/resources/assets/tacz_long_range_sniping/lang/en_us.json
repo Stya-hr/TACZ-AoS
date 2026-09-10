@@ -18,5 +18,6 @@
   "tacz_long_range_sniping.reason.zoom_not_allowed": "Current zoom not allowed",
   "tacz_long_range_sniping.reason.not_aiming": "Not aiming",
   "tacz_long_range_sniping.reason.gun_operator_unavailable": "TACZ player interface unavailable",
-  "tacz_long_range_sniping.reason.client_layout_mismatch": "Client scope zoom layout differs from server configuration"
+  "tacz_long_range_sniping.reason.client_layout_mismatch": "Client scope zoom layout differs from server configuration",
+  "tacz_long_range_sniping.activity_status": "Remote simulation: enabled=%s, ready/regions=%s/%s, FULL chunks=%s/%s, dependency chunks=%s, unknown refusals=%s, budget refusals=%s, loading timeouts=%s"
 }

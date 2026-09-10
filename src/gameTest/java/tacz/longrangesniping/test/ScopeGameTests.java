@@ -22,7 +22,6 @@ import tacz.longrangesniping.config.ServerConfig;
 import tacz.longrangesniping.network.ScopeTargetsPayload;
 import tacz.longrangesniping.scoping.ScopeSubscriptions;
 import tacz.longrangesniping.scoping.ScopeVisibility;
-import tacz.longrangesniping.scoping.ScopedEntityPolicy;
 
 import java.util.List;
 import java.util.UUID;
@@ -31,21 +30,25 @@ import java.util.UUID;
 @PrefixGameTestTemplate(false)
 public final class ScopeGameTests {
     @GameTest(template = "ballistics", batch = "scope")
-    public static void inheritanceIncludesOrdinaryMobsAndRejectsBossesAndDisplays(GameTestHelper helper) {
-        for (var type : List.of(EntityType.COW, EntityType.DONKEY, EntityType.ZOMBIE, EntityType.GHAST, EntityType.VILLAGER)) {
-            helper.assertTrue(ScopedEntityPolicy.allows(type.create(helper.getLevel()), false), "Ordinary mob excluded: " + type);
+    public static void bossesDisplaysAndItemsAreSelectable(GameTestHelper helper) {
+        var player = FakePlayerFactory.get(helper.getLevel(), new GameProfile(UUID.randomUUID(), "scope-types"));
+        new LocalBallisticsGameTests.Fixture(helper, player);
+        player.setPos(helper.absoluteVec(new Vec3(4, 4, 4)));
+        player.setYRot(-90); player.setYHeadRot(-90); player.setXRot(0);
+        for (var type : List.of(EntityType.COW, EntityType.WARDEN, EntityType.WITHER, EntityType.ENDER_DRAGON,
+                EntityType.ARMOR_STAND, EntityType.ITEM_FRAME, EntityType.ITEM_DISPLAY, EntityType.BLOCK_DISPLAY,
+                EntityType.TEXT_DISPLAY, EntityType.ITEM)) {
+            var entity = type.create(helper.getLevel());
+            entity.setPos(player.getX() + 10, player.getEyeY() - entity.getEyeHeight(), player.getZ());
+            if (entity instanceof LivingEntity living && living instanceof net.minecraft.world.entity.Mob mob) mob.setNoAi(true);
+            if (entity instanceof net.minecraft.world.entity.item.ItemEntity item)
+                item.setItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND));
+            helper.getLevel().addFreshEntity(entity);
+            try {
+                helper.assertTrue(ScopeSubscriptions.INSTANCE.select(player, 25).contains(entity), "Entity type still filtered: " + type);
+            } finally { entity.discard(); }
         }
-        for (var type : List.of(EntityType.ENDER_DRAGON, EntityType.WITHER, EntityType.WARDEN, EntityType.ARMOR_STAND,
-                EntityType.ITEM_FRAME, EntityType.ITEM_DISPLAY, EntityType.BLOCK_DISPLAY, EntityType.ITEM)) {
-            helper.assertTrue(!ScopedEntityPolicy.allows(type.create(helper.getLevel()), true), "Non-mob or boss included: " + type);
-        }
-        var player = helper.makeMockPlayer(net.minecraft.world.level.GameType.SURVIVAL);
-        helper.assertTrue(ScopedEntityPolicy.allows(player, true) && !ScopedEntityPolicy.allows(player, false), "Player option ignored");
-        var config = new ServerConfig.ScopeRendering(true, true, 4, 256, 65536,
-                List.of("net.minecraft.world.entity.animal.Animal"));
-        helper.assertTrue(!ScopedEntityPolicy.configured(EntityType.COW.create(helper.getLevel()), config)
-                && !ScopedEntityPolicy.configured(EntityType.DONKEY.create(helper.getLevel()), config)
-                && ScopedEntityPolicy.configured(EntityType.ZOMBIE.create(helper.getLevel()), config), "Superclass exclusion did not cover descendants");
+        IGunOperator.fromLivingEntity(player).aim(false);
         helper.succeed();
     }
 
@@ -68,7 +71,6 @@ public final class ScopeGameTests {
             var selected = subscriptions.select(player, 25);
             helper.assertTrue(selected.contains(cow) && !selected.contains(behind), "Aim cone selection failed: selected=" + selected
                     + ", eye=" + player.getEyePosition() + ", look=" + player.getViewVector(1) + ", cow=" + cow.position()
-                    + ", policy=" + ScopedEntityPolicy.configured(cow, ServerConfig.current().scopeRendering())
                     + ", visible=" + new ScopeVisibility(level, 65536).clear(player.getEyePosition(), cow.getEyePosition()));
             var tracker = ScopeSubscriptions.tracker(level, cow.getId());
             helper.assertTrue(tracker != null, "No native tracker");
@@ -116,6 +118,9 @@ public final class ScopeGameTests {
         int loaded = level.getChunkSource().getLoadedChunksCount();
         var start = helper.absoluteVec(new Vec3(4, 5, 4));
         helper.assertTrue(new ScopeVisibility(level, 4096).clear(start, start.add(12, 0, 0)), "Known air was rejected");
+        helper.assertTrue(new ScopeVisibility(level, 4096).firstBlock(start, start.add(12, 0, 0)).isEmpty(), "Air became a loading target");
+        helper.assertTrue(new ScopeVisibility(level, 4096).firstBlock(new Vec3(13000000, 90, 13000000),
+                new Vec3(13000030, 90, 13000000)).isEmpty(), "Unknown terrain became a loading target");
         helper.assertTrue(!new ScopeVisibility(level, 1).clear(start, start.add(12, 0, 0)), "Exhausted budget authorized target");
         helper.assertTrue(!new ScopeVisibility(level, 4096).clear(new Vec3(13000000, 90, 13000000), new Vec3(13000030, 90, 13000000)),
                 "Unknown terrain authorized target");

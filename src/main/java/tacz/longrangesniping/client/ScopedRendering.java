@@ -22,7 +22,6 @@ import tacz.longrangesniping.config.ServerConfig;
 import tacz.longrangesniping.network.ScopeNetworking;
 import tacz.longrangesniping.network.ScopeTargetsPayload;
 import tacz.longrangesniping.scoping.ScopeCone;
-import tacz.longrangesniping.scoping.ScopedEntityPolicy;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -89,7 +88,7 @@ public final class ScopedRendering {
         if (!active || level == null) return;
         for (var pose : targets.values()) {
             var entity = level.getEntity(pose.target.id());
-            if (!(entity instanceof LivingEntity living) || !entity.getUUID().equals(pose.target.uuid())
+            if (entity == null || !entity.getUUID().equals(pose.target.uuid())
                     || entity.isRemoved() || entity.isAlwaysTicking() || hasRealClientChunk(entity)) continue;
             // Client entities outside received chunks do not tick, so native lerpTo alone would leave them frozen.
             // Advance only visual pose/animation, never Mob.tick/baseTick/AI or world collision.
@@ -98,11 +97,13 @@ public final class ScopedRendering {
             entity.setPos(pose.from.lerp(new Vec3(pose.target.x(), pose.target.y(), pose.target.z()), alpha));
             entity.setYRot(Mth.rotLerp((float) alpha, pose.fromYaw, pose.target.yaw()));
             entity.setXRot(Mth.rotLerp((float) alpha, pose.fromPitch, pose.target.pitch()));
-            living.yHeadRotO = living.yHeadRot; living.yHeadRot = pose.target.headYaw();
-            living.yBodyRotO = living.yBodyRot; living.yBodyRot = pose.target.bodyYaw();
-            float moved = (float) Math.sqrt(Mth.square(entity.getX() - entity.xOld) + Mth.square(entity.getZ() - entity.zOld));
-            living.walkAnimation.update(Math.min(moved * 4, 1), 0.4f);
-            if (living.hurtTime > 0) living.hurtTime--;
+            if (entity instanceof LivingEntity living) {
+                living.yHeadRotO = living.yHeadRot; living.yHeadRot = pose.target.headYaw();
+                living.yBodyRotO = living.yBodyRot; living.yBodyRot = pose.target.bodyYaw();
+                float moved = (float) Math.sqrt(Mth.square(entity.getX() - entity.xOld) + Mth.square(entity.getZ() - entity.zOld));
+                living.walkAnimation.update(Math.min(moved * 4, 1), 0.4f);
+                if (living.hurtTime > 0) living.hurtTime--;
+            }
             entity.tickCount++;
         }
     }
@@ -125,8 +126,7 @@ public final class ScopedRendering {
             RenderSystem.setShaderFogEnd(ServerConfig.current().maxDistance() + 64);
             for (var pose : targets.values()) {
                 Entity entity = level.getEntity(pose.target.id());
-                if (!(entity instanceof LivingEntity) || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved()
-                        || !ScopedEntityPolicy.allows(entity, ServerConfig.current().scopeRendering().players())
+                if (entity == null || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved()
                         || entity.isInvisibleTo(minecraft.player) || !event.getFrustum().isVisible(entity.getBoundingBox())) continue;
                 var box = entity.getBoundingBox();
                 Vec3 offset = box.getCenter().subtract(eye);

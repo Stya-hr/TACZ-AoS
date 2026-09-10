@@ -33,7 +33,10 @@ public final class ScopeSubscriptions {
 
     @SubscribeEvent public void tick(ServerTickEvent.Post event) {
         tick++;
-        for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+        var players = new ArrayList<>(event.getServer().getPlayerList().getPlayers());
+        // Rotate priority between refresh rounds so the global activity query cap does not always favor the same players.
+        if (!players.isEmpty()) Collections.rotate(players, (int) (tick / ServerConfig.current().scopeRendering().intervalTicks() % players.size()));
+        for (ServerPlayer player : players) {
             var settings = ServerConfig.current();
             var decision = TaczBridge.evaluate(player);
             var lease = leases.get(player.getUUID());
@@ -44,12 +47,14 @@ public final class ScopeSubscriptions {
             if (lease != null && lease.level != player.serverLevel()) replace(player, List.of());
             // Spread players over refresh slots; an initial scope gets an immediate refresh.
             if (lease == null || Math.floorMod(tick + player.getId(), settings.scopeRendering().intervalTicks()) == 0) {
-                replace(player, select(player, decision.zoom()));
+                var selected = select(player, decision.zoom());
+                ScopeActivity.INSTANCE.update(player, selected);
+                replace(player, selected);
             }
         }
     }
 
-    public List<LivingEntity> select(ServerPlayer player, double zoom) {
+    public List<Entity> select(ServerPlayer player, double zoom) {
         var level = player.serverLevel();
         var settings = ServerConfig.current();
         var config = settings.scopeRendering();
@@ -58,27 +63,27 @@ public final class ScopeSubscriptions {
         Vec3 end = start.add(direction.scale(distance));
         double radius = distance * Math.tan(ScopeCone.halfAngle(zoom)) + 4;
         AABB bounds = new AABB(start, end).inflate(radius);
-        var candidates = new ArrayList<LivingEntity>();
+        var candidates = new ArrayList<Entity>();
         int[] visited = {0};
         // The entity section index visits existing entities only, and the callback can abort without building an unbounded list.
-        level.getEntities().get(EntityTypeTest.forClass(LivingEntity.class), bounds, entity -> {
+        level.getEntities().get(EntityTypeTest.forClass(Entity.class), bounds, entity -> {
             if (++visited[0] > config.maxCandidates()) return AbortableIterationConsumer.Continuation.ABORT;
             var box = entity.getBoundingBox();
             Vec3 offset = box.getCenter().subtract(start);
             if (entity != player && entity.isAlive() && !entity.isInvisibleTo(player) && entity.broadcastToPlayer(player)
-                    && ScopedEntityPolicy.configured(entity, config)
+                    && !entity.isSpectator()
                     && level.getChunkSource().getChunkNow(entity.chunkPosition().x, entity.chunkPosition().z) != null
                     && ScopeCone.contains(offset.x, offset.y, offset.z, direction.x, direction.y, direction.z,
                     ScopeCone.radius(box.getXsize(), box.getYsize(), box.getZsize()), distance, zoom)) candidates.add(entity);
             return AbortableIterationConsumer.Continuation.CONTINUE;
         });
         // Centerline targets first, then nearer targets; deterministic tie-break avoids packet churn.
-        candidates.sort(Comparator.<LivingEntity>comparingDouble(entity -> {
+        candidates.sort(Comparator.<Entity>comparingDouble(entity -> {
             Vec3 offset = entity.getBoundingBox().getCenter().subtract(start);
             return 1 - offset.normalize().dot(direction);
         }).thenComparingDouble(player::distanceToSqr).thenComparingInt(Entity::getId));
         var visibility = new ScopeVisibility(level, config.maxTraceCells());
-        var selected = new ArrayList<LivingEntity>();
+        var selected = new ArrayList<Entity>();
         for (var candidate : candidates) {
             if (selected.size() >= settings.maxTrackedEntities() || visibility.remaining() <= 0) break;
             if (visibility.clear(start, candidate.getEyePosition())
@@ -96,7 +101,7 @@ public final class ScopeSubscriptions {
     }
 
     /** Reconciliation uses the existing native observer set, so returning to vanilla never duplicates or loses an entity. */
-    public void replace(ServerPlayer player, List<LivingEntity> targets) {
+    public void replace(ServerPlayer player, List<? extends Entity> targets) {
         var previous = leases.remove(player.getUUID());
         var level = player.serverLevel();
         var ids = new LinkedHashMap<Integer, UUID>();
@@ -126,7 +131,7 @@ public final class ScopeSubscriptions {
             int light = level.getBrightness(LightLayer.BLOCK, target.blockPosition()) << 4
                     | level.getBrightness(LightLayer.SKY, target.blockPosition()) << 20;
             poses.add(new ScopeTargetsPayload.Target(target.getId(), target.getUUID(), target.getX(), target.getY(), target.getZ(),
-                    target.getYRot(), target.getXRot(), target.getYHeadRot(), target.yBodyRot, light, !normallyTracked(player, target, tracker)));
+                    target.getYRot(), target.getXRot(), target.getYHeadRot(), (target instanceof LivingEntity living ? living.yBodyRot : target.getYRot()), light, !normallyTracked(player, target, tracker)));
         }
         PacketDistributor.sendToPlayer(player, new ScopeTargetsPayload(level.dimension().location(),
                 ServerConfig.current().scopeRendering().intervalTicks(), poses));

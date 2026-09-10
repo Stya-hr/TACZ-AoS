@@ -18,5 +18,6 @@
   "tacz_long_range_sniping.reason.zoom_not_allowed": "当前倍率未获允许",
   "tacz_long_range_sniping.reason.not_aiming": "当前未开镜",
   "tacz_long_range_sniping.reason.gun_operator_unavailable": "TACZ 玩家接口不可用",
-  "tacz_long_range_sniping.reason.client_layout_mismatch": "客户端瞄准镜倍率表与服务端配置不一致"
+  "tacz_long_range_sniping.reason.client_layout_mismatch": "客户端瞄准镜倍率表与服务端配置不一致",
+  "tacz_long_range_sniping.activity_status": "远端模拟：启用=%s，就绪/区域=%s/%s，FULL区块预算=%s/%s，依赖区块=%s，未知拒绝=%s，预算拒绝=%s，加载超时=%s"
 }
