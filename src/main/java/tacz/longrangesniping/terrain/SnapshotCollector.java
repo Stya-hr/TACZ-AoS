@@ -13,7 +13,7 @@ public final class SnapshotCollector {
     }
     public record Work(int cells, int sections) {}
     private final SnapshotStore store;
-    private final Map<SectionKey, Long> pending = new LinkedHashMap<>();
+    private final LinkedHashMap<SectionKey, Long> pending = new LinkedHashMap<>();
     private SectionKey building;
     private SectionSnapshot.Builder builder;
     private int maxPending;
@@ -35,6 +35,11 @@ public final class SnapshotCollector {
         if (store.contains(key) || pending.containsKey(key)) return;
         if (pending.size() >= maxPending) { dropped++; return; }
         pending.put(key, dueTick);
+    }
+    /** Missing geometry requested by a current query shares the same queue and work budget. */
+    public void prioritize(SectionKey key, long dueTick) {
+        request(key, dueTick);
+        if (pending.containsKey(key)) pending.putFirst(key, dueTick);
     }
     public void changed(SectionKey key, long dueTick) {
         store.invalidate(key);

@@ -42,6 +42,11 @@ public final class ServerConfig {
     public static final Prediction DEFAULT_PREDICTION = new Prediction(8, 4.0, 8192);
 
     private static final ModConfigSpec.BooleanValue DISK;
+    private static final ModConfigSpec.BooleanValue RECOVERY;
+    private static final ModConfigSpec.IntValue RECOVERY_READS, RECOVERY_CONCURRENT, RECOVERY_CACHE;
+    public record Recovery(boolean enabled, int readsPerSecond, int maxConcurrentReads, int cacheMiB) {}
+    private static volatile Recovery recovery = new Recovery(false, 16, 4, 16);
+    public static Recovery recovery() { return recovery; }
     private static final ModConfigSpec.IntValue DISK_MIB, DISK_SECTIONS, IO_QUEUE, IO_QUEUE_MIB, IO_MIB, IO_OPS, RESTORE_SECTIONS, PIN_MIB, PIN_SECTIONS;
     public record Persistence(boolean enabled, int diskMiB, int maxDiskSections, int maxQueuedSections,
                               int queueMiB, int ioMiBPerSecond, int operationsPerSecond, int restoresPerTick,
@@ -199,6 +204,15 @@ public final class ServerConfig {
                 .defineInRange("pinMiB", 32, 0, 1024);
         PIN_SECTIONS = builder.defineInRange("maxPinnedSections", 2048, 0, 32768);
         builder.pop();
+        builder.comment("Recover missing collision snapshots from existing server region files, including worlds viewed with LOD renderers.",
+                        "Asynchronous terrain-only scans; never generates, loads or simulates corridor chunks. Unconfirmed data stays unknown.",
+                        "Decoded collision sampling shares snapshots CPU/cell budgets. Temporary palette storage is separately bounded.")
+                .push("savedTerrainRecovery");
+        RECOVERY = builder.define("enabled", true);
+        RECOVERY_READS = builder.defineInRange("readsPerSecond", 16, 1, 64);
+        RECOVERY_CONCURRENT = builder.defineInRange("maxConcurrentReads", 4, 1, 8);
+        RECOVERY_CACHE = builder.defineInRange("cacheMiB", 16, 2, 64);
+        builder.pop();
         builder.comment("Additional entity tracking/rendering while near a rangefinder with an allowed gun/scope and aiming, at every zoom.",
                         "All entity types may be displayed; activity controls bounded server-side target loading.")
                 .push("scopeRendering");
@@ -266,11 +280,13 @@ public final class ServerConfig {
             current = UNAVAILABLE;
             wind = tacz.longrangesniping.wind.WindSettings.DISABLED;
             gunOverrides = java.util.Map.of();
+            recovery = new Recovery(false, 16, 4, 16);
         }
     }
 
     private static void reload(ModConfigEvent event) {
         if (event.getConfig().getSpec() != SPEC) return;
+        recovery = new Recovery(RECOVERY.get(), RECOVERY_READS.get(), RECOVERY_CONCURRENT.get(), RECOVERY_CACHE.get());
         try {
             wind = new tacz.longrangesniping.wind.WindSettings(WIND_ENABLED.get(), WIND_WEATHER.get(), WIND_SEED.get(),
                     windProfile(0), windProfile(1), windProfile(2));

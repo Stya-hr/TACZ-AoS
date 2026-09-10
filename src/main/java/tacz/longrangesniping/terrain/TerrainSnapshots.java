@@ -29,6 +29,8 @@ public final class TerrainSnapshots {
     // Coordinate-only round-robin index. No chunk/section/entity objects are kept after acquisition.
     private final Map<ChunkKey, Height> loaded = new LinkedHashMap<>();
     private final MinecraftSnapshotSource source = new MinecraftSnapshotSource(levels::get);
+    private final SavedTerrainRecovery recovery = new SavedTerrainRecovery(key -> collector.prioritize(key, this.clock));
+    public SavedTerrainRecovery.Status recoveryStatus() { return recovery.status(); }
     private long clock, untracked;
     private SnapshotCollector.Work lastWork = new SnapshotCollector.Work(0, 0);
     private boolean enabled;
@@ -96,6 +98,7 @@ public final class TerrainSnapshots {
         if (!(event.getChunk() instanceof LevelChunk chunk) || !(chunk.getLevel() instanceof ServerLevel level)
                 || !level.getServer().isSameThread()) return;
         track(level, chunk.getPos().x, chunk.getPos().z);
+        recovery.invalidate(level, chunk.getPos().x, chunk.getPos().z);
         String dimension = dimension(level);
         for (int y = level.getMinSection(); y < level.getMaxSection(); y++) {
             SectionKey key = new SectionKey(dimension, chunk.getPos().x, y, chunk.getPos().z);
@@ -120,6 +123,7 @@ public final class TerrainSnapshots {
     /** Called after successful LevelChunk.setBlockState, including pistons, fluids and commands. */
     public void changed(LevelChunk chunk, BlockPos position) {
         if (!(chunk.getLevel() instanceof ServerLevel level) || !level.getServer().isSameThread()) return;
+        recovery.invalidate(level, chunk.getPos().x, chunk.getPos().z);
         SectionKey key = SectionKey.atBlock(dimension(level), position.getX(), position.getY(), position.getZ());
         store.invalidate(key);
         if (!collecting()) { collector.forgetWork(key); return; }
@@ -177,6 +181,7 @@ public final class TerrainSnapshots {
             return;
         }
         enabled = true;
+        recovery.tick();
         var settings = ServerConfig.current();
         var config = settings.snapshots();
         store.resize(settings.snapshotMemoryMiB() * 1024L * 1024L);
@@ -194,14 +199,18 @@ public final class TerrainSnapshots {
                 collector.request(new SectionKey(key.dimension(), key.x(), y, key.z()), clock);
             }
         }
-        lastWork = collector.tick(source, clock, config.blocksPerTick(), config.sectionsPerTick(),
+        lastWork = collector.tick(key -> {
+            var live = source.open(key);
+            var level = levels.get(key.dimension());
+            return live != null || level == null ? live : recovery.open(key, level);
+        }, clock, config.blocksPerTick(), config.sectionsPerTick(),
                 (long) (config.maxMillisPerTick() * 1_000_000));
     }
 
     public SnapshotStore.Coverage coverage(SectionKey key) {
         return collecting() ? store.coverage(key) : SnapshotStore.Coverage.UNKNOWN;
     }
-    /** Residency evidence only; a section on disk is not yet usable collision data. No I/O or chunk loads. */
+    /** Residency evidence only. Missing evidence may enqueue a bounded saved-terrain scan, never a chunk load. */
     public boolean knownChunk(ServerLevel level, int x, int z) {
         if (!collecting()) return false;
         String dimension = dimension(level);
@@ -209,13 +218,17 @@ public final class TerrainSnapshots {
             var key = new SectionKey(dimension, x, y, z);
             if (store.contains(key) || diskActive && disk != null && disk.known(key)) return true;
         }
-        return false;
+        return recovery.known(level, x, z);
     }
     public Optional<SectionSnapshot> find(SectionKey key) {
         if (!collecting()) return Optional.empty();
         var snapshot = store.find(key);
         if (snapshot.isEmpty() && diskActive && disk != null) disk.request(key);
         else if (diskActive && disk != null) snapshot.ifPresent(disk::retrySave);
+        if (snapshot.isEmpty() && (!diskActive || disk == null || !disk.known(key))) {
+            var level = levels.get(key.dimension());
+            if (level != null) recovery.request(level, key);
+        }
         return snapshot;
     }
     public Optional<CollisionCell> cell(ServerLevel level, BlockPos pos) {
@@ -230,6 +243,7 @@ public final class TerrainSnapshots {
 
     @SubscribeEvent public void onLevelUnload(LevelEvent.Unload event) {
         if (!(event.getLevel() instanceof ServerLevel level) || !level.getServer().isSameThread()) return;
+        recovery.unload(level);
         String dimension = dimension(level);
         loaded.keySet().removeIf(key -> key.dimension().equals(dimension));
         collector.removeDimension(dimension);
@@ -240,6 +254,7 @@ public final class TerrainSnapshots {
         server = null; clear();
     }
     public void clear() {
+        recovery.clear();
         collector.clear();
         loaded.clear();
         levels.clear();

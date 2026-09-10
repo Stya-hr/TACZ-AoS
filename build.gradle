@@ -173,7 +173,17 @@ idea {
 
 tasks.named('runClientLongRangeTest').configure {
     def result = layout.projectDirectory.file('build/client-long-range-test/result.txt').asFile
-    doFirst { result.parentFile.mkdirs(); result.text = 'RUNNING' }
+    def withVoxy = providers.gradleProperty('enable_voxy_runtime').get().toBoolean()
+    def sodium = layout.projectDirectory.file('libs/sodium-neoforge-0.8.13+mc1.21.1.jar').asFile
+    def stagedSodium = layout.projectDirectory.file('build/client-long-range-test/mods/taczlrs-test-sodium.jar').asFile
+    doFirst {
+        result.parentFile.mkdirs(); result.text = 'RUNNING'
+        // Sodium's nested mod JAR is discovered correctly from mods/, unlike this loader's legacy classpath.
+        if (withVoxy && sodium.isFile()) {
+            stagedSodium.parentFile.mkdirs()
+            java.nio.file.Files.copy(sodium.toPath(), stagedSodium.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } else java.nio.file.Files.deleteIfExists(stagedSodium.toPath())
+    }
     doLast {
         if (result.text.trim() != 'PASS') throw new GradleException('Long range client test did not pass; inspect build/client-long-range-test/logs/latest.log')
     }

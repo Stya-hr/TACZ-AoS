@@ -25,5 +25,6 @@
   "tacz_long_range_sniping.prediction_status": "Impact prediction: %s; refresh at least %s ticks; global soft budget %s ms/tick",
   "block.tacz_long_range_sniping.rangefinder": "Rangefinder",
   "tacz_long_range_sniping.reason.no_nearby_rangefinder": "No complete rangefinder within 3 blocks",
-  "subtitle.tacz_long_range_sniping.bullet_flyby": "Bullet whizzes past"
+  "subtitle.tacz_long_range_sniping.bullet_flyby": "Bullet whizzes past",
+  "tacz_long_range_sniping.recovery_status": "Saved terrain recovery: %s | queued %s, reading %s, cached columns %s (%s MiB), scans %s, section decodes %s, rejected %s"
 }

@@ -25,5 +25,6 @@
   "tacz_long_range_sniping.prediction_status": "弹着点预测：%s；刷新间隔至少 %s tick；全服预测软预算 %s 毫秒/tick",
   "block.tacz_long_range_sniping.rangefinder": "测距仪",
   "tacz_long_range_sniping.reason.no_nearby_rangefinder": "3 格以内没有完整的测距仪",
-  "subtitle.tacz_long_range_sniping.bullet_flyby": "子弹掠过"
+  "subtitle.tacz_long_range_sniping.bullet_flyby": "子弹掠过",
+  "tacz_long_range_sniping.recovery_status": "存档地形恢复：%s | 排队 %s，读取中 %s，缓存区块柱 %s（%s MiB），扫描 %s，区段解码 %s，拒绝 %s"
 }

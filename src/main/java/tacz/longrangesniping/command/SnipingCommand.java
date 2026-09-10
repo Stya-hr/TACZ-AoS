@@ -65,6 +65,10 @@ public final class SnipingCommand {
                             disk == null ? 0 : disk.dropped(), disk == null ? 0 : disk.corrupt(),
                             cache.pinnedSections(), cache.pinnedBytes() / 1048576), false);
                     var snapshot = cache.find(key);
+                    var recovery = cache.recoveryStatus();
+                    source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.recovery_status",
+                            ServerConfig.recovery().enabled(), recovery.queued(), recovery.inFlight(), recovery.cachedColumns(),
+                            String.format(java.util.Locale.ROOT, "%.2f", recovery.bytes()/1048576.0), recovery.reads(), recovery.restored(), recovery.rejected()), false);
                     source.sendSuccess(() -> Component.translatable("tacz_long_range_sniping.cache_section",
                             key.dimension(), key.x(), key.y(), key.z(), cache.coverage(key).name(),
                             snapshot.map(s -> Long.toString(s.version())).orElse("-"),

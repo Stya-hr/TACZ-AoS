@@ -40,11 +40,14 @@ public final class LongRangeClientTest {
     private static volatile int stage, animalId = -1;
     private static volatile String failure;
     private static volatile boolean movement;
+    private static volatile boolean readyToFire, hitConfirmed;
+    private static com.tacz.guns.entity.EntityKineticBullet shotBullet;
+    private static Cow shotTarget;
     private static int ticks, stageTick, frames, draws;
     private static volatile boolean missedInitialSpawn;
     @SubscribeEvent public static void missingSpawn(net.neoforged.neoforge.event.entity.EntityJoinLevelEvent event) {
         // Reproduce an observer whose first pairing was not installed locally. Holding aim must repair it.
-        if (ENABLED && event.getLevel().isClientSide() && uuid != null && event.getEntity().getUUID().equals(uuid) && !missedInitialSpawn) {
+        if (ENABLED && stage >= 3 && event.getLevel().isClientSide() && uuid != null && event.getEntity().getUUID().equals(uuid) && !missedInitialSpawn) {
             missedInitialSpawn = true; event.setCanceled(true);
             TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT deliberately skipped first remote pairing");
         }
@@ -53,6 +56,7 @@ public final class LongRangeClientTest {
     private static Cow original;
     private static UUID uuid;
     private static double initialX;
+    private static int clientVisitTick;
 
     @SubscribeEvent public static void client(ClientTickEvent.Post event) {
         if (!ENABLED) return;
@@ -78,11 +82,13 @@ public final class LongRangeClientTest {
             if (animal == null || !animal.getUUID().equals(uuid) || ScopedRendering.hasRealClientChunk(animal)) {
                 finish(false,"Wrong animal or remote terrain sent to 2-chunk client"); return;
             }
-            if (++draws >= 40 && movement && missedInitialSpawn) {
+            if (++draws >= 40 && movement && missedInitialSpawn && tacz.longrangesniping.client.ScopeRangeHud.displayedDistance() > 800) {
+                readyToFire = true;
+                if (!hitConfirmed) return;
                 Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
                 TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT PASS distance={}, view={}, uuid={}, extraDraws={}",
                         animal.distanceTo(mc.player),mc.options.renderDistance().get(),uuid,ScopedRendering.extraDraws());
-                finish(true,"Saved animal reloaded, simulated and drawn without receiving distant terrain");
+                finish(true,"Missing snapshot recovered; range, saved animal rendering/AI and actual remote bullet damage verified");
             }
         }
     }
@@ -115,6 +121,12 @@ public final class LongRangeClientTest {
                 stage=1; stageTick=ticks;
             }
             if (stage==1 && covered(level) && ticks-stageTick>=100) {
+                if(clientVisitTick==0) {
+                    clientVisitTick=ticks; player.connection.teleport(888,85,8,-90,0);
+                    return;
+                }
+                if(ticks-clientVisitTick<80) return;
+                player.connection.teleport(8,80,8,-90,0);
                 for (var pos:visited) level.getChunkSource().removeRegionTicket(EXPLORE,pos,0,pos);
                 stage=2; stageTick=ticks;
                 TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT explored with default budgets: {}",TerrainSnapshots.INSTANCE.status());
@@ -122,6 +134,10 @@ public final class LongRangeClientTest {
             if (stage==2 && ticks-stageTick>100 && level.getChunkSource().getChunkNow(55,0)==null
                     && level.getChunkSource().getChunkNow(56,0)==null && level.getEntity(uuid)==null) {
                 if (level.getChunkSource().getChunkNow(30,0)!=null) throw new AssertionError("Corridor still resident");
+                // Reproduce incomplete capture/eviction after exploration: the world file exists, but our cache has a hole.
+                var field = TerrainSnapshots.class.getDeclaredField("store"); field.setAccessible(true);
+                var store = (SnapshotStore) field.get(TerrainSnapshots.INSTANCE);
+                for (int y=3;y<=6;y++) store.invalidate(new SectionKey(TerrainSnapshots.dimension(level),30,y,0));
                 var pos=new BlockPos(8,80,10); var device=tacz.longrangesniping.block.ModContent.RANGEFINDER.get();
                 level.setBlockAndUpdate(pos.below(),Blocks.STONE.defaultBlockState());
                 level.setBlockAndUpdate(pos,device.defaultBlockState());
@@ -138,8 +154,29 @@ public final class LongRangeClientTest {
                     movement |= initialX!=0 && Math.abs(cow.getX()-initialX)>.1;
                 }
                 if (level.getChunkSource().getChunkNow(30,0)!=null) throw new AssertionError("Scoping loaded the flight corridor");
-                if (ticks%40==0) TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT prediction={}, activity={}, entity={}, movement={}, cache={}",
-                        ScopeActivity.INSTANCE.predictionStatus(player.getUUID()),ScopeActivity.INSTANCE.status(),restored,movement,TerrainSnapshots.INSTANCE.status());
+                if (readyToFire && shotBullet == null) {
+                    var shot=tacz.longrangesniping.compat.tacz.BallisticPreview.read(player).orElseThrow();
+                    var result=tacz.longrangesniping.scoping.ImpactPrediction.predict(shot,
+                            new tacz.longrangesniping.ballistics.NoLoadCollisionSource(level),List.of(),1024,600,65536,8192,Long.MAX_VALUE);
+                    if(result.end()!=tacz.longrangesniping.scoping.ImpactPrediction.End.BLOCK) throw new AssertionError("No known ballistic endpoint");
+                    // A stationary hit fixture immediately before the predicted wall, using the real gravity/drag/wind.
+                    shotTarget=EntityType.COW.create(level); shotTarget.setNoAi(true); shotTarget.setNoGravity(true);
+                    shotTarget.setPos(result.position().add(-1,-.5,0));
+                    shotTarget.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH).setBaseValue(1000);
+                    shotTarget.setHealth(1000); level.addFreshEntity(shotTarget);
+                    var stack=player.getMainHandItem(); var gun=IGun.getIGunOrNull(stack);
+                    var data=com.tacz.guns.api.TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
+                    shotBullet=new com.tacz.guns.entity.EntityKineticBullet(level,player,stack,data.getAmmoId(),gun.getGunId(stack),false,data,data.getBulletData());
+                    shotBullet.setPos(shot.start()); var velocity=shot.velocity();
+                    shotBullet.shoot(velocity.x,velocity.y,velocity.z,(float)velocity.length(),0);
+                    if(level.addFreshEntity(shotBullet)) throw new AssertionError("Scoped shot was not taken over");
+                }
+                if(shotBullet!=null) {
+                    hitConfirmed=shotTarget.getHealth()<1000;
+                    if(shotBullet.isRemoved() && !hitConfirmed) throw new AssertionError("Remote shot missed: "+tacz.longrangesniping.ballistics.PrototypeBallistics.INSTANCE.status(level));
+                }
+                if (ticks%40==0) TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT prediction={}, activity={}, entity={}, movement={}, cache={}, recovery={}",
+                        ScopeActivity.INSTANCE.predictionStatus(player.getUUID()),ScopeActivity.INSTANCE.status(),restored,movement,TerrainSnapshots.INSTANCE.status(),TerrainSnapshots.INSTANCE.recoveryStatus());
                 if (ticks-stageTick>400) throw new AssertionError("Target not restored/rendered: "+ScopeActivity.INSTANCE.predictionStatus(player.getUUID())+" "+ScopeActivity.INSTANCE.status());
             }
             if (ticks>1800) throw new AssertionError("Preparation timed out at stage "+stage+" "+TerrainSnapshots.INSTANCE.status());
