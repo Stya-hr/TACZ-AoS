@@ -11,18 +11,16 @@ import tacz.longrangesniping.TaczLongRangeSniping;
 
 import static net.minecraft.client.renderer.RenderStateShard.*;
 
-/** Standard particle / emissive-entity materials let Iris supply the pack's MRT outputs and bloom.
+/** Standard particle material lets Iris supply the pack's MRT outputs.
  * The small periodic opacity texture replaces the custom GLSL noise only while shaders are active.
  */
 final class ShaderTrailMaterials {
     private static final ResourceLocation SMOKE = ResourceLocation.fromNamespaceAndPath(TaczLongRangeSniping.MOD_ID, "dynamic/trail_smoke");
-    private static final ResourceLocation WHITE = ResourceLocation.fromNamespaceAndPath(TaczLongRangeSniping.MOD_ID, "dynamic/trail_head");
     static final RenderType SMOKE_TYPE = RenderType.create("taczlrs_shader_smoke", DefaultVertexFormat.PARTICLE,
             VertexFormat.Mode.QUADS, 65536, false, false, RenderType.CompositeState.builder()
                     .setShaderState(new ShaderStateShard(ShaderCompat::translucentParticleShader)).setTextureState(new TextureStateShard(SMOKE, true, false))
                     .setTransparencyState(TRANSLUCENT_TRANSPARENCY).setCullState(NO_CULL)
                     .setLightmapState(LIGHTMAP).setWriteMaskState(COLOR_WRITE).createCompositeState(false));
-    static final RenderType HEAD_TYPE = RenderType.entityTranslucentEmissive(WHITE, false);
     private static boolean ready;
 
     static void prepare() {
@@ -35,9 +33,8 @@ final class ShaderTrailMaterials {
             int a = (int) (255 * Math.clamp(edge * cloud, 0, 1));
             pixels.setPixelRGBA(x, y, (a << 24) | 0xFFFFFF);
         }
-        var white = new NativeImage(1, 1, false); white.setPixelRGBA(0, 0, -1);
         var manager = Minecraft.getInstance().getTextureManager();
-        manager.register(SMOKE, new DynamicTexture(pixels)); manager.register(WHITE, new DynamicTexture(white));
+        manager.register(SMOKE, new DynamicTexture(pixels));
         ready = true;
     }
 }

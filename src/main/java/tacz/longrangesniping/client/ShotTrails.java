@@ -108,7 +108,6 @@ public final class ShotTrails {
         shaderDraw = ShaderCompat.active();
         if (shaderDraw) ShaderTrailMaterials.prepare();
         RenderType smokeType = shaderDraw ? ShaderTrailMaterials.SMOKE_TYPE : SMOKE_TYPE;
-        RenderType headType = shaderDraw ? ShaderTrailMaterials.HEAD_TYPE : TYPE;
         if (buffers == null) { bytes = new ByteBufferBuilder(262144); buffers = MultiBufferSource.immediate(bytes); }
         double now = tick + event.getPartialTick().getGameTimeDeltaPartialTick(false);
         var camera = event.getCamera();
@@ -120,7 +119,7 @@ public final class ShotTrails {
         var vertices = buffers.getBuffer(smokeType);
         for (var sample : visibleSamples()) {
             var s = sample.segment();
-            heads.put(s.shot(), sample);
+            if (!shaderDraw) heads.put(s.shot(), sample);
             double progress = Math.clamp(now - sample.start(), 0, 1);
             if (progress <= 0 || lastPieces >= 2048) continue;
             Vec3 from = new Vec3(s.x0(), s.y0(), s.z0()), to = new Vec3(s.x1(), s.y1(), s.z1());
@@ -153,7 +152,9 @@ public final class ShotTrails {
             }
         }
         buffers.endBatch(smokeType);
-        vertices = buffers.getBuffer(headType);
+        // Shader packs render only the smoke ribbon; omit the separate bright bullet-head discs.
+        if (shaderDraw) return;
+        vertices = buffers.getBuffer(TYPE);
         Vec3 right = vector(new Vector3f(1, 0, 0).rotate(camera.rotation()));
         Vec3 up = vector(new Vector3f(0, 1, 0).rotate(camera.rotation()));
         for (var sample : heads.values()) {
@@ -169,7 +170,7 @@ public final class ShotTrails {
             disc(vertices, matrix, point, right, up, width * 3.5, alpha * 0.30f);
             disc(vertices, matrix, point, right, up, width * 2, Math.min(1, alpha * 1.3f));
         }
-        buffers.endBatch(headType);
+        buffers.endBatch(TYPE);
     }
 
     static boolean hasLocalChunk(int x, int z) {
@@ -198,8 +199,6 @@ public final class ShotTrails {
     private static Vec3 vector(Vector3f v) { return new Vec3(v.x, v.y, v.z); }
     private static void vertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float alpha) {
         out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setColor(0.92f, 0.93f, 0.94f, alpha);
-        if (shaderDraw) out.setUv(.5f, .5f).setOverlay(net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY)
-                .setLight(net.minecraft.client.renderer.LightTexture.FULL_BRIGHT).setNormal(0, 1, 0);
     }
     private static void smokeVertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float u, float v, float alpha) {
         out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z)
