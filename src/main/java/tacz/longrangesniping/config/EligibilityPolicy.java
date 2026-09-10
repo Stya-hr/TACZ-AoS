@@ -15,7 +15,8 @@ public record EligibilityPolicy(boolean enabled, Set<String> gunIds, Map<String,
             "tacz:scope_vudu|6.5,1.35",
             "tacz:scope_lpvo_1_6|6.25,1.25",
             "tacz:scope_standard_8x|4.5,10",
-            "tacz:scope_1873_6x|6");
+            "tacz:scope_1873_6x|6",
+            "tacz:scope_98k|4.25");
 
     public EligibilityPolicy {
         gunIds = Set.copyOf(gunIds);

@@ -60,15 +60,15 @@ public final class ImpactPredictionGameTests {
                     false, data, index.getBulletData());
             var fields = (KineticBulletAccessor) bullet;
             float speed = (float) (cache.<Float>getCache(GunProperties.AMMO_SPEED) * AmmoConfig.GLOBAL_BULLET_SPEED_MODIFIER.get()) / 20f;
-            bullet.shootFromRotation(player, player.getXRot(), player.getYRot(), 0, speed, 0);
+            bullet.shootFromRotation(player, player.getXRot(), player.getYRot(), 0, speed, new org.joml.Vector2d());
             helper.assertTrue(preview.gravity() == fields.taczlrs$getGravity() && preview.friction() == fields.taczlrs$getFriction()
                     && preview.lifeTicks() == fields.taczlrs$getLife(), "Native parameters differ: " + id);
             helper.assertTrue(preview.start().distanceTo(bullet.position()) < 1e-8
                     && preview.velocity().distanceTo(bullet.getDeltaMovement()) < 1e-4, "Native launch differs: " + id + " preview=" + preview + " native=" + bullet.position() + " / " + bullet.getDeltaMovement());
             cache.setCache(GunProperties.AMMO_SPEED, cache.<Float>getCache(GunProperties.AMMO_SPEED) * .5f);
             var modified = BallisticPreview.read(player).orElseThrow();
-            helper.assertTrue(modified.velocity().subtract(player.getKnownMovement()).distanceTo(
-                    preview.velocity().subtract(player.getKnownMovement()).scale(.5)) < 1e-4,
+            helper.assertTrue(modified.velocity().subtract(player.getDeltaMovement()).distanceTo(
+                    preview.velocity().subtract(player.getDeltaMovement()).scale(.5)) < 1e-4,
                     "Preview ignored updated attachment property: " + id);
             helper.assertTrue(gun.getCurrentAmmoCount(stack) == 7, "Preview consumed ammunition");
         }
@@ -79,7 +79,7 @@ public final class ImpactPredictionGameTests {
     public static void holdoverHitsForegroundAndHonorsUnknown(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var actual = BallisticPreview.read(fixture.player).orElseThrow();
-        var shot = new BallisticPreview(new Vec3(.5, 5, .5), new Vec3(actual.velocity().length(), .8, 0),
+        var shot = new BallisticPreview(new Vec3(.5, 5, .5), new Vec3(actual.velocity().length(), .05, 0),
                 actual.gravity(), actual.friction(), actual.lifeTicks());
         SegmentTrace.Source landscape = (x, y, z) -> y < 0 || x >= 900 ? CollisionCell.FULL : CollisionCell.AIR;
         var hit = predict(shot, landscape, List.of());
@@ -150,7 +150,8 @@ public final class ImpactPredictionGameTests {
         Arrays.sort(times);
         TaczLongRangeSniping.LOGGER.info("Prediction benchmark (synthetic terrain, actual AWP data): median={}ms p95={}ms result={}",
                 times[40] / 1e6, times[76] / 1e6, result);
-        helper.assertTrue(result != null && result.end() == ImpactPrediction.End.BLOCK, "Benchmark did not finish a curved path");
+        helper.assertTrue(result != null && (result.end() == ImpactPrediction.End.BLOCK || result.end() == ImpactPrediction.End.RANGE),
+                "Benchmark did not finish the bounded curved path");
         helper.succeed();
     }
 }

@@ -13,7 +13,9 @@ public interface KineticBulletAccessor {
     @Accessor("life") int taczlrs$getLife();
     @Accessor("life") void taczlrs$setLife(int ticks);
     @Accessor("gravity") float taczlrs$getGravity();
+    @Accessor("gravity") void taczlrs$setGravity(float gravity);
     @Accessor("friction") float taczlrs$getFriction();
+    @Accessor("friction") void taczlrs$setFriction(float friction);
     @Accessor("pierce") int taczlrs$getPierce();
     @Accessor("pierce") void taczlrs$setPierce(int remaining);
     @Invoker("onHitEntity") void taczlrs$hitEntity(TacHitResult hit, Vec3 start, Vec3 end);
