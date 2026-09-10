@@ -60,15 +60,16 @@ public final class ImpactPredictionGameTests {
                     false, data, index.getBulletData());
             var fields = (KineticBulletAccessor) bullet;
             float speed = (float) (cache.<Float>getCache(GunProperties.AMMO_SPEED) * AmmoConfig.GLOBAL_BULLET_SPEED_MODIFIER.get()) / 20f;
-            bullet.shootFromRotation(player, player.getXRot(), player.getYRot(), 0, speed, new org.joml.Vector2d());
+            ((com.tacz.guns.item.ModernKineticGunItem) gun).doBulletSpread(operator.getDataHolder(), stack, player, bullet,
+                    1, speed, 0, player.getXRot(), player.getYRot());
             helper.assertTrue(preview.gravity() == fields.taczlrs$getGravity() && preview.friction() == fields.taczlrs$getFriction()
                     && preview.lifeTicks() == fields.taczlrs$getLife(), "Native parameters differ: " + id);
             helper.assertTrue(preview.start().distanceTo(bullet.position()) < 1e-8
                     && preview.velocity().distanceTo(bullet.getDeltaMovement()) < 1e-4, "Native launch differs: " + id + " preview=" + preview + " native=" + bullet.position() + " / " + bullet.getDeltaMovement());
             cache.setCache(GunProperties.AMMO_SPEED, cache.<Float>getCache(GunProperties.AMMO_SPEED) * .5f);
             var modified = BallisticPreview.read(player).orElseThrow();
-            helper.assertTrue(modified.velocity().subtract(player.getDeltaMovement()).distanceTo(
-                    preview.velocity().subtract(player.getDeltaMovement()).scale(.5)) < 1e-4,
+            helper.assertTrue(modified.velocity().subtract(player.getKnownMovement()).distanceTo(
+                    preview.velocity().subtract(player.getKnownMovement()).scale(id.equals("springfield1873") ? .5 : 1)) < 1e-4,
                     "Preview ignored updated attachment property: " + id);
             helper.assertTrue(gun.getCurrentAmmoCount(stack) == 7, "Preview consumed ammunition");
         }

@@ -10,6 +10,7 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 /** Initialized parameters and the native damage entry point for detached kinetic bullets. */
 @Mixin(value = EntityKineticBullet.class, remap = false)
 public interface KineticBulletAccessor {
+    @Accessor("speed") void taczlrs$setSpeed(float speed);
     @Accessor("life") int taczlrs$getLife();
     @Accessor("life") void taczlrs$setLife(int ticks);
     @Accessor("gravity") float taczlrs$getGravity();

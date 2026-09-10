@@ -49,11 +49,11 @@ public record BallisticPreview(Vec3 start, Vec3 velocity, float gravity, float f
         speed = Mth.clamp(speed / 20.0f, 0, Float.MAX_VALUE);
         float gravity = Mth.clamp(data.getGravity(), 0, Float.MAX_VALUE);
         float friction = Mth.clamp(data.getFriction(), 0, Float.MAX_VALUE);
-        var profile = SnipingPhysics.forPlayer(player, gun.getGunId(stack).toString());
+        var profile = tacz.longrangesniping.config.ServerConfig.gunOverrides().get(gun.getGunId(stack).toString());
         if (profile != null) {
-            speed = profile.speedPerTick();
-            gravity = SnipingPhysics.GRAVITY;
-            friction = profile.friction();
+            speed = profile.speedOr(speed);
+            gravity = profile.gravityOr(gravity);
+            friction = profile.frictionOr(friction);
         }
         float seconds = data.getLifeSecond();
         if (!Float.isFinite(speed) || !Float.isFinite(gravity) || !Float.isFinite(friction)
@@ -63,13 +63,11 @@ public record BallisticPreview(Vec3 start, Vec3 velocity, float gravity, float f
         Vec3 start = new Vec3(player.xOld + (player.getX() - player.xOld) / 2,
                 player.yOld + (player.getY() - player.yOld) / 2 + player.getEyeHeight(),
                 player.zOld + (player.getZ() - player.zOld) / 2);
-        // TACZ's Vector2d launch overload uses JOML rotation, not vanilla's lookup-table trig,
-        // and inherits getDeltaMovement(). Match that actual launch with zero mean spread.
-        Vec3 motion = player.getDeltaMovement();
-        double radians = (double) ((float) Math.PI / 180f);
-        var rotated = new org.joml.Vector3d(0, 0, 8)
-                .rotateX(player.getXRot() * radians).rotateY(-player.getYRot() * radians);
-        Vec3 direction = new Vec3(rotated.x, rotated.y, rotated.z);
+        // Supported scripts delegate to TACZ's default vanilla launch; custom calcSpread is rejected above.
+        Vec3 motion = player.getKnownMovement();
+        float pitch = player.getXRot() * ((float) Math.PI / 180f);
+        float yaw = player.getYRot() * ((float) Math.PI / 180f);
+        Vec3 direction = new Vec3(-Mth.sin(yaw) * Mth.cos(pitch), -Mth.sin(pitch), Mth.cos(yaw) * Mth.cos(pitch));
         Vec3 velocity = direction.normalize().scale(speed)
                 .add(motion.x, player.onGround() ? 0 : motion.y, motion.z);
         return Optional.of(new BallisticPreview(start, velocity, gravity, friction, life));

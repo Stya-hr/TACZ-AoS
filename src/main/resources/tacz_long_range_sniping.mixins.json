@@ -3,6 +3,6 @@
   "minVersion": "0.8",
   "package": "tacz.longrangesniping.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["KineticBulletAccessor", "SnipingLaunchMixin", "BulletVisualMixin", "LevelChunkSnapshotMixin", "ChunkMapAccessor", "TrackedEntityAccessor", "TrackedEntityMixin", "ScopedMobActivityMixin"],
+  "mixins": ["KineticBulletAccessor", "ProjectileLaunchMixin", "KineticLaunchMixin", "BulletVisualMixin", "LevelChunkSnapshotMixin", "ChunkMapAccessor", "TrackedEntityAccessor", "TrackedEntityMixin", "ScopedMobActivityMixin"],
   "client": ["ScopeRangeLensMixin", "ScopeFarPlaneMixin", "ScopedEntityRendererMixin"]
 }

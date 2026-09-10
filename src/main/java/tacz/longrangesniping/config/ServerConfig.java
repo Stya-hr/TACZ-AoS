@@ -8,6 +8,9 @@ import java.util.List;
 
 public final class ServerConfig {
     public static final ModConfigSpec SPEC;
+    private static final ModConfigSpec.BooleanValue GUN_OVERRIDES_ENABLED;
+    private static final ModConfigSpec.ConfigValue<List<? extends String>> GUN_OVERRIDES;
+    private static volatile java.util.Map<String, GunPhysicsOverride> gunOverrides = java.util.Map.of();
     private static final ModConfigSpec.BooleanValue ENABLED;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> GUNS;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> SCOPES;
@@ -94,6 +97,17 @@ public final class ServerConfig {
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
+        builder.comment("Global TACZ projectile physics, independent of rangefinder, aiming and sniping whitelist.",
+                        "Restart the world/server after editing. Native TACZ spawn packets synchronize actual bullet physics.")
+                .push("gunOverrides");
+        GUN_OVERRIDES_ENABLED = builder.define("enabled", true);
+        GUN_OVERRIDES = builder.comment("gun_id|speed=meters/second|gravity=meters/second^2|friction=fraction lost per tick.",
+                        "Any TACZ gun-pack namespace is accepted. Omitted properties and unlisted guns stay native.",
+                        "Speed is final muzzle speed, overriding TACZ's global speed multiplier and attachment speed changes.",
+                        "Limits: speed (0,5120], gravity [0,400], friction [0,1); at most 1024 unique gun IDs.",
+                        "Empty entries disables all overrides. Invalid entries reject the entire override list.")
+                .defineListAllowEmpty("entries", GunPhysicsOverride.DEFAULTS, () -> "", value -> value instanceof String);
+        builder.pop();
         builder.push("eligibility");
         ENABLED = builder.comment("Allow qualified shots to use the enabled sniping features.")
                 .define("enabled", true);
@@ -211,16 +225,26 @@ public final class ServerConfig {
     private ServerConfig() {}
 
     public static Settings current() { return current; }
+    public static java.util.Map<String, GunPhysicsOverride> gunOverrides() { return gunOverrides; }
 
     public static void onLoad(ModConfigEvent.Loading event) { reload(event); }
     public static void onReload(ModConfigEvent.Reloading event) { reload(event); }
 
     public static void onUnload(ModConfigEvent.Unloading event) {
-        if (event.getConfig().getSpec() == SPEC) current = UNAVAILABLE;
+        if (event.getConfig().getSpec() == SPEC) {
+            current = UNAVAILABLE;
+            gunOverrides = java.util.Map.of();
+        }
     }
 
     private static void reload(ModConfigEvent event) {
         if (event.getConfig().getSpec() != SPEC) return;
+        try {
+            gunOverrides = GUN_OVERRIDES_ENABLED.get() ? GunPhysicsOverride.parse(GUN_OVERRIDES.get()) : java.util.Map.of();
+        } catch (IllegalArgumentException exception) {
+            gunOverrides = java.util.Map.of();
+            TaczLongRangeSniping.LOGGER.error("Invalid gunOverrides config; physics overrides disabled: {}", exception.getMessage());
+        }
         try {
             current = new Settings(true, EligibilityPolicy.parse(ENABLED.get(), GUNS.get(), SCOPES.get()),
                     MAX_DISTANCE.get(), MAX_ENTITIES.get(), CACHE_MIB.get(), DIAGNOSTICS.get(),
