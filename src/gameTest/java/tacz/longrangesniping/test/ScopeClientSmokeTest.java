@@ -35,6 +35,7 @@ import java.util.Comparator;
 public final class ScopeClientSmokeTest {
     private static final boolean ENABLED = Boolean.getBoolean("taczlrs.clientScopeTest");
     private static final TicketType<ChunkPos> TARGET = TicketType.create("scope_smoke_target", Comparator.comparingLong(ChunkPos::toLong));
+    private static final net.minecraft.core.BlockPos DEVICE = new net.minecraft.core.BlockPos(8, 80, 9);
     private static volatile boolean blockPreview, blockPrepared, blockFront, blockFrontReady;
     private static int blockFrames;
     private static boolean started;
@@ -228,7 +229,7 @@ public final class ScopeClientSmokeTest {
         serverTicks++;
         if (blockPreview) {
             if (!blockPrepared) {
-                level.removeBlock(new net.minecraft.core.BlockPos(8, 79, 10), false);
+                level.removeBlock(DEVICE, false);
                 for (int x = 3; x <= 14; x++) for (int z = 3; z <= 14; z++)
                     level.setBlockAndUpdate(new net.minecraft.core.BlockPos(x, 78, z), net.minecraft.world.level.block.Blocks.SMOOTH_STONE.defaultBlockState());
                 var pos = new net.minecraft.core.BlockPos(8, 79, 8);
@@ -251,7 +252,12 @@ public final class ScopeClientSmokeTest {
         if (serverTicks == 30) {
             level.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false, event.getServer());
             player.connection.teleport(8, 80, 8, -90, 0);
-            TestRangefinders.placeNear(player);
+            // Put the device directly beside the eye ray, inside the old conservative one-cell halo.
+            // The displayed 238-block wall must remain measurable at every optical magnification.
+            var device = tacz.longrangesniping.block.ModContent.RANGEFINDER.get();
+            level.setBlockAndUpdate(DEVICE.below(), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+            level.setBlockAndUpdate(DEVICE, device.defaultBlockState());
+            device.setPlacedBy(level, DEVICE, device.defaultBlockState(), player, new net.minecraft.world.item.ItemStack(device));
             player.getAbilities().flying = true; player.onUpdateAbilities();
             var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
                     .putAttachment(AttachmentType.SCOPE, ResourceLocation.parse("tacz:scope_mk5hd")).build(level.registryAccess());
@@ -308,7 +314,7 @@ public final class ScopeClientSmokeTest {
                 tag.putInt("ZoomNumber", zoomStage == 1 ? 2 : zoomStage == 2 ? 1 : 0);
                 gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
                 player.setItemInHand(InteractionHand.MAIN_HAND, stack);
-                if (zoomStage == 3) level.removeBlock(new net.minecraft.core.BlockPos(8, 79, 10), false);
+                if (zoomStage == 3) level.removeBlock(DEVICE, false);
                 appliedZoomStage = zoomStage;
             }
             if (!navigating && cow.onGround() && tacz.longrangesniping.scoping.ScopeActivity.INSTANCE.active(cow)

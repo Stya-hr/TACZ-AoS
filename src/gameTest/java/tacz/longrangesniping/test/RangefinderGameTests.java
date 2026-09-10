@@ -31,6 +31,10 @@ public final class RangefinderGameTests {
         helper.assertTrue(Math.abs(blocked - 127.5) < .001, "Reported entity through wall");
         helper.assertTrue(ScopeRangefinder.measure(eye, direction, (x,y,z) -> x >= 128 ? null : CollisionCell.AIR,
                 List.of(target), 1024, 65536, deadline) == -1, "Reported entity through unknown area");
+        helper.assertTrue(ScopeRangefinder.measure(eye, direction, (x,y,z) -> x == 0 && z == 1 ? CollisionCell.CONSERVATIVE : CollisionCell.AIR,
+                List.of(target), 1024, 65536, deadline) == -1, "Conservative neighbor fabricated a zero-distance surface");
+        helper.assertTrue(ScopeRangefinder.measure(eye, direction, (x,y,z) -> x == 128 ? CollisionCell.CONSERVATIVE : CollisionCell.AIR,
+                List.of(target), 1024, 65536, deadline) == -1, "Unknown custom shape fabricated a precise range or exposed a target behind it");
         helper.assertTrue(ScopeRangefinder.measure(eye, direction, (x,y,z) -> CollisionCell.AIR,
                 List.of(), 1024, 65536, deadline) == -1, "Air reported as max range");
         helper.assertTrue(ScopeRangefinder.measure(eye, direction, (x,y,z) -> CollisionCell.FULL,

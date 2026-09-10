@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.function.Function;
 
 public final class MinecraftSnapshotSource implements SnapshotCollector.Source {
+    /** Bump when classification changes, even when the binary snapshot format stays the same. */
+    public static final int GEOMETRY_REVISION = 2;
     private final Function<String, ServerLevel> levels;
     public MinecraftSnapshotSource(Function<String, ServerLevel> levels) { this.levels = levels; }
 
@@ -33,10 +35,13 @@ public final class MinecraftSnapshotSource implements SnapshotCollector.Source {
 
     public static CollisionCell classify(BlockState state) {
         boolean water = state.getFluidState().is(FluidTags.WATER);
-        // Only vanilla, non-dynamic, non-BE states are interpreted in this first implementation.
+        // Our own rangefinder has state-only static geometry, just like the supported vanilla states.
+        // Treating it as unknown geometry would obstruct every ray in its one-cell halo,
+        // including a player's eye beside the instrument (false 0.0 / 1.x range readings).
         // The two-argument getter below returns Minecraft's precomputed state cache and never
         // asks a live world for neighbors. Never call the entity-context overload here.
-        if (!BuiltInRegistries.BLOCK.getKey(state.getBlock()).getNamespace().equals("minecraft")
+        if ((!BuiltInRegistries.BLOCK.getKey(state.getBlock()).getNamespace().equals("minecraft")
+                && !(state.getBlock() instanceof tacz.longrangesniping.block.RangefinderBlock))
                 || state.getBlock().hasDynamicShape() || state.hasBlockEntity()) {
             return conservative(water);
         }

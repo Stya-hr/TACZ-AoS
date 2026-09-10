@@ -38,7 +38,13 @@ public final class ScopeRangefinder {
     public static float measure(Vec3 eye, Vec3 direction, SegmentTrace.Source source, List<AABB> entities,
                                 int range, int cells, long deadline) {
         var ray = new BallisticPreview(eye, direction.normalize().scale(128), 0, 0, 1);
-        var result = ImpactPrediction.predict(ray, source, entities, range, (range + 127) / 128,
+        // A conservative safety stop is not a measured surface. Keep it opaque, but report
+        // unknown instead of inventing a 0.0 / near-field distance at the edge of its halo.
+        SegmentTrace.Source measurable = (x, y, z) -> {
+            var cell = source.cell(x, y, z);
+            return cell != null && cell.kind() == tacz.longrangesniping.terrain.CollisionCell.Kind.CONSERVATIVE ? null : cell;
+        };
+        var result = ImpactPrediction.predict(ray, measurable, entities, range, (range + 127) / 128,
                 cells, 32768, deadline);
         return result.target() == null ? -1 : (float) Math.min(range, eye.distanceTo(result.target()));
     }

@@ -48,7 +48,7 @@ public final class TerrainSnapshots {
                 .map(mod -> mod.getModId() + "=" + mod.getVersion()).sorted().collect(java.util.stream.Collectors.joining(";"));
         String fingerprint;
         try {
-            fingerprint = "geometry=" + SnapshotCodec.FORMAT + ":" + java.util.HexFormat.of().formatHex(
+            fingerprint = "geometry=" + SnapshotCodec.FORMAT + ":" + MinecraftSnapshotSource.GEOMETRY_REVISION + ":" + java.util.HexFormat.of().formatHex(
                     java.security.MessageDigest.getInstance("SHA-256").digest(versions.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
         // Running this mod with caching disabled must invalidate a prior session's files too.
