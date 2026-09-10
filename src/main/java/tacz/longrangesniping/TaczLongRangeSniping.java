@@ -24,6 +24,7 @@ public final class TaczLongRangeSniping {
 
     public TaczLongRangeSniping(IEventBus modEventBus, ModContainer container) {
         tacz.longrangesniping.block.ModContent.register(modEventBus);
+        tacz.longrangesniping.trails.FeedbackSounds.register(modEventBus);
         container.registerConfig(ModConfig.Type.SERVER, ServerConfig.SPEC);
         modEventBus.addListener(ServerConfig::onLoad);
         modEventBus.addListener(ServerConfig::onReload);

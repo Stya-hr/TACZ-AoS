@@ -28,7 +28,7 @@ public final class TrailGameTests {
         try {
             ShotTrailsPayload.STREAM_CODEC.encode(buf, payload);
             helper.assertTrue(payload.equals(ShotTrailsPayload.STREAM_CODEC.decode(buf)), "Trail payload lost geometry or termination");
-            buf.clear(); buf.writeResourceLocation(payload.dimension()); buf.writeVarInt(129);
+            buf.clear(); buf.writeResourceLocation(payload.dimension()); buf.writeBoolean(false); buf.writeVarInt(129);
             boolean rejected = false;
             try { ShotTrailsPayload.STREAM_CODEC.decode(buf); } catch (IllegalArgumentException expected) { rejected = true; }
             helper.assertTrue(rejected, "Trail payload accepted unbounded allocation");

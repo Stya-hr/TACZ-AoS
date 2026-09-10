@@ -52,6 +52,12 @@ neoForge {
             systemProperty 'taczlrs.clientScopeTest', 'true'
             programArguments.addAll '--width', '960', '--height', '540'
         }
+        clientLongRangeTest {
+            client()
+            gameDirectory = file('build/client-long-range-test')
+            systemProperty 'taczlrs.longRangeTest', 'true'
+            programArguments.addAll '--width', '960', '--height', '540'
+        }
         server {
             server()
             programArgument '--nogui'
@@ -161,5 +167,14 @@ idea {
     module {
         downloadSources = true
         downloadJavadoc = true
+    }
+}
+
+
+tasks.named('runClientLongRangeTest').configure {
+    def result = layout.projectDirectory.file('build/client-long-range-test/result.txt').asFile
+    doFirst { result.parentFile.mkdirs(); result.text = 'RUNNING' }
+    doLast {
+        if (result.text.trim() != 'PASS') throw new GradleException('Long range client test did not pass; inspect build/client-long-range-test/logs/latest.log')
     }
 }

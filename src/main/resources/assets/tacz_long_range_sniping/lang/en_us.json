@@ -24,5 +24,6 @@
   "tacz_long_range_sniping.disk_status": "Disk cache: %s, index %s sections / %s MiB, queue %s jobs / %s MiB, dropped %s, corrupt/missing %s; flight pins %s sections / %s MiB",
   "tacz_long_range_sniping.prediction_status": "Impact prediction: %s; refresh at least %s ticks; global soft budget %s ms/tick",
   "block.tacz_long_range_sniping.rangefinder": "Rangefinder",
-  "tacz_long_range_sniping.reason.no_nearby_rangefinder": "No complete rangefinder within 3 blocks"
+  "tacz_long_range_sniping.reason.no_nearby_rangefinder": "No complete rangefinder within 3 blocks",
+  "subtitle.tacz_long_range_sniping.bullet_flyby": "Bullet whizzes past"
 }

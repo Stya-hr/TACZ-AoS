@@ -57,6 +57,7 @@ final class SnapshotBallistics {
         }
         bullet.setPos(end);
         double distance = end.distanceTo(start);
+        if (trace.end() == SegmentTrace.End.BLOCK) BlockImpactEffects.snapshotHit(level, bullet, start, movement, trace.fraction());
         if (trace.end() != SegmentTrace.End.CLEAR) return stop(bullet, trace.end().name(), distance);
         if (rangeEnd) return stop(bullet, "RANGE_LIMIT", distance);
 

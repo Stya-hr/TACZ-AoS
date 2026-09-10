@@ -36,6 +36,7 @@ public final class LocalBallistics {
         final ServerConfig.Ballistics limits;
         final ScopeActivity.FlightLease lease;
         final tacz.longrangesniping.terrain.SnapshotLease snapshots = tacz.longrangesniping.terrain.TerrainSnapshots.INSTANCE.lease();
+        final java.util.Set<UUID> heardBy = new java.util.HashSet<>();
         final int originalLife, installedLife;
         double traveled;
         int ticks;
@@ -54,6 +55,7 @@ public final class LocalBallistics {
         }
     }
 
+    private record Viewer(ServerPlayer player, boolean localOnly) {}
     private final ServerLevel level;
     private final Map<UUID, Flight> active = new LinkedHashMap<>();
     // A hit callback may spawn another bullet while the active map is being iterated.
@@ -77,7 +79,7 @@ public final class LocalBallistics {
     }
 
     public void tick() {
-        var visuals = new LinkedHashMap<ServerPlayer, List<TrailSegment>>();
+        var visuals = new LinkedHashMap<Viewer, List<TrailSegment>>();
         while (!pending.isEmpty()) {
             Flight flight = pending.remove();
             active.put(flight.bullet.getUUID(), flight);
@@ -102,21 +104,52 @@ public final class LocalBallistics {
                 }
             }
         }
-        visuals.forEach((player, segments) -> PacketDistributor.sendToPlayer(player,
-                new ShotTrailsPayload(level.dimension().location(), segments)));
+        visuals.forEach((viewer, segments) -> PacketDistributor.sendToPlayer(viewer.player(),
+                new ShotTrailsPayload(level.dimension().location(), viewer.localOnly(), segments)));
     }
 
-    private void collectVisual(Flight flight, boolean terminal, Map<ServerPlayer, List<TrailSegment>> batches) {
+    private void collectVisual(Flight flight, boolean terminal, Map<Viewer, List<TrailSegment>> batches) {
         if (flight.visualStart == null || flight.visualEnd == null) return;
-        var player = level.getServer().getPlayerList().getPlayer(flight.context.shooterId());
-        if (player == null || player.serverLevel() != level) return;
-        var batch = batches.computeIfAbsent(player, ignored -> new ArrayList<>());
-        if (batch.size() >= ShotTrailsPayload.MAX_SEGMENTS) return;
         var a = flight.visualStart; var b = flight.visualEnd;
+        final TrailSegment segment;
         try {
-            batch.add(new TrailSegment(flight.bullet.getId(), flight.ticks, a.x, a.y, a.z, b.x, b.y, b.z, flight.visualSpeed, terminal));
-        } catch (IllegalArgumentException ignored) {
-            // Third-party tick callbacks may teleport projectiles. Never draw a fictitious connecting segment.
+            segment = new TrailSegment(flight.bullet.getId(), flight.ticks, a.x, a.y, a.z, b.x, b.y, b.z, flight.visualSpeed, terminal);
+        } catch (IllegalArgumentException ignored) { return; }
+        var shooter = level.getServer().getPlayerList().getPlayer(flight.context.shooterId());
+        if (shooter != null && shooter.serverLevel() == level) append(batches, new Viewer(shooter, false), List.of(segment));
+        var map = (tacz.longrangesniping.mixin.ChunkMapAccessor) level.getChunkSource().chunkMap;
+        for (var observer : level.players()) {
+            if (observer.getUUID().equals(flight.context.shooterId()) || !observer.isAlive() || observer.isSpectator()) continue;
+            // Cheap rejection before visiting chunk columns; tracking membership never requests chunks.
+            double radius = (map.taczlrs$viewDistance(observer) + 2) * 16.0;
+            if (observer.getX() < Math.min(a.x,b.x)-radius || observer.getX() > Math.max(a.x,b.x)+radius
+                    || observer.getZ() < Math.min(a.z,b.z)-radius || observer.getZ() > Math.max(a.z,b.z)+radius) continue;
+            var viewer = new Viewer(observer, true);
+            if (!batches.containsKey(viewer) || batches.get(viewer).size() < ShotTrailsPayload.MAX_SEGMENTS) {
+                append(batches, viewer, tacz.longrangesniping.trails.TrailAudience.clip(segment,
+                        (x,z) -> map.taczlrs$isChunkTracked(observer, x, z)));
+            }
+            if (flight.heardBy.contains(observer.getUUID())) continue;
+            // A direct hit has its own TACZ feedback. Use the real, collision-truncated segment only.
+            if (observer.getBoundingBox().contains(a) || observer.getBoundingBox().clip(a,b).isPresent()) {
+                flight.heardBy.add(observer.getUUID()); continue;
+            }
+            var ear = observer.getEyePosition();
+            var pass = tacz.longrangesniping.trails.TrailAudience.nearMiss(segment, ear.x, ear.y, ear.z);
+            if (pass != null && map.taczlrs$isChunkTracked(observer, (int)Math.floor(pass.x()/16), (int)Math.floor(pass.z()/16))) {
+                flight.heardBy.add(observer.getUUID());
+                PacketDistributor.sendToPlayer(observer, new tacz.longrangesniping.network.NearMissPayload(
+                        level.dimension().location(), pass.x(), pass.y(), pass.z(), pass.volume()));
+            }
+        }
+    }
+
+    private static void append(Map<Viewer, List<TrailSegment>> batches, Viewer viewer, List<TrailSegment> pieces) {
+        if (pieces.isEmpty()) return;
+        var batch = batches.computeIfAbsent(viewer, ignored -> new ArrayList<>());
+        for (var piece : pieces) {
+            if (batch.size() >= ShotTrailsPayload.MAX_SEGMENTS) break;
+            batch.add(piece);
         }
     }
 

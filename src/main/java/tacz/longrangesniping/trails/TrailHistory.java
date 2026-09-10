@@ -6,7 +6,7 @@ import java.util.List;
 
 /** Bounded visual history. Each received segment is independent, so dropped updates never bridge a wall or teleport. */
 public final class TrailHistory {
-    public static final int MAX_SHOTS = 128, MAX_SAMPLES = TrailStyle.LIFETIME_TICKS + 4;
+    public static final int MAX_SHOTS = 128, MAX_SAMPLES = (TrailStyle.LIFETIME_TICKS + 4) * 4;
     public record Sample(TrailSegment segment, double start) {}
     private static final class Track {
         final ArrayDeque<Sample> samples = new ArrayDeque<>();
@@ -22,7 +22,9 @@ public final class TrailHistory {
             if (tracks.size() >= MAX_SHOTS) tracks.remove(tracks.keySet().iterator().next());
             track = new Track(); tracks.put(segment.shot(), track);
         }
-        if (segment.step() <= track.step || track.terminal) return;
+        if (segment.step() < track.step || track.terminal) return;
+        if (segment.step() == track.step && track.samples.stream().anyMatch(s -> s.segment().equals(segment))) return;
+        // Multiple clipped runs may share a tick; they stay disjoint and share the interpolation time.
         // About one tick of interpolation; never extrapolate beyond a confirmed endpoint.
         double start = track.samples.isEmpty() ? now : Math.clamp(track.start + segment.step() - track.step, now - 1, now + 1);
         track.samples.addLast(new Sample(segment, start));

@@ -24,5 +24,6 @@
   "tacz_long_range_sniping.disk_status": "磁盘缓存：%s，索引 %s 段 / %s MiB，队列 %s 项 / %s MiB，省略 %s，损坏或缺失 %s；在途保留 %s 段 / %s MiB",
   "tacz_long_range_sniping.prediction_status": "弹着点预测：%s；刷新间隔至少 %s tick；全服预测软预算 %s 毫秒/tick",
   "block.tacz_long_range_sniping.rangefinder": "测距仪",
-  "tacz_long_range_sniping.reason.no_nearby_rangefinder": "3 格以内没有完整的测距仪"
+  "tacz_long_range_sniping.reason.no_nearby_rangefinder": "3 格以内没有完整的测距仪",
+  "subtitle.tacz_long_range_sniping.bullet_flyby": "子弹掠过"
 }

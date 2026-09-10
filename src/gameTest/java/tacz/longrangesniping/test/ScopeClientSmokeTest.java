@@ -38,6 +38,12 @@ public final class ScopeClientSmokeTest {
     private static final net.minecraft.core.BlockPos DEVICE = new net.minecraft.core.BlockPos(8, 80, 9);
     private static volatile boolean blockPreview, blockPrepared, blockFront, blockFrontReady;
     private static int blockFrames;
+    private static volatile boolean observerFeedback, observerSound;
+    private static int observerFrames, observerServerFrames;
+    private static boolean observerDrawn;
+    @SubscribeEvent public static void observerSound(net.neoforged.neoforge.client.event.sound.PlaySoundSourceEvent event) {
+        if (ENABLED && event.getSound().getLocation().equals(tacz.longrangesniping.trails.FeedbackSounds.FLYBY.getId())) observerSound = true;
+    }
     private static boolean started;
     private static int clientTicks, serverTicks, drawnTicks;
     private static volatile int cowId = -1, itemId = -1, edgeCowId = -1;
@@ -100,6 +106,29 @@ public final class ScopeClientSmokeTest {
                     registry -> registry.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), mc.screen);
         }
         if (mc.player == null || mc.level == null || cowId < 0) return;
+        if (observerFeedback) {
+            com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(false);
+            IGunOperator.fromLivingEntity(mc.player).aim(false);
+            mc.player.setYRot(-90); mc.player.setYHeadRot(-90); mc.player.setXRot(0);
+            observerFrames++;
+            if (tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player)) { fail("Observer still near rangefinder"); return; }
+            if (tacz.longrangesniping.client.ShotTrails.drawnPieces() > 0) {
+                observerDrawn = true;
+                if (tacz.longrangesniping.client.ShotTrails.farthestDrawn() > 100
+                        || tacz.longrangesniping.client.ShotTrails.hasDistantTrails()) { fail("Observer drew an unloaded/full-distance trail"); return; }
+            }
+            if (observerFrames == 30) Screenshot.grab(mc.gameDirectory, "observer-trail.png", mc.getMainRenderTarget(), ignored -> {});
+            if (observerFrames >= 100) {
+                if (!observerDrawn || !observerSound || tacz.longrangesniping.client.ShotTrails.hasTrails()) {
+                    fail("Observer feedback failed: rendered="+observerDrawn+", sound="+observerSound+", remaining="+tacz.longrangesniping.client.ShotTrails.hasTrails()); return;
+                }
+                TaczLongRangeSniping.LOGGER.info("OBSERVER_CLIENT_TEST PASSED: unscoped/no device, local-only clipping, Ogg sound source and expiry");
+                try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
+                catch (java.io.IOException failure) { throw new RuntimeException(failure); }
+                mc.stop();
+            }
+            return;
+        }
         if (zoomTests && !blockPreview) {
             mc.player.setYRot(-90); mc.player.setYHeadRot(-90); mc.player.setXRot(0);
             com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(true);
@@ -166,9 +195,7 @@ public final class ScopeClientSmokeTest {
                 TaczLongRangeSniping.LOGGER.info("RANGEFINDER_BLOCK_CLIENT_TEST PASSED: world/item models, textures, TACZ tab");
                 mc.options.hideGui = false;
                 mc.options.fov().set(70);
-                try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
-                catch (java.io.IOException failure) { throw new RuntimeException(failure); }
-                mc.stop();
+                observerFeedback = true;
             }
             return;
         }
@@ -231,6 +258,18 @@ public final class ScopeClientSmokeTest {
         ServerPlayer player = event.getServer().getPlayerList().getPlayers().getFirst();
         var level = player.serverLevel();
         serverTicks++;
+        if (observerFeedback) {
+            if (++observerServerFrames == 10) {
+                var eye = player.getEyePosition();
+                var near = new tacz.longrangesniping.trails.TrailSegment(900001,1,eye.x+12,eye.y,eye.z-10,eye.x+12,eye.y,eye.z+10,20,true);
+                var far = new tacz.longrangesniping.trails.TrailSegment(900002,1,eye.x+180,eye.y,eye.z-10,eye.x+180,eye.y,eye.z+10,20,true);
+                net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                        new tacz.longrangesniping.network.ShotTrailsPayload(level.dimension().location(),true,java.util.List.of(near,far)));
+                net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                        new tacz.longrangesniping.network.NearMissPayload(level.dimension().location(),eye.x+1,eye.y,eye.z+1,.8f));
+            }
+            return;
+        }
         if (blockPreview) {
             if (!blockPrepared) {
                 level.removeBlock(DEVICE, false);

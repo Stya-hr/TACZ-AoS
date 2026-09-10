@@ -48,6 +48,7 @@ public final class ShotTrails {
                     .setCullState(NO_CULL).setDepthTestState(LEQUAL_DEPTH_TEST).setWriteMaskState(COLOR_WRITE)
                     .createCompositeState(false));
     private static final TrailHistory history = new TrailHistory();
+    private static final TrailHistory localHistory = new TrailHistory();
     private static ClientLevel level;
     private static long tick;
     private static ByteBufferBuilder bytes;
@@ -62,17 +63,27 @@ public final class ShotTrails {
     }
 
     @SubscribeEvent public static void setup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> ScopeNetworking.setTrailReceiver(ShotTrails::receive));
+        event.enqueueWork(() -> {
+            ScopeNetworking.setTrailReceiver(ShotTrails::receive);
+            ScopeNetworking.setNearMissReceiver(NearMissSounds::receive);
+        });
     }
     private static void receive(ShotTrailsPayload payload) {
         var mc = Minecraft.getInstance();
-        if (mc.level == null || mc.player == null || !tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player)
+        if (mc.level == null || mc.player == null || !payload.localOnly() && !tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player)
                 || !mc.level.dimension().location().equals(payload.dimension())) return;
-        if (level != mc.level) { history.clear(); level = mc.level; }
+        if (level != mc.level) { history.clear(); localHistory.clear(); level = mc.level; }
         double now = tick + mc.getTimer().getGameTimeDeltaPartialTick(false);
-        for (var segment : payload.segments()) history.accept(segment, now);
+        for (var segment : payload.segments()) {
+            if (payload.localOnly()) {
+                for (var piece : tacz.longrangesniping.trails.TrailAudience.clip(segment, ShotTrails::hasLocalChunk)) localHistory.accept(piece, now);
+            } else history.accept(segment, now);
+        }
     }
     public static boolean hasTrails() {
+        return level == Minecraft.getInstance().level && (!localHistory.isEmpty() || hasDistantTrails());
+    }
+    public static boolean hasDistantTrails() {
         var mc = Minecraft.getInstance();
         return level == mc.level && !history.isEmpty() && mc.player != null
                 && tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player);
@@ -82,17 +93,17 @@ public final class ShotTrails {
 
     @SubscribeEvent public static void tick(ClientTickEvent.Post event) {
         var mc = Minecraft.getInstance();
-        if (mc.level != level) { history.clear(); level = mc.level; }
+        if (mc.level != level) { history.clear(); localHistory.clear(); level = mc.level; }
         if (!mc.isPaused()) tick++;
-        if (mc.player == null || !tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player)) history.clear();
-        history.expire(tick);
+        if (mc.player == null || !history.isEmpty() && !tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player)) history.clear();
+        history.expire(tick); localHistory.expire(tick);
     }
 
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
         lastPieces = 0; lastFarthest = 0;
         var mc = Minecraft.getInstance();
-        if (!hasTrails() || mc.player == null || smokeShader == null || !tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player)) return;
+        if (!hasTrails() || mc.player == null || smokeShader == null) return;
         if (buffers == null) { bytes = new ByteBufferBuilder(262144); buffers = MultiBufferSource.immediate(bytes); }
         double now = tick + event.getPartialTick().getGameTimeDeltaPartialTick(false);
         var camera = event.getCamera();
@@ -102,7 +113,7 @@ public final class ShotTrails {
         var heads = new LinkedHashMap<Integer, TrailHistory.Sample>();
         smokeShader.safeGetUniform("SmokeTime").set((float) (now * 0.03));
         var vertices = buffers.getBuffer(SMOKE_TYPE);
-        for (var sample : history.samples()) {
+        for (var sample : visibleSamples()) {
             var s = sample.segment();
             heads.put(s.shot(), sample);
             double progress = Math.clamp(now - sample.start(), 0, 1);
@@ -156,6 +167,25 @@ public final class ShotTrails {
         buffers.endBatch(TYPE);
     }
 
+    static boolean hasLocalChunk(int x, int z) {
+        var world = Minecraft.getInstance().level;
+        // ClientLevel.hasChunk() unconditionally returns true; query the real cache with creation disabled.
+        return world != null && world.getChunkSource().getChunk(x, z,
+                net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false) != null;
+    }
+
+    private static java.util.List<TrailHistory.Sample> visibleSamples() {
+        var result = new java.util.ArrayList<TrailHistory.Sample>();
+        if (hasDistantTrails()) result.addAll(history.samples());
+        var mc = Minecraft.getInstance();
+        // Reclip retained smoke too: unloading/teleporting must not expose a previously received distant trail.
+        for (var sample : localHistory.samples()) {
+            for (var piece : tacz.longrangesniping.trails.TrailAudience.clip(sample.segment(), ShotTrails::hasLocalChunk))
+                result.add(new TrailHistory.Sample(piece, sample.start()));
+        }
+        return result;
+    }
+
     private static double width(double distance, double pixelScale) {
         // Wider verification setting: apparent half-width 2.275–2.73 pixels, independent of distance and zoom.
         return TrailStyle.halfWidth(distance, pixelScale);
@@ -188,7 +218,7 @@ public final class ShotTrails {
         }
     }
     @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
-        history.clear(); level = null; tick = 0; lastPieces = 0;
+        history.clear(); localHistory.clear(); level = null; tick = 0; lastPieces = 0;
         if (bytes != null) { bytes.close(); bytes = null; buffers = null; }
     }
 }
