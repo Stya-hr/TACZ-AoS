@@ -21,7 +21,7 @@ public final class ScopeRangefinder {
     public static void beginTick() { nanos = 0; queries = 0; }
 
     public static void update(ServerPlayer player, List<? extends Entity> visible) {
-        if (queries >= 2 || nanos >= 2_000_000) return;
+        if (queries >= 2 || nanos >= 2_000_000 || !tacz.longrangesniping.compat.tacz.TaczBridge.evaluate(player).eligible()) return;
         queries++;
         long started = System.nanoTime();
         var settings = ServerConfig.current();

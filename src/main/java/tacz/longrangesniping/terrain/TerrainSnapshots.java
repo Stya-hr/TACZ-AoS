@@ -145,9 +145,13 @@ public final class TerrainSnapshots {
     }
 
     @SubscribeEvent public void onTick(ServerTickEvent.Post event) {
-        tick();
+        tick(collecting() && event.getServer().getPlayerList().getPlayers().stream()
+                .anyMatch(tacz.longrangesniping.block.RangefinderAccess::nearby));
     }
     public void tick() {
+        tick(true);
+    }
+    private void tick(boolean acquire) {
         clock++;
         if (disk != null) {
             // Restore only on this thread and only if the real chunk is still absent; live terrain always wins.
@@ -179,6 +183,9 @@ public final class TerrainSnapshots {
         store.resize(settings.snapshotMemoryMiB() * 1024L * 1024L);
         collector.resizeQueue(config.maxPendingSections());
         trimTracked();
+        // Keep invalidations, bounded queues and completed I/O safe while no device is in use.
+        // Expensive collision-shape collection resumes only when a player is near a rangefinder.
+        if (!acquire) { lastWork = new SnapshotCollector.Work(0, 0); return; }
         // Retry omitted/evicted sections and recover after enabling the cache mid-session.
         // Poll one naturally loaded chunk per tick; queue work never creates chunk tickets.
         if (!loaded.isEmpty()) {

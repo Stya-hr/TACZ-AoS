@@ -23,5 +23,6 @@
   "tacz_long_range_sniping.flight_status": "弹道：延长寿命=%s，最多飞行=%s tick，寿命/超时终止=%s，快照挡弹=%s，上次终止=%s，上次接管=%s",
   "tacz_long_range_sniping.disk_status": "磁盘缓存：%s，索引 %s 段 / %s MiB，队列 %s 项 / %s MiB，省略 %s，损坏或缺失 %s；在途保留 %s 段 / %s MiB",
   "tacz_long_range_sniping.prediction_status": "弹着点预测：%s；刷新间隔至少 %s tick；全服预测软预算 %s 毫秒/tick",
-  "block.tacz_long_range_sniping.rangefinder": "测距仪"
+  "block.tacz_long_range_sniping.rangefinder": "测距仪",
+  "tacz_long_range_sniping.reason.no_nearby_rangefinder": "3 格以内没有完整的测距仪"
 }

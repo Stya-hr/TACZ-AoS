@@ -100,10 +100,15 @@ public final class ScopeActivity {
                         && player.getViewVector(1).dot(view.direction) > 0.99996) {
                     e.setValue(clock + config.retentionTicks());
                 }
-                return e.getValue() < clock || player == null || player.serverLevel() != region.key.level;
+                return e.getValue() < clock || player == null || player.serverLevel() != region.key.level
+                        || !tacz.longrangesniping.block.RangefinderAccess.nearby(player);
             });
             region.views.keySet().retainAll(region.owners.keySet());
-            region.flights.values().removeIf(hold -> hold.deadline < clock);
+            region.flights.values().removeIf(hold -> {
+                var player = event.getServer().getPlayerList().getPlayer(hold.owner);
+                return hold.deadline < clock || player == null || player.serverLevel() != region.key.level
+                        || !tacz.longrangesniping.block.RangefinderAccess.nearby(player);
+            });
             region.ready = ready(region.key);
             boolean timeout = !region.ready && clock - region.started >= config.loadTimeoutTicks();
             if ((region.owners.isEmpty() && region.flights.isEmpty()) || timeout) {

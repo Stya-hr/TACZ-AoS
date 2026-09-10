@@ -34,6 +34,14 @@ public final class RangefinderBlock extends Block {
         registerDefaultState(stateDefinition.any().setValue(HALF, DoubleBlockHalf.LOWER).setValue(FACING, Direction.NORTH));
     }
     @Override public MapCodec<RangefinderBlock> codec() { return CODEC; }
+    @Override protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState old, boolean moved) {
+        RangefinderAccess.invalidate();
+        super.onPlace(state, level, pos, old, moved);
+    }
+    @Override protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState next, boolean moved) {
+        RangefinderAccess.invalidate();
+        super.onRemove(state, level, pos, next, moved);
+    }
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) { builder.add(HALF, FACING); }
     @Override public BlockState getStateForPlacement(BlockPlaceContext context) {
         var pos = context.getClickedPos();

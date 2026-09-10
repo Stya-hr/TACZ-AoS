@@ -27,15 +27,15 @@ class EligibilityTest {
             "true,true,tacz:ak47,tacz:scope_mk5hd,1,GUN_NOT_ALLOWED",
             "true,true,tacz:ai_awp,'',1,NO_SCOPE",
             "true,true,tacz:ai_awp,tacz:scope_98k,0,SCOPE_NOT_ALLOWED",
-            "true,true,tacz:ai_awp,tacz:scope_mk5hd,0,ZOOM_NOT_ALLOWED",
-            "true,true,tacz:ai_awp,tacz:scope_mk5hd,2,ZOOM_NOT_ALLOWED",
+            "true,true,tacz:ai_awp,tacz:scope_mk5hd,0,ELIGIBLE",
+            "true,true,tacz:ai_awp,tacz:scope_mk5hd,2,ELIGIBLE",
             "true,true,tacz:ai_awp,tacz:scope_mk5hd,4,ELIGIBLE",
             "true,true,tacz:ai_awp,tacz:scope_mk5hd,2147483647,ELIGIBLE",
             "true,true,tacz:ai_awp,tacz:scope_mk5hd,-1,INVALID_ZOOM_NUMBER",
             "true,true,tacz:ai_awp,tacz:scope_vudu,0,ELIGIBLE",
-            "true,true,tacz:ai_awp,tacz:scope_vudu,1,ZOOM_NOT_ALLOWED",
+            "true,true,tacz:ai_awp,tacz:scope_vudu,1,ELIGIBLE",
             "true,true,tacz:ai_awp,tacz:scope_lpvo_1_6,0,ELIGIBLE",
-            "true,true,tacz:ai_awp,tacz:scope_standard_8x,0,ZOOM_NOT_ALLOWED",
+            "true,true,tacz:ai_awp,tacz:scope_standard_8x,0,ELIGIBLE",
             "true,true,tacz:ai_awp,tacz:scope_standard_8x,1,ELIGIBLE",
             "true,true,tacz:springfield1873,tacz:scope_1873_6x,0,ELIGIBLE"
     })
@@ -45,13 +45,21 @@ class EligibilityTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "scope|6|6", "TACZ:scope|6|6", "tacz:scope|6", "tacz:scope||6",
-            "tacz:scope|6|", "tacz:scope|6|8", "tacz:scope|NaN|NaN",
+            "scope|6|6", "TACZ:scope|6|6", "tacz:scope||6",
+            "tacz:scope|NaN|NaN",
             "tacz:scope|Infinity|Infinity", "tacz:scope|-6|-6", "tacz:scope|0|0",
             "tacz:scope|6,|6", "tacz:scope|6|6|8"
     })
     void malformedScopeRulesAreRejected(String rule) {
         assertThrows(IllegalArgumentException.class, () -> ScopeRule.parse(rule));
+    }
+
+    @Test void idOnlyAndLegacyZoomRestrictionsAllowEverySlot() {
+        for (String entry : List.of("tacz:scope_mk5hd", "tacz:scope_mk5hd|5,25,1.25", "tacz:scope_mk5hd|5,25,1.25|25")) {
+            var rule = ScopeRule.parse(entry);
+            for (int i = 0; i < 9; i++) assertTrue(rule.allows(i));
+        }
+        assertEquals("custom:scope", ScopeRule.parse("custom:scope").scopeId());
     }
 
     @Test void decimalZoomsAllowFloatRoundingButRejectReorderedLayouts() {
@@ -85,7 +93,7 @@ class EligibilityTest {
         var original = Eligibility.evaluate(DEFAULT, new WeaponState(true, true, "tacz:ai_awp", "tacz:scope_mk5hd", 1));
         assertTrue(original.eligible());
         assertFalse(Eligibility.evaluate(DEFAULT, new WeaponState(true, false, "tacz:ai_awp", "tacz:scope_mk5hd", 1)).eligible());
-        assertFalse(Eligibility.evaluate(DEFAULT, new WeaponState(true, true, "tacz:ai_awp", "tacz:scope_mk5hd", 2)).eligible());
+        assertTrue(Eligibility.evaluate(DEFAULT, new WeaponState(true, true, "tacz:ai_awp", "tacz:scope_mk5hd", 2)).eligible());
         assertFalse(Eligibility.evaluate(DEFAULT, new WeaponState(true, true, "tacz:ak47", "tacz:scope_mk5hd", 1)).eligible());
         assertTrue(original.eligible());
         assertEquals(25, original.zoom());

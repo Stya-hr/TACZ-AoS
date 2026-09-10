@@ -136,6 +136,8 @@ public final class LocalBallistics {
         if (owner == null || !owner.isAlive() || owner.isRemoved() || owner.level() != level) {
             return stop(bullet, "owner_unavailable");
         }
+        if (!(owner instanceof net.minecraft.world.entity.player.Player player)
+                || !tacz.longrangesniping.block.RangefinderAccess.nearby(player)) return stop(bullet, "rangefinder_unavailable");
         if (flight.ticks++ >= flight.limits.maxFlightTicks()) return stop(bullet, "timeout");
         // Mirror ServerLevel.tickNonPassenger, including NeoForge tick cancellation.
         bullet.setOldPosAndRot();

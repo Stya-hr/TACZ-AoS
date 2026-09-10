@@ -66,12 +66,17 @@ public final class ShotTrails {
     }
     private static void receive(ShotTrailsPayload payload) {
         var mc = Minecraft.getInstance();
-        if (mc.level == null || !mc.level.dimension().location().equals(payload.dimension())) return;
+        if (mc.level == null || mc.player == null || !tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player)
+                || !mc.level.dimension().location().equals(payload.dimension())) return;
         if (level != mc.level) { history.clear(); level = mc.level; }
         double now = tick + mc.getTimer().getGameTimeDeltaPartialTick(false);
         for (var segment : payload.segments()) history.accept(segment, now);
     }
-    public static boolean hasTrails() { return level == Minecraft.getInstance().level && !history.isEmpty(); }
+    public static boolean hasTrails() {
+        var mc = Minecraft.getInstance();
+        return level == mc.level && !history.isEmpty() && mc.player != null
+                && tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player);
+    }
     public static int drawnPieces() { return lastPieces; }
     public static double farthestDrawn() { return lastFarthest; }
 
@@ -79,6 +84,7 @@ public final class ShotTrails {
         var mc = Minecraft.getInstance();
         if (mc.level != level) { history.clear(); level = mc.level; }
         if (!mc.isPaused()) tick++;
+        if (mc.player == null || !tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player)) history.clear();
         history.expire(tick);
     }
 
@@ -86,7 +92,7 @@ public final class ShotTrails {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
         lastPieces = 0; lastFarthest = 0;
         var mc = Minecraft.getInstance();
-        if (!hasTrails() || mc.player == null || smokeShader == null) return;
+        if (!hasTrails() || mc.player == null || smokeShader == null || !tacz.longrangesniping.block.RangefinderAccess.nearby(mc.player)) return;
         if (buffers == null) { bytes = new ByteBufferBuilder(262144); buffers = MultiBufferSource.immediate(bytes); }
         double now = tick + event.getPartialTick().getGameTimeDeltaPartialTick(false);
         var camera = event.getCamera();

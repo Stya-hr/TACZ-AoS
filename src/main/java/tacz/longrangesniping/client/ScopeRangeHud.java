@@ -38,17 +38,25 @@ public final class ScopeRangeHud {
     @SubscribeEvent public static void setup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> ScopeNetworking.setRangeReceiver(value -> {
             var mc = Minecraft.getInstance();
-            if (mc.level == null || !mc.level.dimension().location().equals(value.dimension())) return;
+            if (mc.level == null || mc.player == null || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()
+                    || !mc.level.dimension().location().equals(value.dimension())) return;
             sample = value; sampleLevel = mc.level; received = mc.level.getGameTime();
         }));
     }
     @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
         sample = null; sampleLevel = null; lensTime = 0;
     }
+    @SubscribeEvent public static void tick(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
+        var player = Minecraft.getInstance().player;
+        if (player == null || !TaczClientBridge.evaluateForDisplay(player).eligible()) {
+            sample = null; sampleLevel = null; lensTime = 0; maskTime = 0;
+        }
+    }
     public static int draws() { return draws; }
     public static float displayedDistance() {
         var mc = Minecraft.getInstance();
         if (sample == null || mc.level == null || mc.player == null || sampleLevel != mc.level
+                || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()
                 || mc.level.getGameTime() - received > 10 || mc.level.getGameTime() < received
                 || mc.player.getEyePosition().distanceToSqr(sample.eye()) > 1
                 || mc.player.getViewVector(1).normalize().dot(sample.direction()) < .99999) return -1;
@@ -59,7 +67,7 @@ public final class ScopeRangeHud {
     public static void capture(PoseStack.Pose pose, float x, float y, float z, float modelRadius) {
         var mc = Minecraft.getInstance();
         if (mc.player == null || !mc.options.getCameraType().isFirstPerson()
-                || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()) return;
+                || !TaczClientBridge.usesOpticalView(mc.player)) return;
         var matrix = new Matrix4f(RenderSystem.getProjectionMatrix()).mul(RenderSystem.getModelViewMatrix()).mul(pose.pose());
         Vector4f center = matrix.transform(new Vector4f(x, y, z, 1));
         Vector4f right = matrix.transform(new Vector4f(x + modelRadius, y, z, 1));
@@ -110,7 +118,7 @@ public final class ScopeRangeHud {
         var mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null || mc.options.hideGui || mc.screen != null
                 || !mc.options.getCameraType().isFirstPerson() || mc.getCameraEntity() != mc.player
-                || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()
+                || !TaczClientBridge.usesOpticalView(mc.player)
                 || System.nanoTime() - lensTime > 250_000_000L) return;
         float range = displayedDistance();
         int tenths = range < 0 ? -1 : Math.round(range * 10);

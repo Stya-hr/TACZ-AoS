@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
-/** Server-owned mapping; the order must match the gun pack's client zoom array. */
+/** Scope ID whitelist entry with optional server projection metadata. Magnification never restricts access. */
 public record ScopeRule(String scopeId, List<Double> zoomLevels, List<Double> allowedZooms) {
     private static final Pattern ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9/._-]+");
     private static final double EPSILON = 0.0001;
@@ -12,25 +12,24 @@ public record ScopeRule(String scopeId, List<Double> zoomLevels, List<Double> al
     public ScopeRule {
         requireId(scopeId);
         zoomLevels = List.copyOf(zoomLevels);
-        allowedZooms = List.copyOf(allowedZooms);
-        if (zoomLevels.isEmpty() || zoomLevels.size() > 64 || allowedZooms.isEmpty()) {
-            throw new IllegalArgumentException("A scope needs 1-64 zoom levels and at least one allowed zoom: " + scopeId);
-        }
+        // Kept as a source-compatible accessor for old configs; every declared magnification is now allowed.
+        allowedZooms = zoomLevels;
+        if (zoomLevels.isEmpty() || zoomLevels.size() > 64) throw new IllegalArgumentException("A scope needs 1-64 zoom levels: " + scopeId);
         zoomLevels.forEach(ScopeRule::requireZoom);
-        allowedZooms.forEach(ScopeRule::requireZoom);
-        for (double allowed : allowedZooms) {
-            if (zoomLevels.stream().noneMatch(zoom -> sameZoom(zoom, allowed))) {
-                throw new IllegalArgumentException("Allowed zoom " + allowed + " is not in the layout for " + scopeId);
-            }
-        }
     }
 
     public static ScopeRule parse(String entry) {
         String[] parts = entry.split("\\|", -1);
-        if (parts.length != 3) {
-            throw new IllegalArgumentException("Expected scope_id|ordered zoom levels|allowed zooms: " + entry);
+        if (parts.length == 1) {
+            String id = parts[0].trim();
+            requireId(id);
+            for (String preset : EligibilityPolicy.DEFAULT_SCOPES) if (preset.startsWith(id + "|")) return parse(preset);
+            return new ScopeRule(id, List.of(1.0), List.of(1.0));
         }
-        return new ScopeRule(parts[0].trim(), parseZooms(parts[1]), parseZooms(parts[2]));
+        if (parts.length != 2 && parts.length != 3)
+            throw new IllegalArgumentException("Expected scope_id or scope_id|ordered zoom levels: " + entry);
+        var layout = parseZooms(parts[1]);
+        return new ScopeRule(parts[0].trim(), layout, layout); // Ignore the legacy allowed-zooms field.
     }
 
     public int slot(int zoomNumber) {

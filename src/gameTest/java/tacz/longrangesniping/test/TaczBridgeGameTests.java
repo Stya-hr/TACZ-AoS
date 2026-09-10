@@ -26,7 +26,7 @@ import tacz.longrangesniping.mixin.KineticBulletAccessor;
 @GameTestHolder(TaczLongRangeSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class TaczBridgeGameTests {
-    @GameTest(template = "empty", batch = "tacz_bridge")
+    @GameTest(template = "ballistics", batch = "tacz_bridge")
     public static void readsServerConfigAndTaczEquipment(GameTestHelper helper) {
         helper.assertTrue(ServerConfig.current().available(), "Server config was not loaded");
         var ballistics = ServerConfig.current().ballistics();
@@ -49,6 +49,9 @@ public final class TaczBridgeGameTests {
                 "Server must resolve 25x but deny hipfire: " + unscoped);
         var operator = IGunOperator.fromLivingEntity(player);
         operator.aim(true);
+        player.setPos(helper.absoluteVec(new Vec3(4, 5, 4)));
+        helper.assertTrue(TaczBridge.evaluate(player).reason() == Reason.NO_NEARBY_RANGEFINDER, "Missing device qualified");
+        TestRangefinders.placeNear(player);
         var scoped = TaczBridge.evaluate(player);
         helper.assertTrue(scoped.eligible(), "Aimed 25x should qualify: " + scoped);
         operator.aim(false);
@@ -57,14 +60,16 @@ public final class TaczBridgeGameTests {
         tag = gun.getAttachmentTag(stack, AttachmentType.SCOPE).copy();
         tag.putInt("ZoomNumber", 2);
         gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
-        helper.assertTrue(TaczBridge.evaluate(player).reason() == Reason.ZOOM_NOT_ALLOWED, "Low power must revoke eligibility");
+        helper.assertTrue(TaczBridge.evaluate(player).eligible(), "Low power must remain eligible near a device");
         operator.aim(false);
         helper.succeed();
     }
 
-    @GameTest(template = "empty", batch = "tacz_bridge")
+    @GameTest(template = "ballistics", batch = "tacz_bridge")
     public static void capturesInitializedBulletWithoutChangingIt(GameTestHelper helper) {
         var player = helper.makeMockPlayer(GameType.SURVIVAL);
+        player.setPos(helper.absoluteVec(new Vec3(4, 5, 4)));
+        TestRangefinders.placeNear(player);
         var gunId = id("tacz:ai_awp");
         var stack = GunItemBuilder.create().setId(gunId)
                 .putAttachment(AttachmentType.SCOPE, id("tacz:scope_mk5hd"))

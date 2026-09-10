@@ -92,7 +92,7 @@ public final class ScopeViewGameTests {
             try { ScopeViewPayload.STREAM_CODEC.decode(buffer); } catch (IllegalArgumentException expected) { rejected = true; }
             helper.assertTrue(rejected, "Nonfinite projection accepted");
             views.receive(player, new ScopeViewPayload(dimension, 6.25f, 0.03f));
-            helper.assertTrue(views.halfAngle(player, 25) == ScopeCone.halfAngle(25), "Wrong zoom accepted");
+            helper.assertTrue(Math.abs(views.halfAngle(player, 25) - 0.03) < 0.00001, "Actual client projection rejected by optional server zoom metadata");
             views.logout(new PlayerEvent.PlayerLoggedOutEvent(player));
             views.receive(player, new ScopeViewPayload(Level.NETHER.location(), 25, 0.03f));
             helper.assertTrue(views.halfAngle(player, 25) == ScopeCone.halfAngle(25), "Wrong dimension accepted");
@@ -103,7 +103,7 @@ public final class ScopeViewGameTests {
             views.logout(new PlayerEvent.PlayerLoggedOutEvent(player));
             IGunOperator.fromLivingEntity(player).aim(true);
             views.receive(player, new ScopeViewPayload(dimension, 25, (float) Math.toRadians(80)));
-            helper.assertTrue(views.halfAngle(player, 25) == ScopeCone.maximumHalfAngle(25), "Projection exceeded server clamp");
+            helper.assertTrue(views.halfAngle(player, 25) == ScopeCone.maximumHalfAngle(1), "Projection exceeded server clamp");
             views.logout(new PlayerEvent.PlayerLoggedOutEvent(player));
             views.receive(player, packet);
             views.receive(player, new ScopeViewPayload(dimension, 25, 0.04f));

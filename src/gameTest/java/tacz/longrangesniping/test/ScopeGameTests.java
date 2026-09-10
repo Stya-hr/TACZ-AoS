@@ -85,10 +85,13 @@ public final class ScopeGameTests {
             var gun = IGun.getIGunOrNull(fixture.stack);
             var tag = gun.getAttachmentTag(fixture.stack, AttachmentType.SCOPE).copy();
             tag.putInt("ZoomNumber", 0); gun.setAttachmentTag(fixture.stack, AttachmentType.SCOPE, tag);
-            helper.assertTrue(!subscriptions.authorized(player, cow), "Low magnification kept authorization");
+            helper.assertTrue(subscriptions.authorized(player, cow), "Low magnification lost authorization");
+            IGunOperator.fromLivingEntity(player).aim(false);
+            helper.assertTrue(!subscriptions.authorized(player, cow), "Unscoping kept authorization");
             subscriptions.replace(player, List.of());
             helper.assertTrue(!tracker.taczlrs$seenBy().contains(player.connection), "Extra observer survived release");
             tag.putInt("ZoomNumber", 1); gun.setAttachmentTag(fixture.stack, AttachmentType.SCOPE, tag);
+            IGunOperator.fromLivingEntity(player).aim(true);
 
             // Returning to normal tracking must keep the same entity observer when the scope ends.
             player.setChunkTrackingView(ChunkTrackingView.of(player.chunkPosition(), 10));

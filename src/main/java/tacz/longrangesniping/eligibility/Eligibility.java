@@ -11,7 +11,7 @@ public final class Eligibility {
         ELIGIBLE, CONFIG_UNAVAILABLE, DISABLED, INACTIVE_PLAYER, NOT_A_GUN,
         GUN_NOT_ALLOWED, GUN_DATA_UNAVAILABLE, NO_SCOPE, SCOPE_NOT_ALLOWED,
         SCOPE_DATA_UNAVAILABLE, INVALID_ZOOM_NUMBER, ZOOM_NOT_ALLOWED, NOT_AIMING,
-        GUN_OPERATOR_UNAVAILABLE, CLIENT_LAYOUT_MISMATCH
+        GUN_OPERATOR_UNAVAILABLE, CLIENT_LAYOUT_MISMATCH, NO_NEARBY_RANGEFINDER
     }
 
     public record WeaponState(boolean active, boolean aiming, String gunId, String scopeId, int zoomNumber) {}
@@ -40,7 +40,6 @@ public final class Eligibility {
         if (state.zoomNumber() < 0) return base.withReason(Reason.INVALID_ZOOM_NUMBER);
         base = new Decision(Reason.ELIGIBLE, state.gunId(), state.scopeId(),
                 rule.slot(state.zoomNumber()), rule.zoom(state.zoomNumber()));
-        if (!rule.allows(state.zoomNumber())) return base.withReason(Reason.ZOOM_NOT_ALLOWED);
         if (!state.aiming()) return base.withReason(Reason.NOT_AIMING);
         return base;
     }

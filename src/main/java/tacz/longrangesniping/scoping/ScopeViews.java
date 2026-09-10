@@ -29,14 +29,13 @@ public final class ScopeViews {
         attempts.put(id, tick);
         var decision = TaczBridge.evaluate(player);
         if (!ServerConfig.current().scopeRendering().enabled() || !decision.eligible()
-                || !payload.dimension().equals(player.level().dimension().location()) || Math.abs(payload.zoom() - decision.zoom()) > 0.001) return;
+                || !payload.dimension().equals(player.level().dimension().location())) return;
         views.put(id, new View(payload, tick));
     }
     public double halfAngle(ServerPlayer player, double zoom) {
         var view = views.get(player.getUUID());
-        if (view == null || tick - view.received > 100 || !view.payload.dimension().equals(player.level().dimension().location())
-                || Math.abs(view.payload.zoom() - zoom) > 0.001) return ScopeCone.halfAngle(zoom);
-        double maximum = ScopeCone.maximumHalfAngle(zoom);
+        if (view == null || tick - view.received > 100 || !view.payload.dimension().equals(player.level().dimension().location())) return ScopeCone.halfAngle(zoom);
+        double maximum = ScopeCone.maximumHalfAngle(1);
         return Math.clamp(view.payload.halfAngle(), Math.min(Math.toRadians(0.1), maximum), maximum);
     }
     @SubscribeEvent public void tick(ServerTickEvent.Pre event) {

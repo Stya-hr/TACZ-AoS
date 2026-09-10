@@ -50,6 +50,10 @@ public final class ScopeClientSmokeTest {
     private static volatile boolean requestShot, shotFired;
     private static boolean trailAfterRelease;
     private static boolean trailStageCaptured;
+    private static volatile boolean zoomTests;
+    private static volatile int zoomStage, appliedZoomStage = -1;
+    private static int zoomFrames, zoomBaseline;
+    private static boolean zoomRangeObserved;
     private static com.mojang.blaze3d.platform.NativeImage beforeTrail;
 
     @SubscribeEvent(priority = EventPriority.HIGHEST) public static void beforeTrailFrame(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
@@ -95,6 +99,43 @@ public final class ScopeClientSmokeTest {
                     registry -> registry.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), mc.screen);
         }
         if (mc.player == null || mc.level == null || cowId < 0) return;
+        if (zoomTests && !blockPreview) {
+            mc.player.setYRot(-90); mc.player.setYHeadRot(-90); mc.player.setXRot(0);
+            com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(true);
+            IGunOperator.fromLivingEntity(mc.player).aim(true);
+            if (appliedZoomStage != zoomStage) return;
+            if (++zoomFrames == 50) zoomBaseline = tacz.longrangesniping.client.ScopeRangeHud.draws();
+            if (zoomFrames >= 50 && Math.abs(tacz.longrangesniping.client.ScopeRangeHud.displayedDistance() - 238) < .1)
+                zoomRangeObserved = true;
+            if (zoomFrames >= 70 && (zoomRangeObserved || zoomStage == 3 || zoomFrames >= 180)) {
+                var decision = tacz.longrangesniping.client.TaczClientBridge.evaluateForDisplay(mc.player);
+                boolean optical = tacz.longrangesniping.client.TaczClientBridge.usesOpticalView(mc.player);
+                int draws = tacz.longrangesniping.client.ScopeRangeHud.draws();
+                float range = tacz.longrangesniping.client.ScopeRangeHud.displayedDistance();
+                if (zoomStage == 0 || zoomStage == 2) {
+                    double expected = zoomStage == 0 ? 5 : 1.25;
+                    if (!decision.eligible() || decision.zoom() != expected || !optical || draws <= zoomBaseline
+                            || !zoomRangeObserved) {
+                        Screenshot.grab(mc.gameDirectory, "scope-low-failed.png", mc.getMainRenderTarget(), ignored -> {});
+                        fail("Low optical zoom failed: " + decision + ", optical=" + optical + ", baseline=" + zoomBaseline + ", draws=" + draws + ", range=" + range + ", sample=" + rangeDebug()); return;
+                    }
+                    Screenshot.grab(mc.gameDirectory, "scope-low-" + zoomStage + ".png", mc.getMainRenderTarget(), ignored -> {});
+                } else if (zoomStage == 1) {
+                    if (!decision.eligible() || optical || draws != zoomBaseline || !zoomRangeObserved) {
+                        fail("Backup sight must keep range processing without HUD: " + decision + ", range=" + range); return;
+                    }
+                } else {
+                    if (decision.eligible() || optical || draws != zoomBaseline || range != -1 || ScopedRendering.active()) {
+                        fail("Removing rangefinder left client functions active"); return;
+                    }
+                }
+                TaczLongRangeSniping.LOGGER.info("RANGEFINDER_ZOOM_CLIENT stage {} PASSED: {}", zoomStage, decision);
+                if (++zoomStage == 4) { blockPreview = true; release = true; }
+                zoomFrames = 0;
+                zoomRangeObserved = false;
+            }
+            return;
+        }
         if (blockPreview) {
             com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(false);
             if (!blockPrepared) return;
@@ -176,7 +217,7 @@ public final class ScopeClientSmokeTest {
                 fail("Range HUD continued drawing after scope release"); return;
             }
             TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST PASSED: native AI, lens-edge entity beyond old cone, real trail packets/render beyond 6 chunks, scope release and trail expiry");
-            blockPreview = true;
+            zoomTests = true;
         }
     }
 
@@ -187,6 +228,7 @@ public final class ScopeClientSmokeTest {
         serverTicks++;
         if (blockPreview) {
             if (!blockPrepared) {
+                level.removeBlock(new net.minecraft.core.BlockPos(8, 79, 10), false);
                 for (int x = 3; x <= 14; x++) for (int z = 3; z <= 14; z++)
                     level.setBlockAndUpdate(new net.minecraft.core.BlockPos(x, 78, z), net.minecraft.world.level.block.Blocks.SMOOTH_STONE.defaultBlockState());
                 var pos = new net.minecraft.core.BlockPos(8, 79, 8);
@@ -209,6 +251,7 @@ public final class ScopeClientSmokeTest {
         if (serverTicks == 30) {
             level.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false, event.getServer());
             player.connection.teleport(8, 80, 8, -90, 0);
+            TestRangefinders.placeNear(player);
             player.getAbilities().flying = true; player.onUpdateAbilities();
             var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
                     .putAttachment(AttachmentType.SCOPE, ResourceLocation.parse("tacz:scope_mk5hd")).build(level.registryAccess());
@@ -243,12 +286,37 @@ public final class ScopeClientSmokeTest {
             TaczLongRangeSniping.LOGGER.info("SCOPE_CLIENT_TEST prepared cow={}, snapshots={}", cowId, TerrainSnapshots.INSTANCE.status().sections());
         }
         if (serverTicks >= 230) {
+            if (zoomTests && appliedZoomStage != zoomStage) {
+                if (zoomStage == 0) {
+                    var ray = new tacz.longrangesniping.compat.tacz.BallisticPreview(player.getEyePosition(),
+                            new net.minecraft.world.phys.Vec3(128, 0, 0), 0, 0, 1);
+                    TaczLongRangeSniping.LOGGER.info("ZOOM_FIXTURE before endpoint retention: {}",
+                            tacz.longrangesniping.scoping.ImpactPrediction.predict(ray,
+                                    new tacz.longrangesniping.ballistics.NoLoadCollisionSource(level), java.util.List.of(),
+                                    1024, 8, 65536, 32768, Long.MAX_VALUE));
+                    // The preceding release test deliberately retires the activity region. Keep this phase's
+                    // measuring wall resident with a fixture-only ticket, independently of curved impact selection.
+                    var wall = new ChunkPos(15, 0);
+                    level.getChunkSource().addRegionTicket(TARGET, wall, 0, wall);
+                    level.getChunk(15, 0);
+                }
+                String scope = zoomStage == 2 ? "tacz:scope_lpvo_1_6" : "tacz:scope_mk5hd";
+                var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
+                        .putAttachment(AttachmentType.SCOPE, ResourceLocation.parse(scope)).build(level.registryAccess());
+                var gun = IGun.getIGunOrNull(stack);
+                var tag = gun.getAttachmentTag(stack, AttachmentType.SCOPE).copy();
+                tag.putInt("ZoomNumber", zoomStage == 1 ? 2 : zoomStage == 2 ? 1 : 0);
+                gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
+                player.setItemInHand(InteractionHand.MAIN_HAND, stack);
+                if (zoomStage == 3) level.removeBlock(new net.minecraft.core.BlockPos(8, 79, 10), false);
+                appliedZoomStage = zoomStage;
+            }
             if (!navigating && cow.onGround() && tacz.longrangesniping.scoping.ScopeActivity.INSTANCE.active(cow)
                     && level.isPositionEntityTicking(cow.blockPosition())) {
                 navigating = cow.getNavigation().moveTo(242, 80, 8, 1.0);
                 if (!navigating) { fail("Native cow path could not start"); return; }
             }
-            IGunOperator.fromLivingEntity(player).aim(!release);
+            IGunOperator.fromLivingEntity(player).aim(zoomTests || !release);
             if (requestShot && !shotFired) {
                 var stack = player.getMainHandItem(); var gun = IGun.getIGunOrNull(stack);
                 var data = com.tacz.guns.api.TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
@@ -276,6 +344,14 @@ public final class ScopeClientSmokeTest {
     private static void fail(String message) {
         if (!failed) TaczLongRangeSniping.LOGGER.error("SCOPE_CLIENT_TEST FAILED: {}", message);
         failed = true;
+    }
+
+    private static String rangeDebug() {
+        try {
+            var field = tacz.longrangesniping.client.ScopeRangeHud.class.getDeclaredField("sample");
+            field.setAccessible(true);
+            return String.valueOf(field.get(null));
+        } catch (ReflectiveOperationException e) { return e.toString(); }
     }
 
     private static boolean corridorKnown(net.minecraft.server.level.ServerLevel level) {

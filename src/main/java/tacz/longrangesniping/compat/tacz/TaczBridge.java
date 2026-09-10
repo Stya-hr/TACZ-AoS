@@ -60,8 +60,10 @@ public final class TaczBridge {
             if (holder == null) return base.withReason(Reason.GUN_OPERATOR_UNAVAILABLE);
             aiming = holder.isAiming;
         }
-        return Eligibility.evaluate(settings.policy(), new WeaponState(true, aiming,
+        Decision decision = Eligibility.evaluate(settings.policy(), new WeaponState(true, aiming,
                 gunId.toString(), scope, zoomNumber));
+        return decision.eligible() && !tacz.longrangesniping.block.RangefinderAccess.nearby(player)
+                ? decision.withReason(Reason.NO_NEARBY_RANGEFINDER) : decision;
     }
 
     /** Called after TACZ initializes the real projectile; no guessed speed or second property evaluation. */

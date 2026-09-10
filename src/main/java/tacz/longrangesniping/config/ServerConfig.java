@@ -99,10 +99,10 @@ public final class ServerConfig {
                 .define("enabled", true);
         GUNS = builder.comment("Allowed TACZ gun IDs (namespace:path). Empty means no guns are allowed.")
                 .defineListAllowEmpty("guns", EligibilityPolicy.DEFAULT_GUNS, () -> "", value -> value instanceof String);
-        SCOPES = builder.comment("One rule per scope: scope_id|ordered zoom levels|allowed zooms.",
-                        "The complete ordered layout must match the gun pack's display zoom array, including low-power sights.",
-                        "Example: tacz:scope_mk5hd|5,25,1.25|25. Empty means no scopes are allowed.",
-                        "Malformed rules disable eligibility until corrected; never infer magnification from the scope name.")
+        SCOPES = builder.comment("Scope ID whitelist. Every aiming magnification is allowed within 3 blocks of a placed rangefinder.",
+                        "Entries: scope_id or scope_id|ordered zoom levels (optional server fallback projection metadata).",
+                        "Legacy scope_id|ordered zoom levels|allowed zooms entries remain readable; the last field is ignored.",
+                        "Client rendering uses the actual gun-pack zoom/view data. Empty means no scopes are allowed.")
                 .defineListAllowEmpty("scopeRules", EligibilityPolicy.DEFAULT_SCOPES, () -> "", value -> value instanceof String);
         builder.pop();
         builder.comment("Shared limits. Entity budget applies per scoped player.")
@@ -158,7 +158,7 @@ public final class ServerConfig {
                 .defineInRange("pinMiB", 32, 0, 1024);
         PIN_SECTIONS = builder.defineInRange("maxPinnedSections", 2048, 0, 32768);
         builder.pop();
-        builder.comment("Additional entity tracking/rendering only while gun, installed scope, zoom and aiming qualify.",
+        builder.comment("Additional entity tracking/rendering while near a rangefinder with an allowed gun/scope and aiming, at every zoom.",
                         "All entity types may be displayed; activity controls bounded server-side target loading.")
                 .push("scopeRendering");
         SCOPE_RENDERING = builder.define("enabled", true);

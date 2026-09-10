@@ -11,11 +11,11 @@ public record EligibilityPolicy(boolean enabled, Set<String> gunIds, Map<String,
     public static final List<String> DEFAULT_GUNS = List.of(
             "tacz:ai_awp", "tacz:m95", "tacz:m700", "tacz:m107", "tacz:kar98", "tacz:springfield1873");
     public static final List<String> DEFAULT_SCOPES = List.of(
-            "tacz:scope_mk5hd|5,25,1.25|25",
-            "tacz:scope_vudu|6.5,1.35|6.5",
-            "tacz:scope_lpvo_1_6|6.25,1.25|6.25",
-            "tacz:scope_standard_8x|4.5,10|10",
-            "tacz:scope_1873_6x|6|6");
+            "tacz:scope_mk5hd|5,25,1.25",
+            "tacz:scope_vudu|6.5,1.35",
+            "tacz:scope_lpvo_1_6|6.25,1.25",
+            "tacz:scope_standard_8x|4.5,10",
+            "tacz:scope_1873_6x|6");
 
     public EligibilityPolicy {
         gunIds = Set.copyOf(gunIds);

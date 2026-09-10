@@ -329,6 +329,8 @@ public final class LocalBallisticsGameTests {
         Fixture(GameTestHelper helper, Player player) {
             this.helper = helper;
             this.player = player;
+            player.setPos(helper.absoluteVec(new Vec3(4, 5, 4)));
+            TestRangefinders.placeNear(player);
             stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
                     .setAmmoCount(7).putAttachment(AttachmentType.SCOPE, ResourceLocation.parse("tacz:scope_mk5hd"))
                     .build(helper.getLevel().registryAccess());
@@ -347,6 +349,7 @@ public final class LocalBallisticsGameTests {
         }
         EntityKineticBullet bullet(Vec3 relative, Vec3 velocity) {
             player.setPos(helper.absoluteVec(relative));
+            if (!tacz.longrangesniping.block.RangefinderAccess.nearby(player)) TestRangefinders.placeNear(player);
             var gun = IGun.getIGunOrNull(stack);
             var data = TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
             var bullet = new EntityKineticBullet(helper.getLevel(), player, stack, data.getAmmoId(), gun.getGunId(stack),

@@ -34,8 +34,12 @@ public abstract class ScopeRangeLensMixin {
         taczlrs$vertices = null;
         var mc = Minecraft.getInstance();
         int index = ocularNodePaths.indexOf(path);
-        if (mc.player == null || !context.firstPerson() || index < 0 || !isScopeOcular.get(index)
-                || !tacz.longrangesniping.client.TaczClientBridge.evaluateForDisplay(mc.player).eligible()) return original;
+        // Legacy single-view models (e.g. LPVO) call their lens "ocular", not "ocular_scope".
+        // TACZ leaves that node's per-ocular scope flag false; the model-wide flag still identifies it.
+        boolean opticalMesh = index >= 0 && (isScopeOcular.get(index)
+                || ocularNodePaths.size() == 1 && ((BedrockAttachmentModel) (Object) this).isScope());
+        if (mc.player == null || !context.firstPerson() || !opticalMesh
+                || !tacz.longrangesniping.client.TaczClientBridge.usesOpticalView(mc.player)) return original;
         float progress = IClientPlayerGunOperator.fromLocalPlayer(mc.player)
                 .getClientAimingProgress(mc.getTimer().getGameTimeDeltaPartialTick(false));
         if (progress < .98f) return original;

@@ -47,6 +47,7 @@ public final class ScopeActivityGameTests {
         var foreign = net.minecraft.server.level.TicketType.<net.minecraft.world.level.ChunkPos>create("activity_test_foreign",
                 java.util.Comparator.comparingLong(net.minecraft.world.level.ChunkPos::toLong));
         var foreignPos = new net.minecraft.world.level.ChunkPos(cx, cz);
+        var shooterChunk = new net.minecraft.world.level.ChunkPos(cx - 14, cz);
         com.tacz.guns.entity.EntityKineticBullet[] shot = {null};
         Cow[] shotTarget = {null};
         var operator = IGunOperator.fromLivingEntity(player);
@@ -59,6 +60,7 @@ public final class ScopeActivityGameTests {
             ScopeSubscriptions.INSTANCE.replace(player, java.util.List.of());
             ScopeSubscriptions.INSTANCE.replace(second, java.util.List.of());
             activity.releaseAll();
+            level.getChunkSource().removeRegionTicket(foreign, shooterChunk, 0, shooterChunk);
             level.getChunkSource().removeRegionTicket(foreign, foreignPos, 3, foreignPos, true);
             tacz.longrangesniping.ballistics.PrototypeBallistics.INSTANCE.unload(new net.neoforged.neoforge.event.level.LevelEvent.Unload(level));
             register(player, false); level.players().remove(player);
@@ -89,6 +91,8 @@ public final class ScopeActivityGameTests {
             second.setPos(player.position()); second.setYRot(-90); second.setYHeadRot(-90); second.setXRot(0);
             for (int x = cx - 4; x <= cx + 4; x++) for (int z = cz - 4; z <= cz + 4; z++) level.getChunk(x, z);
             for (int x = cx - 14; x < cx; x++) level.getChunk(x, cz);
+            level.getChunkSource().addRegionTicket(foreign, shooterChunk, 0, shooterChunk);
+            TestRangefinders.placeNear(player);
             for (int x = wx - 8; x < wx + 24; x++) for (int z = wz - 8; z < wz + 24; z++)
                 level.setBlock(new BlockPos(x, 79, z), Blocks.STONE.defaultBlockState(), 2);
             for (int y = 79; y <= 84; y++) level.setBlock(new BlockPos(wx + 14, y, wz + 8), Blocks.STONE.defaultBlockState(), 2);
@@ -203,6 +207,18 @@ public final class ScopeActivityGameTests {
         }));
         helper.runAfterDelay(565, () -> checked.accept(() -> {
             helper.assertTrue(level.isPositionEntityTicking(shotTarget[0].blockPosition()), "External unload removed our renewed region");
+            player.setPos(player.position().add(-8, 0, 0));
+        }));
+        helper.runAfterDelay(575, () -> checked.accept(() -> {
+            helper.assertTrue(activity.status().regions() == 1 && activity.active(shotTarget[0]),
+                    "First player leaving device removed the second player's region");
+            helper.assertTrue(!tacz.longrangesniping.compat.tacz.TaczBridge.evaluate(player).eligible()
+                    && tacz.longrangesniping.compat.tacz.TaczBridge.evaluate(second).eligible(), "Per-player proximity was not enforced");
+            level.removeBlock(second.blockPosition().offset(0, -1, 2).above(), false);
+        }));
+        helper.runAfterDelay(578, () -> checked.accept(() -> {
+            helper.assertTrue(activity.status().regions() == 0 && activity.status().flightPins() == 0,
+                    "Device removal waited for ordinary region retention or leaked tickets");
             aiming[0] = false; sharing[0] = false; operator.aim(false); secondOperator.aim(false);
         }));
         helper.runAfterDelay(600, () -> checked.accept(() -> {
