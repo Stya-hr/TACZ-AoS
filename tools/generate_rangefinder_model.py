@@ -1,6 +1,6 @@
 from pathlib import Path
 import json, math, random, struct, zlib
-root=Path('src/main/resources'); assets=root/'assets/tacz_long_range_sniping'; data=root/'data/tacz_long_range_sniping'
+root=Path('src/main/resources'); assets=root/'assets/tacz_aos'; data=root/'data/tacz_aos'
 def write(path,obj):
  path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 # Hand-authored 64x64 pixel atlas for the native JSON cuboid model.
@@ -53,7 +53,7 @@ head=[cube('tripod_hub',[5.5,18,5],[10.5,20.5,10],'rubber'),cube('mount_column',
  cube('display',[8,24.5,13.65],[12.25,27.5,13.75],'screen'),cube('keypad',[8,22.7,13],[12.5,24,13.6],'controls'),
  cube('eyepiece',[3.5,24.75,13],[6.5,27.75,14.5],'rubber'),cube('eyepiece_glass',[4,25.25,14.5],[6,27.25,14.6],'glass'),
  cube('side_adjustment',[13.5,22.5,7],[14.5,24.5,9],'rail')]
-texture={'atlas':'tacz_long_range_sniping:block/rangefinder','particle':'minecraft:block/anvil'}
+texture={'atlas':'tacz_aos:block/rangefinder','particle':'minecraft:block/anvil'}
 # Legs cross the seam slightly; all instrument parts are in the upper model, so either chunk section renders correctly.
 upper=[]
 for original in head:
@@ -63,11 +63,11 @@ display={'gui':{'rotation':[25,225,0],'translation':[0,-2,0],'scale':[.48,.48,.4
 write(assets/'models/item/rangefinder.json',{'textures':texture,'display':display,'elements':legs+head})
 variants={}
 for half in ['lower','upper']:
- for facing,angle in [('north',0),('east',90),('south',180),('west',270)]:variants[f'facing={facing},half={half}']={'model':f'tacz_long_range_sniping:block/rangefinder_{half}','y':angle}
+ for facing,angle in [('north',0),('east',90),('south',180),('west',270)]:variants[f'facing={facing},half={half}']={'model':f'tacz_aos:block/rangefinder_{half}','y':angle}
 write(assets/'blockstates/rangefinder.json',{'variants':variants})
-write(data/'recipe/rangefinder.json',{'type':'minecraft:crafting_shaped','category':'misc','pattern':['ABA',' C ','C C'],'key':{'A':{'item':'minecraft:glass_pane'},'B':{'item':'minecraft:diamond'},'C':{'item':'minecraft:iron_ingot'}},'result':{'id':'tacz_long_range_sniping:rangefinder','count':1}})
-write(data/'loot_table/blocks/rangefinder.json',{'type':'minecraft:block','pools':[{'rolls':1,'conditions':[{'condition':'minecraft:survives_explosion'},{'condition':'minecraft:block_state_property','block':'tacz_long_range_sniping:rangefinder','properties':{'half':'lower'}}],'entries':[{'type':'minecraft:item','name':'tacz_long_range_sniping:rangefinder'}]}]})
-write(root/'data/minecraft/tags/block/mineable/axe.json',{'replace':False,'values':['tacz_long_range_sniping:rangefinder']})
-write(data/'advancement/recipes/decorations/rangefinder.json',{'parent':'minecraft:recipes/root','criteria':{'has_diamond':{'trigger':'minecraft:inventory_changed','conditions':{'items':[{'items':'minecraft:diamond'}]}},'has_the_recipe':{'trigger':'minecraft:recipe_unlocked','conditions':{'recipe':'tacz_long_range_sniping:rangefinder'}}},'requirements':[['has_diamond','has_the_recipe']],'rewards':{'recipes':['tacz_long_range_sniping:rangefinder']}})
+write(data/'recipe/rangefinder.json',{'type':'minecraft:crafting_shaped','category':'misc','pattern':['ABA',' C ','C C'],'key':{'A':{'item':'minecraft:glass_pane'},'B':{'item':'minecraft:diamond'},'C':{'item':'minecraft:iron_ingot'}},'result':{'id':'tacz_aos:rangefinder','count':1}})
+write(data/'loot_table/blocks/rangefinder.json',{'type':'minecraft:block','pools':[{'rolls':1,'conditions':[{'condition':'minecraft:survives_explosion'},{'condition':'minecraft:block_state_property','block':'tacz_aos:rangefinder','properties':{'half':'lower'}}],'entries':[{'type':'minecraft:item','name':'tacz_aos:rangefinder'}]}]})
+write(root/'data/minecraft/tags/block/mineable/axe.json',{'replace':False,'values':['tacz_aos:rangefinder']})
+write(data/'advancement/recipes/decorations/rangefinder.json',{'parent':'minecraft:recipes/root','criteria':{'has_diamond':{'trigger':'minecraft:inventory_changed','conditions':{'items':[{'items':'minecraft:diamond'}]}},'has_the_recipe':{'trigger':'minecraft:recipe_unlocked','conditions':{'recipe':'tacz_aos:rangefinder'}}},'requirements':[['has_diamond','has_the_recipe']],'rewards':{'recipes':['tacz_aos:rangefinder']}})
 for language,name in [('en_us','Rangefinder'),('zh_cn','测距仪')]:
- p=assets/f'lang/{language}.json';o=json.loads(p.read_text(encoding='utf-8'));o['block.tacz_long_range_sniping.rangefinder']=name;write(p,o)
+ p=assets/f'lang/{language}.json';o=json.loads(p.read_text(encoding='utf-8'));o['block.tacz_aos.rangefinder']=name;write(p,o)

@@ -8,4 +8,4 @@ plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
 
-rootProject.name = 'tacz-long-range-sniping'
+rootProject.name = 'tacz-art-of-sniping'

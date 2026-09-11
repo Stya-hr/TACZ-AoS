@@ -1,4 +1,9 @@
-# TACZ Long Range Sniping
+# TACZ: Art of Sniping
+
+简称 **TACZ: AoS**，模组 ID：`tacz_aos`。
+
+主类为 `tacz.aos.TaczArtOfSniping`，配置文件为 `tacz_aos-server.toml`，命令前缀为 `/tacz_aos`。
+更换模组标识后，客户端与服务器需一起更新；旧配置需手动迁移，旧标识下的测距仪不会自动转换。
 
 Minecraft 1.21.1 / NeoForge 21.1.248 / Java 21。必选 TACZ 1.1.8-hotfix-r6；可选 NeoVoxy 0.4.3-beta.1 integrations、Iris 1.8.x 与其 Sodium 前置。依赖不打包进本模组。客户端和服务端均需安装本扩展。
 
@@ -14,7 +19,7 @@ Minecraft 1.21.1 / NeoForge 21.1.248 / Java 21。必选 TACZ 1.1.8-hotfix-r6；�
 4. 服务端先检查玩家到候选点的视线经过的所有区块列是否达到 FULL。只扫描存档 Status/xPos/zPos，不读取方块调色板，不加载或生成途中区块。未知状态批量异步查询；缺失或未完整生成阻止加载。因此隔着未生成地带的 Voxy“浮岛”不能启用目标区域。
 5. 稳定瞄准后，按预算添加目标核心的原生区块票据，使存档实体恢复并运行真实 AI。目标与必要邻接区域必须先确认已完整生成。核心默认 3×3，FULL 足迹为 7×7；无需发送完整地形给远处射手。
 6. 实际枪械参数与风计算曲线，只在当前保留的目标核心内查找方块/实体交点。交点维持已有区域，不沿曲线拓展新区块加载。区块准备完成后会在周期更新中重算，不要求再次移动镜头。
-7. 新位置加载受角速度、稳定时长和申请间隔限制。扫镜只暂停新位置申请；既有区域默认保留 3 秒，支持先指向目标，再抬枪口补偿下坠。每人最多保留两个区域，全服默认最多四个。
+7. 新位置加载受角速度、稳定时长和申请间隔限制。扫镜只暂停新位置申请；既有区域默认保留 3 秒，支持先指向目标，再抬枪口补偿下坠。每人默认最多保留两个区域（`activity.maxRegionsPerPlayer`），全服默认最多四个。
 8. 开枪时固定这发子弹的物理参数、风和目标核心集合。区域外仅推进飞行与烟迹，区域内逐 tick 对真实实体和方块做线段碰撞。移动目标可躲开，命中仍调用 TACZ 的伤害、爆头、穿透数量与事件。关镜、移动离开仪器或拆除仪器不取消已接受的子弹；在途引用维持目标区域至结束或硬超时。
 
 **明确的玩法取舍：** 狙击弹忽略选定核心外的一切方块和实体，包括已经加载的墙或山体；目标核心内的墙仍会挡弹。只检查准星直线路径的生成状态，曲线下坠/风偏经过的其他区块不再查询生成或地形。普通非狙击射击保留 TACZ 的正常碰撞。没有目标核心时，已接管子弹可以显示飞行，但没有远端命中区域。
@@ -29,7 +34,7 @@ Voxy 选点依据其不透明地形缓冲，不依赖光影包将 LOD 深度合�
 
 ## 配置
 
-服务端配置 `tacz_long_range_sniping-server.toml`，默认最大距离仍为 1024；可将 `limits.maxDistance` 调至 2048。`ballistics.maxDistance=0` 跟随此值。配置由 NeoForge 同步客户端。修改后重进世界/重连。
+服务端配置 `tacz_aos-server.toml`，默认最大距离仍为 1024；可将 `limits.maxDistance` 调至 2048。`ballistics.maxDistance=0` 跟随此值。配置由 NeoForge 同步客户端。修改后重进世界/重连。
 
 ```toml
 [eligibility]
@@ -44,6 +49,7 @@ maxTrackedEntities = 32
 [targeting]
 stableDegreesPerSecond = 10.0
 requestIntervalTicks = 5
+newRegionIntervalTicks = 10
 checksPerSecond = 512
 concurrentChecks = 32
 maxQueuedChecks = 4096
@@ -57,6 +63,7 @@ retentionTicks = 60
 maxFullChunks = 196
 maxDependencyChunks = 4096
 maxRegions = 4
+maxRegionsPerPlayer = 2
 startsPerSecond = 2
 loadTimeoutTicks = 100
 maxQueriesPerTick = 2
@@ -76,9 +83,9 @@ extendLifetime = true
 
 生成状态索引只保留内存坐标与状态：FULL 最多缓存 10 分钟，未完整生成/读取失败短暂缓存 2 秒；区块真实加载会立即更新状态。排队查询不再被当前目标使用时会过期；已开始的异步读盘不会阻塞主线程。磁盘冷查询、服务器过载和网络仍可能产生等待，不保证所有情况下小于一秒。
 
-稳定速度使用平滑角速度，退出阈值为进入阈值的 1.25 倍。`stableTicks` 是连续稳定时间，不是准星目标点必须固定不动的时间。`requestIntervalTicks` 限制服务端申请；`startsPerSecond` 是全服滚动窗口的新区域硬上限。预算包括尚在加载、短暂保留和在途子弹引用的区域。
+稳定速度使用平滑角速度，退出阈值为进入阈值的 1.25 倍。`stableTicks` 是连续稳定时间，不是准星目标点必须固定不动的时间。`requestIntervalTicks` 限制所有服务端目标检查，包括路径未知和预算拒绝；`newRegionIntervalTicks` 单独限制每位玩家成功创建新区域的最短间隔，默认 10 tick（正常 20 TPS 下 0.5 秒），设为 0 可关闭这层额外冷却。首次稳定瞄准不额外等待，已有区域续期及共享不受新区域冷却限制。收镜、切换枪械、离开测距仪和切换维度不会重置冷却；退出服务器后清理。冷却结束只检查当前最新目标，不排队加载扫镜经过的旧位置。`startsPerSecond` 是全服滚动窗口的新区域硬上限。预算包括尚在加载、短暂保留和在途子弹引用的区域。
 
-`/taczlrs status` 查看资格、目标区、子弹和局部预测；管理员使用 `/taczlrs generation` 查看生成索引大小、排队数量和累计扫描次数。旧 `/taczlrs cache` 已删除。
+`/tacz_aos status` 查看资格、目标区、子弹和局部预测；管理员使用 `/tacz_aos generation` 查看生成索引大小、排队数量和累计扫描次数。旧 `/tacz_aos cache` 已删除。
 
 ## 开发与回归
 
@@ -91,13 +98,13 @@ extendLifetime = true
 .\gradlew.bat runClientScopeTest
 ```
 
-产物：`build/libs/tacz_long_range_sniping-1.0.0.jar`。客户端集成测试使用独立 build 下的世界；测试代码不进入发布 JAR。
+产物：`build/libs/tacz_aos-1.0.0.jar`。客户端集成测试使用独立 build 下的世界；测试代码不进入发布 JAR。
 
 服务端测试覆盖生成状态 FULL/缺口、无区块加载的元数据扫描、区块网格边界、稳定瞄准、目标区碰撞、移动目标、TACZ 伤害/爆头/事件和物理一致性。远距客户端测试使用 2 区块视距：有 Voxy 时实际访问约 900 格外区域后离开，清空生成索引，验证深度选点、存档牛恢复/AI/绘制、关镜后命中和途中不加载；无 Voxy 时验证无法选中视距外目标。
 
 ## 全局枪械参数配置
 
-使用已有 `config/tacz_long_range_sniping-server.toml` 的 `[gunOverrides]` 节；若存档 `serverconfig/` 存在同名配置，应修改实际生效的存档文件。
+使用已有 `config/tacz_aos-server.toml` 的 `[gunOverrides]` 节；若存档 `serverconfig/` 存在同名配置，应修改实际生效的存档文件。
 这里选择配置文件，便于服主直接按枪 ID 编辑少量数值，并复用 NeoForge 的服务端配置管理；无需改 TACZ JAR、解包枪包或维护数据包优先级。
 建议退出存档／停止服务器后修改，再重新进入／启动，不使用 `/reload` 管理这些设置。
 
@@ -143,7 +150,7 @@ ID 是枪包内枪械 ID（例如 `tacz:ai_awp`），不是通用物品 ID `tacz
 风速采用截断 Rayleigh 分布，低至中等风速常见、大风较少，始终不超过 `maxSpeed`；这是可调的游戏天气模型。
 `meanSpeed` 是截断前的均值，因此采样后的实际均值会略低。雨天／雷暴使用各自的参数；天气切换可立即更换风场。
 
-在 `config/tacz_long_range_sniping-server.toml` 中修改（存档 `serverconfig/` 同名文件优先），建议停止世界／服务器后编辑：
+在 `config/tacz_aos-server.toml` 中修改（存档 `serverconfig/` 同名文件优先），建议停止世界／服务器后编辑：
 
 ```toml
 [wind]
@@ -205,7 +212,7 @@ maxSpeed = 14.0
 
 ## 测距仪方块
 
-新增 `tacz_long_range_sniping:rangefinder`，中文名“测距仪”，位于 TACZ 枪械工作台所在的创造模式物品栏。
+新增 `tacz_aos:rangefinder`，中文名“测距仪”，位于 TACZ 枪械工作台所在的创造模式物品栏。
 放置后为附近 3 格的玩家启用本扩展；仪器方向不限制有效范围，多个玩家可以共享。
 测距仪只提供启用条件，不发射测距射线，也不提供测距起点、方向或读数；直线测距始终使用玩家眼部位置和瞄准方向。
 它仍是有碰撞的普通方块：真正瞄准仪器实体部分时可以命中；射线经过其旁边或三脚架空隙时不会被虚构的整格／邻域形状阻挡。
@@ -279,3 +286,12 @@ Voxy 仍为可选项：没有 Voxy 时，不能凭空选择尚未渲染的远处
 当前 TACZ 版本的方块标靶在命中后倒下，经过 100 个正常模拟 tick 自动抬起；矿车标靶使用其原生受击晃动与恢复。
 倒下后的碰撞形状随真实服务端状态变化。目标区域外仍沿用本模组既有的忽略沿途地形取舍。
 客户端与服务器需同时更新至本版本（网络协议 10）。
+
+
+加载节流参数均位于服务端 `tacz_aos-server.toml`：`targeting.stableDegreesPerSecond`（0.1–180°/秒）、
+`activity.stableTicks`（2–100 tick）、`targeting.requestIntervalTicks`（2–40 tick）、
+`targeting.newRegionIntervalTicks`（0–200 tick），以及 `activity.startsPerSecond`（每 20 tick 1–20 个新区域）。
+客户端不能自行覆盖服务器的加载限制；时间按服务器 tick 计算。建议停止世界／服务器后编辑已有配置，再重新进入。
+节流回归测试覆盖失败重试限速、首次无额外等待、收镜后保留冷却、最新目标替换旧目标，以及区域共享和飞行引用。
+
+`activity.maxRegionsPerPlayer` 可配置为 1–32，默认 2；每人区域计数包含共享区域、收镜保留和在飞子弹引用，仍受全服预算限制。

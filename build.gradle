@@ -49,13 +49,13 @@ neoForge {
         clientScopeTest {
             client()
             gameDirectory = file('build/client-scope-test')
-            systemProperty 'taczlrs.clientScopeTest', 'true'
+            systemProperty 'tacz_aos.clientScopeTest', 'true'
             programArguments.addAll '--width', '960', '--height', '540'
         }
         clientLongRangeTest {
             client()
             gameDirectory = file('build/client-long-range-test')
-            systemProperty 'taczlrs.longRangeTest', 'true'
+            systemProperty 'tacz_aos.longRangeTest', 'true'
             programArguments.addAll '--width', '960', '--height', '540'
         }
         server {
@@ -194,8 +194,8 @@ tasks.named('runClientLongRangeTest').configure {
         def sodium = layout.projectDirectory.file('libs/sodium-neoforge-0.8.13+mc1.21.1.jar').asFile
         def iris = layout.projectDirectory.file('libs/iris-neoforge-1.8.14-beta.1+mc1.21.1.jar').asFile
         doFirst {
-            [[sodium, withIris || withVoxy, 'taczlrs-test-sodium.jar'],
-             [iris, withIris, 'taczlrs-test-iris.jar']].each { entry ->
+            [[sodium, withIris || withVoxy, 'tacz_aos-test-sodium.jar'],
+             [iris, withIris, 'tacz_aos-test-iris.jar']].each { entry ->
                 def target = new File(runtimeDirectory, 'mods/' + entry[2])
                 if (entry[1]) {
                     if (!entry[0].isFile()) throw new GradleException('Missing optional runtime ' + entry[0])

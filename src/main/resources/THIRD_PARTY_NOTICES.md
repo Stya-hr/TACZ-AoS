@@ -1,6 +1,6 @@
 # Audio attribution
 
-`assets/tacz_long_range_sniping/sounds/bullet_flyby.ogg`
+`assets/tacz_aos/sounds/bullet_flyby.ogg`
 
 - **Bullet_Flyby_2.wav** by **kMoon**, published February 22, 2010.
 - Source: https://freesound.org/people/kMoon/sounds/90782/
