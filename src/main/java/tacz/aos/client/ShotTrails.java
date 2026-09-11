@@ -48,7 +48,7 @@ public final class ShotTrails {
                     .setCullState(NO_CULL).setDepthTestState(LEQUAL_DEPTH_TEST).setWriteMaskState(COLOR_WRITE)
                     .createCompositeState(false));
     private static final TrailHistory history = new TrailHistory();
-    private static final TrailHistory localHistory = new TrailHistory();
+    private static final TrailHistory localHistory = new TrailHistory(TrailHistory.ImpactMode.FADE_SMOKE);
     private static ClientLevel level;
     private static long tick;
     private static ByteBufferBuilder bytes;
@@ -120,7 +120,8 @@ public final class ShotTrails {
         var vertices = buffers.getBuffer(smokeType);
         for (var sample : visibleSamples(now)) {
             var s = sample.segment();
-            if (!shaderDraw) heads.put(s.shot(), sample);
+            if (!shaderDraw && (history.hasMovingHead(s.shot(), now) || localHistory.hasMovingHead(s.shot(), now)))
+                heads.put(s.shot(), sample);
             double progress = Math.clamp(now - sample.start(), 0, 1);
             if (progress <= 0 || lastPieces >= 2048) continue;
             Vec3 from = new Vec3(s.x0(), s.y0(), s.z0()), to = new Vec3(s.x1(), s.y1(), s.z1());

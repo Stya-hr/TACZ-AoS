@@ -36,7 +36,17 @@ public final class TrailGameTests {
         history.accept(new TrailSegment(42, 1, start.x, start.y, start.z, end.x, end.y, end.z,
                 (float) new Vec3(10, -8, 0).length(), true), 10);
         helper.assertTrue(history.hasVisibleSamples(10.5), "Final approach was lost");
-        helper.assertTrue(history.visibleSamples(11).isEmpty(), "Smoke kept rendering after ground impact");
+        helper.assertTrue(history.visibleSamples(11).isEmpty(), "Shooter smoke kept rendering after ground impact");
+        var observer = new tacz.aos.trails.TrailHistory(tacz.aos.trails.TrailHistory.ImpactMode.FADE_SMOKE);
+        history.samples().forEach(sample -> tacz.aos.trails.TrailAudience.clip(sample.segment(), (x,z) -> true)
+                .forEach(piece -> observer.accept(piece, 10)));
+        observer.expire(12);
+        helper.assertTrue(observer.hasVisibleSamples(12) && !observer.hasMovingHead(42, 12),
+                "Observer lost the wake or kept a head after impact");
+        helper.assertTrue(observer.visibleSamples(12).stream().allMatch(sample -> sample.segment().y1() >= ground - .001),
+                "Retained observer smoke crossed the ground");
+        observer.expire(62);
+        helper.assertTrue(!observer.hasVisibleSamples(62), "Observer wake did not expire");
         helper.succeed();
     }
 

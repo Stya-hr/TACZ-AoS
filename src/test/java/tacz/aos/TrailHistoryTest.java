@@ -39,6 +39,53 @@ class TrailHistoryTest {
         assertTrue(h.visibleSamples(11).isEmpty());
     }
 
+    @Test void fastObserversKeepOnlyConfirmedSmokeAfterImpactWithoutAStationaryHead() {
+        var h = new TrailHistory(TrailHistory.ImpactMode.FADE_SMOKE);
+        // A 40-block/tick shot arrives from behind the viewer at x=740 and stops at the wall x=748.
+        h.accept(new TrailSegment(9, 19, 680, 81.6, 9.4, 720, 81.3, 9.4, 40, false), 100);
+        h.accept(new TrailSegment(9, 20, 720, 81.3, 9.4, 748, 81.0, 9.4, 39, true), 101);
+        assertTrue(h.hasMovingHead(9, 101.5));
+        h.expire(102);
+        assertFalse(h.hasMovingHead(9, 102), "A bullet head remained at the wall");
+        assertEquals(2, h.visibleSamples(102).size(), "Observer wake vanished in the impact tick");
+        var confirmed = h.samples();
+        h.accept(new TrailSegment(9, 21, 748, 81, 9.4, 785, 80.5, 9.4, 39, false), 103);
+        h.expire(126);
+        assertEquals(confirmed, h.visibleSamples(126), "Impact grew or relocated the wake");
+        assertTrue(TrailStyle.alpha(25, 39) > 0);
+        assertTrue(h.visibleSamples(126).stream().allMatch(sample -> sample.segment().x1() <= 748));
+        h.expire(153);
+        assertFalse(h.hasVisibleSamples(153));
+    }
+
+    @Test void observerStopDoesNotRefreshSmokeOrReviveFromLatePackets() {
+        var h = new TrailHistory(TrailHistory.ImpactMode.FADE_SMOKE);
+        h.accept(segment(1, 1, false), 10);
+        h.accept(new TrailSegment(1, 2, 2, 80, 0, 2, 80, 0, 0, true), 35);
+        assertEquals(1, h.samples().size(), "A stop spawned fresh smoke");
+        assertEquals(10, h.samples().getFirst().start());
+        assertFalse(h.hasMovingHead(1, 35));
+        h.expire(45); assertTrue(h.hasVisibleSamples(45));
+        h.expire(62); assertFalse(h.hasVisibleSamples(62));
+        h.accept(segment(1, 3, false), 63);
+        assertFalse(h.hasVisibleSamples(63));
+        h.expire(90); assertTrue(h.isEmpty());
+    }
+
+    @Test void observerSmokeNeverBridgesUnloadedChunksAndIsHiddenWhenTheyUnload() {
+        var h = new TrailHistory(TrailHistory.ImpactMode.FADE_SMOKE);
+        var s = new TrailSegment(1, 1, 8, 80, 8, 56, 80, 8, 48, true);
+        tacz.aos.trails.TrailAudience.clip(s, (x,z) -> x == 0 || x == 3).forEach(p -> h.accept(p, 10));
+        h.expire(12);
+        var samples = h.visibleSamples(12);
+        assertEquals(2, samples.size());
+        assertEquals(16, samples.getFirst().segment().x1());
+        assertEquals(48, samples.getLast().segment().x0());
+        assertFalse(h.hasMovingHead(1, 12));
+        assertTrue(samples.stream().flatMap(p -> tacz.aos.trails.TrailAudience.clip(p.segment(), (x,z) -> false).stream()).findAny().isEmpty());
+        h.clear(); assertTrue(h.isEmpty());
+    }
+
     private static TrailSegment segment(int id, int step, boolean terminal) {
         return new TrailSegment(id, step, step, 80, 0, step + 1, 80, 0, 20, terminal);
     }

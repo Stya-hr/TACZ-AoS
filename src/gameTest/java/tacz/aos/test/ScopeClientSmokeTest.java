@@ -40,7 +40,7 @@ public final class ScopeClientSmokeTest {
     private static int blockFrames;
     private static volatile boolean observerFeedback, observerSound, distantSound;
     private static int observerFrames, observerServerFrames;
-    private static boolean observerDrawn;
+    private static boolean observerDrawn, observerWakeAfterImpact;
     @SubscribeEvent public static void observerSound(net.neoforged.neoforge.client.event.sound.PlaySoundSourceEvent event) {
         if (ENABLED && event.getSound().getLocation().equals(tacz.aos.trails.FeedbackSounds.FLYBY.getId())) observerSound = true;
         if (ENABLED && event.getSound().getLocation().equals(tacz.aos.trails.FeedbackSounds.DISTANT_GUNSHOT.getId())) distantSound = true;
@@ -145,12 +145,14 @@ public final class ScopeClientSmokeTest {
                         || tacz.aos.client.ShotTrails.hasDistantTrails()) { fail("Observer drew an unloaded/full-distance trail"); return; }
             }
             if (observerFrames == 30) Screenshot.grab(mc.gameDirectory, "observer-trail.png", mc.getMainRenderTarget(), ignored -> {});
-            if (observerFrames >= 45 && tacz.aos.client.ShotTrails.hasTrails()) {
-                fail("Confirmed impact did not retire observer smoke before normal 50-tick expiry"); return;
+            if (observerFrames >= 45 && observerFrames <= 55 && tacz.aos.client.ShotTrails.drawnPieces() > 0)
+                observerWakeAfterImpact = true;
+            if (observerFrames >= 95 && tacz.aos.client.ShotTrails.hasTrails()) {
+                fail("Observer smoke outlived its bounded fade"); return;
             }
             if (observerFrames >= 100) {
-                if (!observerDrawn || !observerSound || !distantSound || tacz.aos.client.ShotTrails.hasTrails()) {
-                    fail("Observer feedback failed: rendered="+observerDrawn+", sound="+observerSound+", distantSound="+distantSound+", remaining="+tacz.aos.client.ShotTrails.hasTrails()); return;
+                if (!observerDrawn || !observerWakeAfterImpact || !observerSound || !distantSound || tacz.aos.client.ShotTrails.hasTrails()) {
+                    fail("Observer feedback failed: rendered="+observerDrawn+", wakeAfterImpact="+observerWakeAfterImpact+", sound="+observerSound+", distantSound="+distantSound+", remaining="+tacz.aos.client.ShotTrails.hasTrails()); return;
                 }
                 TaczArtOfSniping.LOGGER.info("OBSERVER_CLIENT_TEST PASSED: unscoped/no device, local-only clipping, Ogg sound source and expiry");
                 try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
