@@ -1,0 +1,26 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        },
+        {
+          "condition": "minecraft:block_state_property",
+          "block": "tacz_aos:rangefinder",
+          "properties": {
+            "half": "lower"
+          }
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "tacz_aos:rangefinder"
+        }
+      ]
+    }
+  ]
+}

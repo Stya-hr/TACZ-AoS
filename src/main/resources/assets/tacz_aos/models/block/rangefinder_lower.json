@@ -1,0 +1,245 @@
+{
+  "textures": {
+    "atlas": "tacz_aos:block/rangefinder",
+    "particle": "minecraft:block/anvil"
+  },
+  "elements": [
+    {
+      "name": "left_leg",
+      "from": [
+        7.25,
+        -1.2,
+        6.75
+      ],
+      "to": [
+        8.75,
+        18.25,
+        8.25
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "south": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "east": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "west": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "up": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "down": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        }
+      },
+      "rotation": {
+        "origin": [
+          8,
+          18.25,
+          7.5
+        ],
+        "axis": "z",
+        "angle": -22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "right_leg",
+      "from": [
+        7.25,
+        -1.2,
+        6.75
+      ],
+      "to": [
+        8.75,
+        18.25,
+        8.25
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "south": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "east": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "west": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "up": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "down": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        }
+      },
+      "rotation": {
+        "origin": [
+          8,
+          18.25,
+          7.5
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "rear_leg",
+      "from": [
+        7.25,
+        -1.2,
+        6.75
+      ],
+      "to": [
+        8.75,
+        18.25,
+        8.25
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "south": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "east": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "west": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "up": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        },
+        "down": {
+          "uv": [
+            8,
+            0,
+            12,
+            4
+          ],
+          "texture": "#atlas"
+        }
+      },
+      "rotation": {
+        "origin": [
+          8,
+          18.25,
+          7.5
+        ],
+        "axis": "x",
+        "angle": -22.5,
+        "rescale": false
+      }
+    }
+  ]
+}
