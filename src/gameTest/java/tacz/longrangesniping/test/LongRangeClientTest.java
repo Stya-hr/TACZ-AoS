@@ -80,7 +80,8 @@ public final class LongRangeClientTest {
             TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT deliberately skipped first remote pairing");
         }
     }
-    private static boolean started;
+    private static boolean started, rejoined;
+    private static String worldName;
     private static Cow original;
     private static UUID uuid;
     private static double initialX;
@@ -94,7 +95,8 @@ public final class LongRangeClientTest {
             started = true;
             mc.options.pauseOnLostFocus = false;
             mc.options.renderDistance().set(2); mc.options.simulationDistance().set(5);
-            mc.createWorldOpenFlows().createFreshLevel("range-"+System.currentTimeMillis(),
+            worldName="range-"+System.currentTimeMillis();
+            mc.createWorldOpenFlows().createFreshLevel(worldName,
                     new LevelSettings("Long range regression", GameType.CREATIVE, false, Difficulty.PEACEFUL, true,
                             new GameRules(), WorldDataConfiguration.DEFAULT), new WorldOptions(12345,false,false),
                     r -> r.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), mc.screen);
@@ -124,7 +126,7 @@ public final class LongRangeClientTest {
                 Screenshot.grab(mc.gameDirectory,"iris-trail.png",mc.getMainRenderTarget(),ignored -> {});
                 TaczLongRangeSniping.LOGGER.info("IRIS_GPU_PASS entity fragments={}, trail fragments={}",entitySamples,trailSamples);
             }
-            finish(true,"Cold generation index, Voxy depth, real animal AI/render, both TACZ targets with hit/recovery animation, and remote damage after unscoping verified");return;
+            finish(true,"Actual world save/rejoin, cold generation index, Voxy depth, real animal AI/render, both TACZ targets with hit/recovery animation, and remote damage after unscoping verified");return;
         }
         if (stage>=3 && !shotStarted) {
             var visual=tacz.longrangesniping.client.ScopedBlockRendering.visual(BLOCK_TARGET);
@@ -145,6 +147,18 @@ public final class LongRangeClientTest {
                 finish(false,"Wrong animal or remote terrain sent to 2-chunk client"); return;
             }
             if (++draws >= 40 && targetsRecovered && movement && missedInitialSpawn && tacz.longrangesniping.client.ScopeRangeHud.displayedDistance() > 800) {
+                if(!rejoined) {
+                    // Exercise actual save, server shutdown, client/Voxy teardown and reopening the same world.
+                    rejoined=true;
+                    mc.level.disconnect();
+                    mc.disconnect(new net.minecraft.client.gui.screens.TitleScreen());
+                    draws=0;animalId=cartId=-1;initialX=0;movement=false;missedInitialSpawn=false;
+                    targetsReady=targetsHit=sawFallen=sawCartHit=targetsRecovered=false;
+                    entitySamples=trailSamples=blockSamples=0;stageTick=ticks;
+                    TaczLongRangeSniping.LOGGER.info("LONG_RANGE_CLIENT reopening saved world {}",worldName);
+                    mc.createWorldOpenFlows().openWorld(worldName,()->failure="Failed to reopen saved fixture");
+                    return;
+                }
                 if(!readyToFire) TaczLongRangeSniping.LOGGER.info("IRIS_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
                 if(!readyToFire) Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
                 readyToFire = true;
