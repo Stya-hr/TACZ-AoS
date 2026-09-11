@@ -114,6 +114,12 @@ public final class ScopeClientSmokeTest {
         clientTicks++;
         if (clientTicks > 2400 || failed) { fail("Client scope test timed out/failed"); mc.stop(); return; }
         if (!started && mc.isGameLoadFinished() && mc.getOverlay() == null) {
+            var configFile = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get()
+                    .resolve(tacz.aos.config.ConfigFileBootstrap.FILE_NAME);
+            if (!java.nio.file.Files.isRegularFile(configFile)) {
+                fail("Server config was not generated before opening the first world"); mc.stop(); return;
+            }
+            TaczArtOfSniping.LOGGER.info("CONFIG_BOOTSTRAP_CLIENT PASSED before opening a world: {}", configFile);
             started = true;
             mc.options.pauseOnLostFocus = false;
             mc.options.renderDistance().set(16); mc.options.simulationDistance().set(6);
@@ -138,6 +144,9 @@ public final class ScopeClientSmokeTest {
                         || tacz.aos.client.ShotTrails.hasDistantTrails()) { fail("Observer drew an unloaded/full-distance trail"); return; }
             }
             if (observerFrames == 30) Screenshot.grab(mc.gameDirectory, "observer-trail.png", mc.getMainRenderTarget(), ignored -> {});
+            if (observerFrames >= 45 && tacz.aos.client.ShotTrails.hasTrails()) {
+                fail("Confirmed impact did not retire observer smoke before normal 50-tick expiry"); return;
+            }
             if (observerFrames >= 100) {
                 if (!observerDrawn || !observerSound || tacz.aos.client.ShotTrails.hasTrails()) {
                     fail("Observer feedback failed: rendered="+observerDrawn+", sound="+observerSound+", remaining="+tacz.aos.client.ShotTrails.hasTrails()); return;
@@ -279,12 +288,19 @@ public final class ScopeClientSmokeTest {
         if (observerFeedback) {
             if (++observerServerFrames == 10) {
                 var eye = player.getEyePosition();
-                var near = new tacz.aos.trails.TrailSegment(900001,1,eye.x+12,eye.y,eye.z-10,eye.x+12,eye.y,eye.z+10,20,true);
+                var near = new tacz.aos.trails.TrailSegment(900001,1,eye.x+12,eye.y,eye.z-10,eye.x+12,eye.y,eye.z+10,20,false);
                 var far = new tacz.aos.trails.TrailSegment(900002,1,eye.x+180,eye.y,eye.z-10,eye.x+180,eye.y,eye.z+10,20,true);
                 net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
                         new tacz.aos.network.ShotTrailsPayload(level.dimension().location(),true,java.util.List.of(near,far)));
                 net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
                         new tacz.aos.network.NearMissPayload(level.dimension().location(),eye.x+1,eye.y,eye.z+1,.8f));
+            }
+            if (observerServerFrames == 35) {
+                var eye = player.getEyePosition();
+                var stop = new tacz.aos.trails.TrailSegment(900001,2,eye.x+12,eye.y,eye.z+10,
+                        eye.x+12,eye.y,eye.z+10,0,true);
+                net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                        new tacz.aos.network.ShotTrailsPayload(level.dimension().location(),true,java.util.List.of(stop)));
             }
             return;
         }

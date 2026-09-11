@@ -8,6 +8,37 @@ import tacz.aos.trails.TrailStyle;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TrailHistoryTest {
+    @Test void impactRetiresSmokeAndHeadAfterFinalInterpolationForThatShotOnly() {
+        var h = new TrailHistory();
+        h.accept(segment(1, 1, false), 10);
+        h.accept(segment(2, 1, false), 10);
+        h.accept(segment(1, 2, true), 11);
+        assertEquals(3, h.visibleSamples(11.5).size());
+        assertEquals(1, h.visibleSamples(12).size());
+        assertEquals(2, h.visibleSamples(12).getFirst().segment().shot());
+        h.expire(12);
+        h.accept(segment(1, 3, false), 13);
+        assertEquals(1, h.visibleSamples(13).size(), "Late update revived a completed shot");
+        assertTrue(h.hasVisibleSamples(13));
+    }
+    @Test void zeroMovementTerminationHidesExistingTrailImmediately() {
+        var h = new TrailHistory(); h.accept(segment(1, 1, false), 10);
+        h.accept(new TrailSegment(1, 1, 2, 80, 0, 2, 80, 0, 0, true), 10.5);
+        assertFalse(h.hasVisibleSamples(10.5));
+        assertTrue(h.visibleSamples(10.5).isEmpty());
+        h.expire(11); assertTrue(h.isEmpty());
+        h.accept(segment(1, 2, false), 12);
+        assertFalse(h.hasVisibleSamples(12));
+    }
+    @Test void laggedTerminalCannotLeaveSmokeForAnotherTwoPointFiveSeconds() {
+        var h = new TrailHistory();
+        for (int step = 1; step <= 20; step++) h.accept(segment(1, step, false), 10);
+        h.accept(segment(1, 21, true), 10);
+        assertTrue(h.hasVisibleSamples(10.5));
+        assertFalse(h.hasVisibleSamples(11));
+        assertTrue(h.visibleSamples(11).isEmpty());
+    }
+
     private static TrailSegment segment(int id, int step, boolean terminal) {
         return new TrailSegment(id, step, step, 80, 0, step + 1, 80, 0, 20, terminal);
     }

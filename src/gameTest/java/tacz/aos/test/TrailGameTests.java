@@ -20,6 +20,26 @@ import java.util.List;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class TrailGameTests {
+    @GameTest(template = "ballistics", batch = "trails")
+    public static void descendingShotStopsAtGroundAndRetiresClientSmoke(GameTestHelper helper) {
+        var fixture = new LocalBallisticsGameTests.Fixture(helper);
+        for (int x = 3; x <= 18; x++) for (int z = 3; z <= 6; z++)
+            helper.setBlock(new BlockPos(x, 3, z), Blocks.STONE);
+        var bullet = fixture.bullet(new Vec3(4, 9, 4.5), new Vec3(10, -8, 0));
+        var start = bullet.position();
+        LocalBallisticsGameTests.targetTick(helper, bullet, 128);
+        var end = bullet.position();
+        double ground = helper.absoluteVec(new Vec3(0, 4, 0)).y;
+        helper.assertTrue(bullet.isRemoved() && Math.abs(end.y - ground) < .001,
+                "Descending bullet went through the ground: " + end);
+        var history = new tacz.aos.trails.TrailHistory();
+        history.accept(new TrailSegment(42, 1, start.x, start.y, start.z, end.x, end.y, end.z,
+                (float) new Vec3(10, -8, 0).length(), true), 10);
+        helper.assertTrue(history.hasVisibleSamples(10.5), "Final approach was lost");
+        helper.assertTrue(history.visibleSamples(11).isEmpty(), "Smoke kept rendering after ground impact");
+        helper.succeed();
+    }
+
     @GameTest(template = "empty", batch = "trails")
     public static void trailPayloadBoundsAndRoundTrip(GameTestHelper helper) {
         var payload = new ShotTrailsPayload(helper.getLevel().dimension().location(), List.of(

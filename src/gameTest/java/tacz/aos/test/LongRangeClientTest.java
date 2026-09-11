@@ -50,7 +50,7 @@ public final class LongRangeClientTest {
     private static int targetHitTick, blockSamples;
     private static volatile boolean shotStarted;
     private static int ticks, stageTick, frames, draws;
-    private static int entitySamples, trailSamples, query, queryKind, shotFrames;
+    private static int entitySamples, trailSamples, query, queryKind, shotFrames, impactFrames;
     @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGHEST)
     public static void beforeDraw(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
         if (!ENABLED || !tacz.aos.client.ShaderCompat.active() || tacz.aos.client.ShaderCompat.shadowPass()) return;
@@ -121,6 +121,11 @@ public final class LongRangeClientTest {
             return;
         }
         if(shotStarted && hitConfirmed) {
+            // Allow packet delivery and the final interpolation, well below the old 50-tick smoke expiry.
+            if (++impactFrames < 10) return;
+            if (tacz.aos.client.ShotTrails.hasTrails() || tacz.aos.client.ShotTrails.drawnPieces() != 0) {
+                finish(false,"Trail continued rendering after confirmed remote impact"); return;
+            }
             if (tacz.aos.client.ShaderCompat.active()) {
                 if (entitySamples <= 0 || trailSamples <= 0 || blockSamples <= 0) { finish(false, "Iris drew no fragments: entity="+entitySamples+", trail="+trailSamples+", block target="+blockSamples); return; }
                 Screenshot.grab(mc.gameDirectory,"iris-trail.png",mc.getMainRenderTarget(),ignored -> {});

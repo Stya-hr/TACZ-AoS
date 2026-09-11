@@ -82,11 +82,11 @@ public final class ShotTrails {
         }
     }
     public static boolean hasTrails() {
-        return level == Minecraft.getInstance().level && (!localHistory.isEmpty() || hasDistantTrails());
+        return level == Minecraft.getInstance().level && (localHistory.hasVisibleSamples(visualTime()) || hasDistantTrails());
     }
     public static boolean hasDistantTrails() {
         var mc = Minecraft.getInstance();
-        return level == mc.level && !history.isEmpty() && mc.player != null
+        return level == mc.level && history.hasVisibleSamples(visualTime()) && mc.player != null
                 && tacz.aos.block.RangefinderAccess.nearby(mc.player);
     }
     public static int drawnPieces() { return lastPieces; }
@@ -117,7 +117,7 @@ public final class ShotTrails {
         var heads = new LinkedHashMap<Integer, TrailHistory.Sample>();
         smokeShader.safeGetUniform("SmokeTime").set((float) (now * 0.03));
         var vertices = buffers.getBuffer(smokeType);
-        for (var sample : visibleSamples()) {
+        for (var sample : visibleSamples(now)) {
             var s = sample.segment();
             if (!shaderDraw) heads.put(s.shot(), sample);
             double progress = Math.clamp(now - sample.start(), 0, 1);
@@ -180,12 +180,16 @@ public final class ShotTrails {
                 net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false) != null;
     }
 
-    private static java.util.List<TrailHistory.Sample> visibleSamples() {
+    private static double visualTime() {
+        return tick + Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false);
+    }
+
+    private static java.util.List<TrailHistory.Sample> visibleSamples(double now) {
         var result = new java.util.ArrayList<TrailHistory.Sample>();
-        if (hasDistantTrails()) result.addAll(history.samples());
+        if (hasDistantTrails()) result.addAll(history.visibleSamples(now));
         var mc = Minecraft.getInstance();
         // Reclip retained smoke too: unloading/teleporting must not expose a previously received distant trail.
-        for (var sample : localHistory.samples()) {
+        for (var sample : localHistory.visibleSamples(now)) {
             for (var piece : tacz.aos.trails.TrailAudience.clip(sample.segment(), ShotTrails::hasLocalChunk))
                 result.add(new TrailHistory.Sample(piece, sample.start()));
         }

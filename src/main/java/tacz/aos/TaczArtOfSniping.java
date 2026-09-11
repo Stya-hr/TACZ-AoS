@@ -25,7 +25,7 @@ public final class TaczArtOfSniping {
     public TaczArtOfSniping(IEventBus modEventBus, ModContainer container) {
         tacz.aos.block.ModContent.register(modEventBus);
         tacz.aos.trails.FeedbackSounds.register(modEventBus);
-        container.registerConfig(ModConfig.Type.SERVER, ServerConfig.SPEC);
+        container.registerConfig(ModConfig.Type.SERVER, ServerConfig.SPEC, tacz.aos.config.ConfigFileBootstrap.FILE_NAME);
         modEventBus.addListener(ServerConfig::onLoad);
         modEventBus.addListener(ServerConfig::onReload);
         modEventBus.addListener(ServerConfig::onUnload);
@@ -41,6 +41,16 @@ public final class TaczArtOfSniping {
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
+        event.enqueueWork(() -> {
+            var directory = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get();
+            var defaults = net.neoforged.fml.loading.FMLPaths.GAMEDIR.get()
+                    .resolve(net.neoforged.fml.loading.FMLConfig.defaultConfigPath());
+            try {
+                tacz.aos.config.ConfigFileBootstrap.ensureExists(directory, defaults);
+            } catch (java.io.IOException exception) {
+                LOGGER.error("Could not create config file {}", directory.resolve(tacz.aos.config.ConfigFileBootstrap.FILE_NAME), exception);
+            }
+        });
         LOGGER.info("TACZ: Art of Sniping initialized");
     }
 }

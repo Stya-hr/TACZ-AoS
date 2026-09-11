@@ -107,7 +107,12 @@ public final class LocalBallistics {
     }
 
     private void collectVisual(Flight flight, boolean terminal, Map<Viewer, List<TrailSegment>> batches) {
-        if (flight.visualStart == null || flight.visualEnd == null) return;
+        if (flight.visualStart == null || flight.visualEnd == null) {
+            if (!terminal || flight.ticks == 0) return;
+            // Removal/cancellation before movement still has to retire previously sent client smoke.
+            flight.visualStart = flight.visualEnd = flight.bullet.position();
+            flight.visualSpeed = 0;
+        }
         var a = flight.visualStart; var b = flight.visualEnd;
         final TrailSegment segment;
         try {
@@ -181,7 +186,8 @@ public final class LocalBallistics {
         EventHooks.fireEntityTickPost(bullet);
         flight.traveled+=step.distance();
         if ("RANGE_LIMIT".equals(step.termination())) rangeLimited++;
-        return step.termination();
+        if (step.termination() != null) return step.termination();
+        return bullet.isRemoved() ? "removed_by_tick_event" : null;
     }
 
     private static String stop(EntityKineticBullet bullet, String reason) {

@@ -13,6 +13,7 @@ public final class TrailHistory {
         int step;
         double start;
         boolean terminal;
+        double endsAt = Double.POSITIVE_INFINITY;
     }
     private final LinkedHashMap<Integer, Track> tracks = new LinkedHashMap<>();
 
@@ -27,17 +28,32 @@ public final class TrailHistory {
         // Multiple clipped runs may share a tick; they stay disjoint and share the interpolation time.
         // About one tick of interpolation; never extrapolate beyond a confirmed endpoint.
         double start = track.samples.isEmpty() ? now : Math.clamp(track.start + segment.step() - track.step, now - 1, now + 1);
+        // A confirmed stop may finish its last interpolation, but cannot queue another future tick.
+        if (segment.terminal()) start = Math.min(start, now);
         track.samples.addLast(new Sample(segment, start));
         while (track.samples.size() > MAX_SAMPLES) track.samples.removeFirst();
         track.step = segment.step(); track.start = start; track.terminal = segment.terminal();
+        if (track.terminal) {
+            boolean stationary = segment.x0() == segment.x1() && segment.y0() == segment.y1() && segment.z0() == segment.z1();
+            track.endsAt = stationary ? now : start + 1;
+        }
     }
     public void expire(double now) {
         tracks.values().removeIf(track -> {
+            if (now >= track.endsAt) track.samples.clear();
             track.samples.removeIf(s -> now - s.start() > 1 + TrailStyle.lifetime(s.segment().speed()));
-            return track.samples.isEmpty();
+            // Keep a bounded tombstone so a late packet cannot resurrect smoke after impact.
+            return track.terminal ? now > track.endsAt + TrailStyle.LIFETIME_TICKS + 1 : track.samples.isEmpty();
         });
     }
+    /** Shared by both vanilla and Iris rendering: impact retires the entire shot, including its old smoke. */
+    public List<Sample> visibleSamples(double now) {
+        return tracks.values().stream().filter(t -> now < t.endsAt).flatMap(t -> t.samples.stream()).toList();
+    }
+    public boolean hasVisibleSamples(double now) {
+        return tracks.values().stream().anyMatch(t -> now < t.endsAt && !t.samples.isEmpty());
+    }
     public List<Sample> samples() { return tracks.values().stream().flatMap(t -> t.samples.stream()).toList(); }
-    public boolean isEmpty() { return tracks.isEmpty(); }
+    public boolean isEmpty() { return tracks.values().stream().allMatch(t -> t.samples.isEmpty()); }
     public void clear() { tracks.clear(); }
 }
