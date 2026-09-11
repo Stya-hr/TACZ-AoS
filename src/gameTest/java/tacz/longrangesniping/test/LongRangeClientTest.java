@@ -43,6 +43,11 @@ public final class LongRangeClientTest {
     private static volatile boolean readyToFire, hitConfirmed;
     private static com.tacz.guns.entity.EntityKineticBullet shotBullet;
     private static Cow shotTarget;
+    private static final BlockPos BLOCK_TARGET = new BlockPos(890,80,6);
+    private static UUID cartUuid;
+    private static volatile int cartId=-1;
+    private static volatile boolean targetsReady, targetsHit, sawFallen, sawCartHit, targetsRecovered;
+    private static int targetHitTick, blockSamples;
     private static volatile boolean shotStarted;
     private static int ticks, stageTick, frames, draws;
     private static int entitySamples, trailSamples, query, queryKind, shotFrames;
@@ -51,8 +56,9 @@ public final class LongRangeClientTest {
         if (!ENABLED || !tacz.longrangesniping.client.ShaderCompat.active() || tacz.longrangesniping.client.ShaderCompat.shadowPass()) return;
         var stage = event.getStage();
         if (stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES
-                && stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
-        queryKind = stage == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES ? 1 : 2;
+                && stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
+                && stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
+        queryKind = stage == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES ? 1 : stage == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES ? 3 : 2;
         query = org.lwjgl.opengl.GL15C.glGenQueries();
         org.lwjgl.opengl.GL15C.glBeginQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED, query);
     }
@@ -63,6 +69,7 @@ public final class LongRangeClientTest {
         int samples = org.lwjgl.opengl.GL15C.glGetQueryObjecti(query, org.lwjgl.opengl.GL15C.GL_QUERY_RESULT);
         org.lwjgl.opengl.GL15C.glDeleteQueries(query); query = 0;
         if (queryKind == 1 && animalId >= 0) entitySamples = Math.max(entitySamples, samples);
+        if (queryKind == 3 && stage >= 3) blockSamples = Math.max(blockSamples, samples);
         if (queryKind == 2 && shotStarted) trailSamples = Math.max(trailSamples, samples);
     }
     private static volatile boolean missedInitialSpawn;
@@ -113,11 +120,23 @@ public final class LongRangeClientTest {
         }
         if(shotStarted && hitConfirmed) {
             if (tacz.longrangesniping.client.ShaderCompat.active()) {
-                if (entitySamples <= 0 || trailSamples <= 0) { finish(false, "Iris drew no fragments: entity="+entitySamples+", trail="+trailSamples); return; }
+                if (entitySamples <= 0 || trailSamples <= 0 || blockSamples <= 0) { finish(false, "Iris drew no fragments: entity="+entitySamples+", trail="+trailSamples+", block target="+blockSamples); return; }
                 Screenshot.grab(mc.gameDirectory,"iris-trail.png",mc.getMainRenderTarget(),ignored -> {});
                 TaczLongRangeSniping.LOGGER.info("IRIS_GPU_PASS entity fragments={}, trail fragments={}",entitySamples,trailSamples);
             }
-            finish(true,"Cold generation index, Voxy depth, real animal AI/render and remote damage after unscoping verified");return;
+            finish(true,"Cold generation index, Voxy depth, real animal AI/render, both TACZ targets with hit/recovery animation, and remote damage after unscoping verified");return;
+        }
+        if (stage>=3 && !shotStarted) {
+            var visual=tacz.longrangesniping.client.ScopedBlockRendering.visual(BLOCK_TARGET);
+            var cart=mc.level.getEntity(cartId);
+            if(visual!=null && cart instanceof com.tacz.guns.entity.TargetMinecart targetCart
+                    && tacz.longrangesniping.client.ScopedBlockRendering.draws()>0 && ScopedRendering.drewExtra(cartId)) {
+                if(ScopedRendering.hasRealClientChunk(cart)) {finish(false,"Target client chunk should remain absent");return;}
+                targetsReady=true;
+                sawFallen |= targetsHit && !visual.getBlockState().getValue(com.tacz.guns.block.TargetBlock.STAND) && visual.rot>=89;
+                sawCartHit |= targetCart.getHurtTime()>0;
+                targetsRecovered |= sawFallen && sawCartHit && visual.getBlockState().getValue(com.tacz.guns.block.TargetBlock.STAND) && visual.rot==0 && targetCart.getHurtTime()==0;
+            }
         }
         // After releasing aim the entity can legitimately be unpaired before the next render event.
         if (!shotStarted && stage >= 3 && animalId >= 0 && ScopedRendering.drewExtra(animalId)) {
@@ -125,7 +144,7 @@ public final class LongRangeClientTest {
             if (animal == null || !animal.getUUID().equals(uuid) || ScopedRendering.hasRealClientChunk(animal)) {
                 finish(false,"Wrong animal or remote terrain sent to 2-chunk client"); return;
             }
-            if (++draws >= 40 && movement && missedInitialSpawn && tacz.longrangesniping.client.ScopeRangeHud.displayedDistance() > 800) {
+            if (++draws >= 40 && targetsRecovered && movement && missedInitialSpawn && tacz.longrangesniping.client.ScopeRangeHud.displayedDistance() > 800) {
                 if(!readyToFire) TaczLongRangeSniping.LOGGER.info("IRIS_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
                 if(!readyToFire) Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
                 readyToFire = true;
@@ -163,6 +182,9 @@ public final class LongRangeClientTest {
                 for (int y=60;y<=84;y++) for (int z=0;z<16;z++) level.setBlock(new BlockPos(896,y,z),Blocks.STONE.defaultBlockState(),2);
                 original = EntityType.COW.create(level); original.setPos(888,80,8); original.setPersistenceRequired();
                 uuid=original.getUUID(); level.addFreshEntity(original);
+                TaczTargetGameTests.place(level,BLOCK_TARGET);
+                var cart=new com.tacz.guns.entity.TargetMinecart(level,890,80,10);cart.setNoGravity(true);
+                cartUuid=cart.getUUID();level.addFreshEntity(cart);
                 stage=1; stageTick=ticks;
             }
             if (stage==1 && ticks-stageTick>=100) {
@@ -196,6 +218,21 @@ public final class LongRangeClientTest {
                     movement |= initialX!=0 && Math.abs(cow.getX()-initialX)>.1;
                 }
                 if (level.getChunkSource().getChunkNow(30,0)!=null) throw new AssertionError("Scoping loaded the flight corridor");
+                var cart=level.getEntity(cartUuid);
+                if(cart!=null)cartId=cart.getId();
+                if(targetsReady && !targetsHit) {
+                    if(!(cart instanceof com.tacz.guns.entity.TargetMinecart targetCart))throw new AssertionError("Saved target minecart missing");
+                    var stack=player.getMainHandItem();var gun=IGun.getIGunOrNull(stack);
+                    var data=com.tacz.guns.api.TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
+                    for(var position:List.of(new net.minecraft.world.phys.Vec3(878,81.32,6.5),new net.minecraft.world.phys.Vec3(878,80.3,10))) {
+                        var bullet=new com.tacz.guns.entity.EntityKineticBullet(level,player,stack,data.getAmmoId(),gun.getGunId(stack),false,data,data.getBulletData());
+                        bullet.setPos(position);bullet.setDeltaMovement(20,0,0);
+                        tacz.longrangesniping.ballistics.TargetBallistics.tick(level,bullet,1024,new tacz.longrangesniping.ballistics.TargetCollisionSource(level,ScopeActivity.INSTANCE.observationBounds(player)));
+                    }
+                    if(level.getBlockState(BLOCK_TARGET).getValue(com.tacz.guns.block.TargetBlock.STAND) || targetCart.getHurtTime()==0)throw new AssertionError("Remote target hit did not trigger native feedback");
+                    targetsHit=true;targetHitTick=ticks;
+                }
+                if(targetsHit && ticks-targetHitTick>120 && !targetsRecovered)throw new AssertionError("Target animation synchronization: fallen="+sawFallen+", cartHit="+sawCartHit+", recovered="+targetsRecovered);
                 if (readyToFire && shotBullet == null) {
                     var shot=tacz.longrangesniping.compat.tacz.BallisticPreview.read(player).orElseThrow();
                     var result=tacz.longrangesniping.scoping.ImpactPrediction.predict(shot,

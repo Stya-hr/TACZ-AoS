@@ -20,6 +20,7 @@ public interface KineticBulletAccessor {
     @Accessor("pierce") int taczlrs$getPierce();
     @Accessor("pierce") void taczlrs$setPierce(int remaining);
     @Invoker("onHitEntity") void taczlrs$hitEntity(TacHitResult hit, Vec3 start, Vec3 end);
+    @Invoker("onHitBlock") void taczlrs$hitBlock(net.minecraft.world.phys.BlockHitResult hit, Vec3 start, Vec3 end);
     @Accessor("distanceAmount") float taczlrs$getEffectiveRange();
     @Accessor("headShot") float taczlrs$getHeadshot();
     @Accessor("armorIgnore") float taczlrs$getArmorIgnore();

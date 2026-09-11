@@ -53,6 +53,7 @@ public final class VisibleTargetReporter {
             double distance=eye.distanceTo(depthPoint);
             if(distance<=range && distance>.1 && (target==null || distance<eye.distanceTo(target))) target=depthPoint;
         }
+        target=ScopedBlockRendering.pick(eye,direction,range,target);
         double distance=target==null?range:eye.distanceTo(target);
         // Remote entities already paired by this mod are valid candidates too. Unseen entities cannot be invented.
         var end=eye.add(direction.scale(distance));

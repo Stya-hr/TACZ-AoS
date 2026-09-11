@@ -44,7 +44,7 @@ public final class ScopeSubscriptions {
             var decision = TaczBridge.evaluate(player);
             var lease = leases.get(player.getUUID());
             if (!settings.available() || !settings.scopeRendering().enabled() || !decision.eligible()) {
-                if (lease != null) replace(player, List.of());
+                if (lease != null) { replace(player, List.of()); ScopeBlockTargets.clear(player); }
                 continue;
             }
             if (lease != null && lease.level != player.serverLevel()) replace(player, List.of());
@@ -54,6 +54,7 @@ public final class ScopeSubscriptions {
                 ScopeRangefinder.update(player, selected);
                 ScopeActivity.INSTANCE.update(player, selected);
                 replace(player, selected);
+                ScopeBlockTargets.send(player, decision.zoom(), selected.size());
             }
         }
     }
@@ -198,7 +199,7 @@ public final class ScopeSubscriptions {
     public int count(ServerPlayer player) { var lease = leases.get(player.getUUID()); return lease == null ? 0 : lease.targets.size(); }
     @SubscribeEvent public void logout(PlayerEvent.PlayerLoggedOutEvent event) { leases.remove(event.getEntity().getUUID()); repairAttempts.remove(event.getEntity().getUUID()); }
     @SubscribeEvent public void dimension(PlayerEvent.PlayerChangedDimensionEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) replace(player, List.of());
+        if (event.getEntity() instanceof ServerPlayer player) {replace(player, List.of());ScopeBlockTargets.clear(player);}
     }
     @SubscribeEvent public void unload(LevelEvent.Unload event) { leases.values().removeIf(lease -> lease.level == event.getLevel()); }
     @SubscribeEvent public void stopped(ServerStoppedEvent event) { leases.clear(); repairAttempts.clear(); tick = 0; }

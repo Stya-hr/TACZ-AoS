@@ -11,7 +11,7 @@ import tacz.longrangesniping.mixin.ChunkMapAccessor;
 import tacz.longrangesniping.terrain.CollisionCell;
 import tacz.longrangesniping.terrain.StaticCollisionShapes;
 
-/** Restores native cosmetic feedback for target-core impacts; never invokes live block callbacks or loads terrain. */
+/** Target-core feedback. TACZ target blocks additionally receive their native projectile callback. */
 public final class BlockImpactEffects {
     private BlockImpactEffects() {}
 
@@ -26,8 +26,9 @@ public final class BlockImpactEffects {
             var chunk = level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4);
             if (chunk == null) continue;
             var state = chunk.getBlockState(pos);
-            if (StaticCollisionShapes.classify(state).kind() == CollisionCell.Kind.CONSERVATIVE) continue;
-            var hit = state.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).clip(start,
+            boolean target = state.getBlock() instanceof com.tacz.guns.block.TargetBlock;
+            if (!target && StaticCollisionShapes.classify(state).kind() == CollisionCell.Kind.CONSERVATIVE) continue;
+            var hit = (target ? state.getCollisionShape(chunk, pos) : state.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO)).clip(start,
                     start.add(movement).add(movement.normalize().scale(0.001)), pos);
             if (hit != null && hit.getLocation().distanceToSqr(impact) < 0.000001
                     && (best == null || hit.getLocation().distanceToSqr(start) < best.getLocation().distanceToSqr(start))) best = hit;
@@ -38,6 +39,11 @@ public final class BlockImpactEffects {
     public static void targetHit(ServerLevel level, EntityKineticBullet bullet, Vec3 start, Vec3 movement, double fraction) {
         var hit = liveHit(level, start, movement, fraction);
         if (hit == null) return; // A cached/conservative stop is not proof of a present-day surface.
+        var chunk = level.getChunkSource().getChunkNow(hit.getBlockPos().getX() >> 4, hit.getBlockPos().getZ() >> 4);
+        if (chunk != null && chunk.getBlockState(hit.getBlockPos()).getBlock() instanceof com.tacz.guns.block.TargetBlock) {
+            ((tacz.longrangesniping.mixin.KineticBulletAccessor) bullet).taczlrs$hitBlock(hit, start, start.add(movement));
+            return;
+        }
         var p = hit.getLocation(); var block = hit.getBlockPos();
         var option = new BulletHoleOption(hit.getDirection(), block, bullet.getAmmoId().toString(),
                 bullet.getGunId().toString(), bullet.getGunDisplayId().toString());

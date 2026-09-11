@@ -4,5 +4,5 @@
   "package": "tacz.longrangesniping.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": ["KineticBulletAccessor", "ProjectileLaunchMixin", "KineticLaunchMixin", "KineticWindMixin", "ChunkMapAccessor", "TrackedEntityAccessor", "TrackedEntityMixin", "ScopedMobActivityMixin"],
-  "client": ["ScopeRangeLensMixin", "ScopeFarPlaneMixin", "ScopedEntityRendererMixin", "VoxyDepthMixin"]
+  "client": ["ScopeRangeLensMixin", "ScopeFarPlaneMixin", "ScopedEntityRendererMixin", "VoxyDepthMixin", "ScopedTargetRendererMixin"]
 }
