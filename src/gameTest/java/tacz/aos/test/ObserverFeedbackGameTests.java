@@ -31,6 +31,63 @@ import java.util.UUID;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class ObserverFeedbackGameTests {
+    @GameTest(template = "ballistics", batch = "distant_gunshots")
+    public static void managedShotAudioIsDelayedOnceAndSurvivesBulletRemoval(GameTestHelper h) throws ReflectiveOperationException {
+        var shooter = viewer(h, new Vec3(4,5,4), true);
+        var near = viewer(h, new Vec3(44,5,4), true);
+        var far = viewer(h, new Vec3(1004,5,4), false);
+        var fixture = new LocalBallisticsGameTests.Fixture(h, shooter.player);
+        var scheduler = new LocalBallistics(h.getLevel());
+        var gun = net.minecraft.resources.ResourceLocation.parse("tacz:ai_awp");
+        int chunks = h.getLevel().getChunkSource().getLoadedChunksCount();
+        long now = h.getLevel().getGameTime();
+        var mapField = net.minecraft.server.level.ChunkMap.class.getDeclaredField("playerMap");
+        mapField.setAccessible(true);
+        var nativePlayers = (net.minecraft.server.level.PlayerMap) mapField.get(h.getLevel().getChunkSource().chunkMap);
+        nativePlayers.addPlayer(near.player, false); nativePlayers.addPlayer(far.player, false);
+        far.player.setChunkTrackingView(ChunkTrackingView.of(shooter.player.chunkPosition(), 4));
+        try {
+            var bullet = fixture.bullet(new Vec3(4,6,4), new Vec3(40,0,0));
+            LocalBallisticsGameTests.accept(h, scheduler, bullet, new ServerConfig.Ballistics(true,2048,16,600));
+            // Exercise the real TACZ mixin, with an intentionally large native audible radius.
+            com.tacz.guns.sound.SoundManager.sendSoundToNearby(shooter.player, 2048, gun, gun,
+                    com.tacz.guns.sound.SoundManager.SHOOT_3P_SOUND, .8f, 1);
+            h.assertTrue(near.count(com.tacz.guns.network.message.ServerMessageSound.class) == 1, "Nearby native shot disappeared");
+            h.assertTrue(far.count(com.tacz.guns.network.message.ServerMessageSound.class) == 0, "Far listener got immediate duplicate gunfire");
+            scheduler.clear(); // A hit or shutdown of projectile simulation must not cancel the sound wave.
+            var sound = tacz.aos.trails.DelayedGunshots.INSTANCE;
+            sound.deliver(h.getLevel(), now + 58);
+            h.assertTrue(far.count(tacz.aos.network.DistantGunshotPayload.class) == 0, "1000-block gunshot arrived too early");
+            sound.deliver(h.getLevel(), now + 59);
+            sound.deliver(h.getLevel(), now + 60);
+            h.assertTrue(far.count(tacz.aos.network.DistantGunshotPayload.class) == 1, "Distant gunshot missing or repeated");
+            h.assertTrue(shooter.count(tacz.aos.network.DistantGunshotPayload.class) == 0 && near.count(tacz.aos.network.DistantGunshotPayload.class) == 0,
+                    "Shooter/near listener received a delayed duplicate");
+            h.assertTrue(chunks == h.getLevel().getChunkSource().getLoadedChunksCount(), "Sound propagation loaded terrain");
+            sound.accepted(h.getLevel(), shooter.player.getUUID(), gun);
+            sound.replace(shooter.player, 2048, gun, gun, com.tacz.guns.sound.SoundManager.SHOOT_3P_SOUND, .8f, 1);
+            sound.dimension(new net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerChangedDimensionEvent(
+                    far.player, net.minecraft.world.level.Level.OVERWORLD, net.minecraft.world.level.Level.NETHER));
+            sound.deliver(h.getLevel(), now + 59);
+            h.assertTrue(far.count(tacz.aos.network.DistantGunshotPayload.class) == 1, "Dimension change retained an old gunshot");
+            var configField = ServerConfig.class.getDeclaredField("distantGunshots");
+            configField.setAccessible(true);
+            var original = ServerConfig.distantGunshots();
+            sound.accepted(h.getLevel(), shooter.player.getUUID(), gun);
+            try {
+                configField.set(null, new ServerConfig.DistantGunshots(false,343,128,0,.65));
+                h.assertTrue(!sound.replace(shooter.player,2048,gun,gun,com.tacz.guns.sound.SoundManager.SHOOT_3P_SOUND,.8f,1),
+                        "Disabled feature still intercepted native sound");
+                sound.deliver(h.getLevel(),now+60);
+            } finally { configField.set(null,original); }
+        } finally {
+            nativePlayers.removePlayer(near.player); nativePlayers.removePlayer(far.player);
+            scheduler.clear();
+            for (var v : List.of(shooter,near,far)) h.getLevel().players().remove(v.player);
+        }
+        h.succeed();
+    }
+
     private record Viewer(FakePlayer player, List<Packet<?>> packets) {
         long count(Class<?> type) {
             return packets.stream().filter(p -> p instanceof ClientboundCustomPayloadPacket c && type.isInstance(c.payload())).count();

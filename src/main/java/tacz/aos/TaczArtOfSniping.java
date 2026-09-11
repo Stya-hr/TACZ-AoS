@@ -33,6 +33,7 @@ public final class TaczArtOfSniping {
         modEventBus.addListener(ScopeNetworking::register);
         NeoForge.EVENT_BUS.register(new TaczEvents());
         NeoForge.EVENT_BUS.register(ScopedBallistics.INSTANCE);
+        NeoForge.EVENT_BUS.register(tacz.aos.trails.DelayedGunshots.INSTANCE);
         NeoForge.EVENT_BUS.register(GeneratedChunks.INSTANCE);
         NeoForge.EVENT_BUS.register(tacz.aos.scoping.ScopeActivity.INSTANCE);
         NeoForge.EVENT_BUS.register(ScopeSubscriptions.INSTANCE);

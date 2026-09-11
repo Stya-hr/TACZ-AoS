@@ -72,6 +72,8 @@ public final class LocalBallistics {
         if (active.containsKey(bullet.getUUID()) || pending.stream().anyMatch(f -> f.bullet == bullet)) return Admission.ACCEPTED;
         if (active.size() + pending.size() >= limits.maxActiveBullets()) return Admission.CAPACITY;
         pending.add(new Flight(bullet, context, limits));
+        tacz.aos.trails.DelayedGunshots.INSTANCE.accepted(level, context.shooterId(),
+                net.minecraft.resources.ResourceLocation.parse(context.eligibilityAtFire().gunId()));
         accepted++;
         return Admission.ACCEPTED;
     }
@@ -181,7 +183,8 @@ public final class LocalBallistics {
         if (!plainKinetic(bullet)) return stop(bullet, "unsupported_ammunition_changed");
         flight.visualStart = bullet.position();
         flight.visualSpeed = (float) bullet.getDeltaMovement().length();
-        var step = TargetBallistics.tick(level, bullet, flight.limits.maxDistance()-flight.traveled,new TargetCollisionSource(level,flight.lease.bounds()));
+        var step = ScopedDeathMessages.duringShot(bullet, () -> TargetBallistics.tick(level, bullet,
+                flight.limits.maxDistance()-flight.traveled, new TargetCollisionSource(level,flight.lease.bounds())));
         flight.visualEnd=bullet.position();
         EventHooks.fireEntityTickPost(bullet);
         flight.traveled+=step.distance();

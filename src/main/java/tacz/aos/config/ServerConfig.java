@@ -8,6 +8,13 @@ import java.util.List;
 
 public final class ServerConfig {
     public static final ModConfigSpec SPEC;
+    public record DistantGunshots(boolean enabled, double speed, int minDistance, int maxDistance, double volume) {}
+    private static final DistantGunshots SILENT_GUNSHOTS = new DistantGunshots(false, 343, 128, 0, .65);
+    private static volatile DistantGunshots distantGunshots = SILENT_GUNSHOTS;
+    private static final ModConfigSpec.BooleanValue DISTANT_SOUND;
+    private static final ModConfigSpec.DoubleValue SOUND_SPEED, SOUND_VOLUME;
+    private static final ModConfigSpec.IntValue SOUND_MIN, SOUND_MAX;
+    public static DistantGunshots distantGunshots() { return distantGunshots; }
     private static final ModConfigSpec.BooleanValue WIND_ENABLED, WIND_WEATHER;
     private static final ModConfigSpec.LongValue WIND_SEED;
     private static final ModConfigSpec.IntValue[] WIND_PERIODS = new ModConfigSpec.IntValue[3];
@@ -79,6 +86,19 @@ public final class ServerConfig {
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
+        builder.comment("Delayed distant gunfire for accepted AoS shots only. Nearby TACZ audio remains native.",
+                        "Distance/delay/volume use listener position at firing; no terrain occlusion or extra chunk loading.",
+                        "Both clients and server need this version. Restart the world/server after edits.").push("distantGunshots");
+        DISTANT_SOUND = builder.define("enabled", true);
+        SOUND_SPEED = builder.comment("Blocks per second, assuming 20 server ticks per second. 343 models temperate air.")
+                .defineInRange("speedOfSound", 343.0, 100, 2000);
+        SOUND_MIN = builder.comment("Below this distance, keep TACZ's immediate nearby gunfire.")
+                .defineInRange("minDistance", 128, 16, 16384);
+        SOUND_MAX = builder.comment("Audible radius. Zero follows the configured maximum sniping distance.")
+                .defineInRange("maxDistance", 0, 0, 16384);
+        SOUND_VOLUME = builder.comment("Overall gain before distance attenuation. Suppressed shots use another 0.2 multiplier.")
+                .defineInRange("volume", .65, 0, 1);
+        builder.pop();
         builder.comment("Global crosswind for ordinary TACZ kinetic bullets. HUD still requires an eligible scoped player near a rangefinder.",
                         "Wind is shared per dimension, fixed per shot, absent in dimensions without skylight and ignored under water.",
                         "Restart the world/server after edits so clients receive the same configuration.")
@@ -226,6 +246,7 @@ public final class ServerConfig {
     public static void onUnload(ModConfigEvent.Unloading event) {
         if (event.getConfig().getSpec() == SPEC) {
             current = UNAVAILABLE;
+            distantGunshots = SILENT_GUNSHOTS;
             wind = tacz.aos.wind.WindSettings.DISABLED;
             gunOverrides = java.util.Map.of();
             targeting = DEFAULT_TARGETING;
@@ -234,6 +255,7 @@ public final class ServerConfig {
 
     private static void reload(ModConfigEvent event) {
         if (event.getConfig().getSpec() != SPEC) return;
+        distantGunshots = new DistantGunshots(DISTANT_SOUND.get(), SOUND_SPEED.get(), SOUND_MIN.get(), SOUND_MAX.get(), SOUND_VOLUME.get());
         targeting = new Targeting(TARGET_SPEED.get(),TARGET_INTERVAL.get(),TARGET_CHECKS.get(),TARGET_CONCURRENT.get(),TARGET_QUEUE.get(),TARGET_INDEX.get(),TARGET_NEW_REGION_INTERVAL.get());
         try {
             wind = new tacz.aos.wind.WindSettings(WIND_ENABLED.get(), WIND_WEATHER.get(), WIND_SEED.get(),

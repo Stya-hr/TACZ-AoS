@@ -38,11 +38,12 @@ public final class ScopeClientSmokeTest {
     private static final net.minecraft.core.BlockPos DEVICE = new net.minecraft.core.BlockPos(8, 80, 9);
     private static volatile boolean blockPreview, blockPrepared, blockFront, blockFrontReady;
     private static int blockFrames;
-    private static volatile boolean observerFeedback, observerSound;
+    private static volatile boolean observerFeedback, observerSound, distantSound;
     private static int observerFrames, observerServerFrames;
     private static boolean observerDrawn;
     @SubscribeEvent public static void observerSound(net.neoforged.neoforge.client.event.sound.PlaySoundSourceEvent event) {
         if (ENABLED && event.getSound().getLocation().equals(tacz.aos.trails.FeedbackSounds.FLYBY.getId())) observerSound = true;
+        if (ENABLED && event.getSound().getLocation().equals(tacz.aos.trails.FeedbackSounds.DISTANT_GUNSHOT.getId())) distantSound = true;
     }
     private static boolean started;
     private static int clientTicks, serverTicks, drawnTicks;
@@ -148,8 +149,8 @@ public final class ScopeClientSmokeTest {
                 fail("Confirmed impact did not retire observer smoke before normal 50-tick expiry"); return;
             }
             if (observerFrames >= 100) {
-                if (!observerDrawn || !observerSound || tacz.aos.client.ShotTrails.hasTrails()) {
-                    fail("Observer feedback failed: rendered="+observerDrawn+", sound="+observerSound+", remaining="+tacz.aos.client.ShotTrails.hasTrails()); return;
+                if (!observerDrawn || !observerSound || !distantSound || tacz.aos.client.ShotTrails.hasTrails()) {
+                    fail("Observer feedback failed: rendered="+observerDrawn+", sound="+observerSound+", distantSound="+distantSound+", remaining="+tacz.aos.client.ShotTrails.hasTrails()); return;
                 }
                 TaczArtOfSniping.LOGGER.info("OBSERVER_CLIENT_TEST PASSED: unscoped/no device, local-only clipping, Ogg sound source and expiry");
                 try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS"); }
@@ -301,6 +302,11 @@ public final class ScopeClientSmokeTest {
                         eye.x+12,eye.y,eye.z+10,0,true);
                 net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
                         new tacz.aos.network.ShotTrailsPayload(level.dimension().location(),true,java.util.List.of(stop)));
+            }
+            if (observerServerFrames == 60) {
+                var eye = player.getEyePosition();
+                net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                        new tacz.aos.network.DistantGunshotPayload(level.dimension().location(),eye.x-1000,eye.y,eye.z,.2f,1));
             }
             return;
         }

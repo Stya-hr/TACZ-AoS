@@ -3,6 +3,23 @@
   "minVersion": "0.8",
   "package": "tacz.aos.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["KineticBulletAccessor", "ProjectileLaunchMixin", "KineticLaunchMixin", "KineticWindMixin", "ChunkMapAccessor", "TrackedEntityAccessor", "TrackedEntityMixin", "ScopedMobActivityMixin"],
-  "client": ["ScopeRangeLensMixin", "ScopeFarPlaneMixin", "ScopedEntityRendererMixin", "VoxyDepthMixin", "ScopedTargetRendererMixin"]
+  "mixins": [
+    "KineticBulletAccessor",
+    "ProjectileLaunchMixin",
+    "KineticLaunchMixin",
+    "KineticWindMixin",
+    "ChunkMapAccessor",
+    "TrackedEntityAccessor",
+    "TrackedEntityMixin",
+    "ScopedMobActivityMixin",
+    "DistantGunshotMixin",
+    "ScopedDeathMessageMixin"
+  ],
+  "client": [
+    "ScopeRangeLensMixin",
+    "ScopeFarPlaneMixin",
+    "ScopedEntityRendererMixin",
+    "VoxyDepthMixin",
+    "ScopedTargetRendererMixin"
+  ]
 }

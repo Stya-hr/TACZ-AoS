@@ -22,5 +22,7 @@
   "tacz_aos.prediction_status": "弹着点预测：%s；刷新间隔至少 %s tick；全服预测软预算 %s 毫秒/tick",
   "block.tacz_aos.rangefinder": "测距仪",
   "tacz_aos.reason.no_nearby_rangefinder": "3 格以内没有完整的测距仪",
-  "subtitle.tacz_aos.bullet_flyby": "子弹掠过"
+  "subtitle.tacz_aos.bullet_flyby": "子弹掠过",
+  "subtitle.tacz_aos.distant_gunshot": "远处枪声",
+  "death.attack.tacz_aos.sniped": "%1$s被%2$s从%3$s格外一枪打爆了。"
 }

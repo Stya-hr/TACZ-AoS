@@ -22,5 +22,7 @@
   "tacz_aos.prediction_status": "Impact prediction: %s; refresh at least %s ticks; global soft budget %s ms/tick",
   "block.tacz_aos.rangefinder": "Rangefinder",
   "tacz_aos.reason.no_nearby_rangefinder": "No complete rangefinder within 3 blocks",
-  "subtitle.tacz_aos.bullet_flyby": "Bullet whizzes past"
+  "subtitle.tacz_aos.bullet_flyby": "Bullet whizzes past",
+  "subtitle.tacz_aos.distant_gunshot": "Distant gunshot",
+  "death.attack.tacz_aos.sniped": "%1$s was sniped by %2$s from %3$s blocks away."
 }

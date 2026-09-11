@@ -41,3 +41,7 @@ repo/
 
 # Local third-party mod binaries
 /libs/*.jar
+/tools/
+/src/gameTest/
+/src/test/
+/artifacts/

@@ -67,6 +67,7 @@ public final class ShotTrails {
         event.enqueueWork(() -> {
             ScopeNetworking.setTrailReceiver(ShotTrails::receive);
             ScopeNetworking.setNearMissReceiver(NearMissSounds::receive);
+            ScopeNetworking.setDistantGunshotReceiver(DistantGunshotSounds::receive);
         });
     }
     private static void receive(ShotTrailsPayload payload) {

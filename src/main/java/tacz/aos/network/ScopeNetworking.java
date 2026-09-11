@@ -13,12 +13,16 @@ public final class ScopeNetworking {
     private static Consumer<RangePayload> rangeReceiver = ignored -> {};
     public static void setRangeReceiver(Consumer<RangePayload> handler) { rangeReceiver = handler; }
     private static Consumer<NearMissPayload> nearMissReceiver = ignored -> {};
+    private static Consumer<DistantGunshotPayload> distantGunshotReceiver = ignored -> {};
+    public static void setDistantGunshotReceiver(Consumer<DistantGunshotPayload> handler) { distantGunshotReceiver = handler; }
     public static void setNearMissReceiver(Consumer<NearMissPayload> handler) { nearMissReceiver = handler; }
     private ScopeNetworking() {}
     public static void setClientReceiver(Consumer<ScopeTargetsPayload> handler) { receiver = handler; }
     public static void setTrailReceiver(Consumer<ShotTrailsPayload> handler) { trailReceiver = handler; }
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("10");
+        var registrar = event.registrar("11");
+        registrar.playToClient(DistantGunshotPayload.TYPE, DistantGunshotPayload.STREAM_CODEC,
+                (payload, context) -> distantGunshotReceiver.accept(payload));
         registrar.playToClient(ScopeBlockTargetsPayload.TYPE, ScopeBlockTargetsPayload.STREAM_CODEC,
                 (payload,context)->blockTargetReceiver.accept(payload));
         registrar.playToClient(NearMissPayload.TYPE, NearMissPayload.STREAM_CODEC,

@@ -10,6 +10,7 @@ import tacz.aos.TaczArtOfSniping;
 public final class FeedbackSounds {
     private static final DeferredRegister<SoundEvent> SOUNDS = DeferredRegister.create(Registries.SOUND_EVENT, TaczArtOfSniping.MOD_ID);
     public static final DeferredHolder<SoundEvent, SoundEvent> FLYBY = SOUNDS.register("bullet_flyby", SoundEvent::createVariableRangeEvent);
+    public static final DeferredHolder<SoundEvent, SoundEvent> DISTANT_GUNSHOT = SOUNDS.register("distant_gunshot", SoundEvent::createVariableRangeEvent);
     private FeedbackSounds() {}
     public static void register(IEventBus bus) { SOUNDS.register(bus); }
 }
