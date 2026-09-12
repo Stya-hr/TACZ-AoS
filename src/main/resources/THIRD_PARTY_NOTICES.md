@@ -1,12 +1,16 @@
 # Audio attribution
 
+The current bullet_flyby.ogg and distant_gunshot.ogg were replaced by the project maintainer. Their provenance has not been established here. Both replacements were downmixed to mono without gain normalization for positional playback. The following attribution is retained for the previous flyby asset; it does not identify the replacement recordings.
+
+## Previous flyby asset
+
 `assets/tacz_aos/sounds/bullet_flyby.ogg`
 
 - **Bullet_Flyby_2.wav** by **kMoon**, published February 22, 2010.
 - Source: https://freesound.org/people/kMoon/sounds/90782/
 - License: Creative Commons Attribution 3.0 Unported (CC BY 3.0).
 - License terms: https://creativecommons.org/licenses/by/3.0/
-- The bundled file is Freesound's unmodified Ogg preview of the original recording:
+- The previous bundled file was Freesound's unmodified Ogg preview of the original recording:
   https://cdn.freesound.org/previews/90/90782_1437582-lq.ogg
 - Playback volume and pitch vary in game. No endorsement by the author is implied.
 

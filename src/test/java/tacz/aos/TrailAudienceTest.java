@@ -34,12 +34,27 @@ class TrailAudienceTest {
         assertNull(TrailAudience.nearMiss(approaching, 20, 82, 0));
         var passing = line(16, 0, 32, 0, false);
         var near = TrailAudience.nearMiss(passing, 20, 81, 0);
-        var far = TrailAudience.nearMiss(passing, 20, 89, 0);
+        var far = TrailAudience.nearMiss(passing, 20, 84, 0);
         assertNotNull(near); assertNotNull(far);
         assertEquals(20, near.x()); assertEquals(1, near.distance());
         assertTrue(near.volume() > far.volume());
-        assertNull(TrailAudience.nearMiss(passing, 20, 92, 0));
+        assertNull(TrailAudience.nearMiss(passing, 20, 85, 0));
+        assertNull(TrailAudience.nearMiss(passing, 20, 85.01, 0));
         assertNull(TrailAudience.nearMiss(line(0, 0, 4, 0, true), 20, 81, 0), "Wall stop must not project a flyby behind it");
+    }
+    @Test void flybyGainIsLinearBoundedAndUsesThreeDimensionalDistance() {
+        assertEquals(1, TrailAudience.flybyVolume(0));
+        assertEquals(.8f, TrailAudience.flybyVolume(1), 1e-6);
+        assertEquals(.5f, TrailAudience.flybyVolume(2.5), 1e-6);
+        assertEquals(.2f, TrailAudience.flybyVolume(4), 1e-6);
+        assertEquals(0, TrailAudience.flybyVolume(5));
+        assertEquals(0, TrailAudience.flybyVolume(100));
+        assertEquals(1, TrailAudience.flybyVolume(-1));
+        var s = line(0, 0, 32, 0, false);
+        assertNull(TrailAudience.nearMiss(s, 16, 83, 4), "3D distance of five blocks must be silent");
+        var pass = TrailAudience.nearMiss(s, 16, 82.9, 4);
+        assertNotNull(pass);
+        assertTrue(pass.volume() > 0 && pass.volume() < .02);
     }
     @Test void clippingWorkIsBoundedEvenAtMaximumBulletSpeed() {
         int[] calls = {0};

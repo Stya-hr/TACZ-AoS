@@ -155,6 +155,7 @@ public final class ObserverFeedbackGameTests {
         var visible = viewer(h, new Vec3(12, 5.38, 7), true);
         var untracked = viewer(h, new Vec3(12, 5.38, 7), false);
         var far = viewer(h, new Vec3(500, 5.38, 7), true);
+        var outsideHearing = viewer(h, new Vec3(12, 5.38, 10), true);
         var scheduler = new LocalBallistics(h.getLevel());
         int loaded = h.getLevel().getChunkSource().getLoadedChunksCount();
         try {
@@ -166,6 +167,8 @@ public final class ObserverFeedbackGameTests {
             scheduler.tick(); scheduler.tick();
             h.assertTrue(visible.count(ShotTrailsPayload.class) >= 1, "Unscoped observer received no trace");
             h.assertTrue(visible.count(NearMissPayload.class) == 1, "Flyby was missing or repeated");
+            h.assertTrue(outsideHearing.count(ShotTrailsPayload.class) >= 1 && outsideHearing.count(NearMissPayload.class) == 0,
+                    "Observer six blocks from the path must see smoke but hear no flyby");
             for (var packet : visible.packets) if (packet instanceof ClientboundCustomPayloadPacket c && c.payload() instanceof ShotTrailsPayload p)
                 h.assertTrue(p.localOnly(), "Observer was granted full-distance trails");
             h.assertTrue(untracked.count(ShotTrailsPayload.class) == 0 && untracked.count(NearMissPayload.class) == 0,
@@ -174,7 +177,7 @@ public final class ObserverFeedbackGameTests {
             h.assertTrue(h.getLevel().getChunkSource().getLoadedChunksCount() == loaded, "Feedback loaded terrain");
         } finally {
             scheduler.clear();
-            for (var v : List.of(visible,untracked,far)) h.getLevel().players().remove(v.player);
+            for (var v : List.of(visible,untracked,far,outsideHearing)) h.getLevel().players().remove(v.player);
         }
         h.succeed();
     }

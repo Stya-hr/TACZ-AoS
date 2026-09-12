@@ -5,10 +5,14 @@ import java.util.List;
 
 /** Geometry only: no world requests, and never joins two visible runs across an untracked chunk. */
 public final class TrailAudience {
-    public static final double HEARING_RADIUS = 12;
+    public static final double HEARING_RADIUS = 5;
     @FunctionalInterface public interface Chunks { boolean contains(int x, int z); }
     public record Pass(double x, double y, double z, double distance) {
-        public float volume() { return (float) Math.pow(Math.max(0, 1 - distance / HEARING_RADIUS), 0.7); }
+        public float volume() { return flybyVolume(distance); }
+    }
+    /** Unity gain at the path, fading to silence at five blocks. Never amplify the source audio. */
+    public static float flybyVolume(double distance) {
+        return (float) Math.clamp(1 - distance / HEARING_RADIUS, 0, 1);
     }
     private TrailAudience() {}
 
