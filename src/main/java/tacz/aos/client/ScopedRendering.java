@@ -136,6 +136,7 @@ public final class ScopedRendering {
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES || ShaderCompat.shadowPass()) return;
         extraDrawn.clear();
+        ScopedOcclusion.beginFrame();
         if (!active || level == null) return;
         ScopeViewReporter.report(event, zoom, tick);
         if (targets.isEmpty()) return;
@@ -164,8 +165,11 @@ public final class ScopedRendering {
                 double x = Mth.lerp(partial, entity.xOld, entity.getX()) - eye.x;
                 double y = Mth.lerp(partial, entity.yOld, entity.getY()) - eye.y;
                 double z = Mth.lerp(partial, entity.zOld, entity.getZ()) - eye.z;
-                dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
-                        event.getPoseStack(), buffers, pose.target.light());
+                var clipped=ScopedOcclusion.forEntity(entity,eye,event.getPoseStack().last().pose(),buffers);
+                try {
+                    dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
+                            event.getPoseStack(), clipped==null?buffers:clipped, pose.target.light());
+                } finally {if(clipped!=null)clipped.close();}
                 extraDrawn.add(entity.getId());
             }
             buffers.endBatch();

@@ -37,6 +37,7 @@ public final class ScopeSubscriptions {
         repairAttempts.values().removeIf(when -> tick-when > 100);
         ScopeRangefinder.beginTick();
         var players = new ArrayList<>(event.getServer().getPlayerList().getPlayers());
+        ScopeOcclusion.beginTick(tick,players.stream().map(ServerPlayer::getUUID).collect(java.util.stream.Collectors.toSet()));
         // Rotate priority between refresh rounds so the global activity query cap does not always favor the same players.
         if (!players.isEmpty()) Collections.rotate(players, (int) (tick / ServerConfig.current().scopeRendering().intervalTicks() % players.size()));
         for (ServerPlayer player : players) {
@@ -127,6 +128,7 @@ public final class ScopeSubscriptions {
 
     /** Reconciliation uses the existing native observer set, so returning to vanilla never duplicates or loses an entity. */
     public void replace(ServerPlayer player, List<? extends Entity> targets) {
+        ScopeOcclusion.update(player,targets);
         var previous = leases.remove(player.getUUID());
         var level = player.serverLevel();
         var ids = new LinkedHashMap<Integer, UUID>();
@@ -202,5 +204,5 @@ public final class ScopeSubscriptions {
         if (event.getEntity() instanceof ServerPlayer player) {replace(player, List.of());ScopeBlockTargets.clear(player);}
     }
     @SubscribeEvent public void unload(LevelEvent.Unload event) { leases.values().removeIf(lease -> lease.level == event.getLevel()); }
-    @SubscribeEvent public void stopped(ServerStoppedEvent event) { leases.clear(); repairAttempts.clear(); tick = 0; }
+    @SubscribeEvent public void stopped(ServerStoppedEvent event) { leases.clear(); repairAttempts.clear(); ScopeOcclusion.clear(); tick = 0; }
 }

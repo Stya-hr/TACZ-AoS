@@ -8,6 +8,13 @@ import java.util.List;
 
 public final class ServerConfig {
     public static final ModConfigSpec SPEC;
+    public record Occlusion(boolean enabled,int radius,int cellsPerPlayer,int cellsPerTick,int boxesPerPlayer,int planeTestsPerFrame) {}
+    public static final Occlusion DEFAULT_OCCLUSION=new Occlusion(true,24,8192,32768,256,500000);
+    private static volatile Occlusion occlusion=DEFAULT_OCCLUSION;
+    public static Occlusion occlusion(){return occlusion;}
+    private static final ModConfigSpec.BooleanValue OCCLUSION_ENABLED;
+    private static final ModConfigSpec.IntValue OCCLUSION_RADIUS,OCCLUSION_CELLS,OCCLUSION_GLOBAL,OCCLUSION_BOXES,OCCLUSION_PLANES;
+
     public record DistantGunshots(boolean enabled, double speed, int minDistance, int maxDistance, double volume) {}
     private static final DistantGunshots SILENT_GUNSHOTS = new DistantGunshots(false, 343, 128, 0, .65);
     private static volatile DistantGunshots distantGunshots = SILENT_GUNSHOTS;
@@ -86,6 +93,15 @@ public final class ServerConfig {
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
+        builder.comment("Partial occlusion of remote entities using live nearby opaque shapes; no chunk loads or terrain rendering.",
+                "Refresh follows scopeRendering.intervalTicks. Budget exhaustion leaves unchecked geometry visible.").push("occlusion");
+        OCCLUSION_ENABLED=builder.define("enabled",true);
+        OCCLUSION_RADIUS=builder.comment("Maximum length of the local sight corridor in front of each observed entity.").defineInRange("radius",24,4,32);
+        OCCLUSION_CELLS=builder.defineInRange("maxCellsPerPlayer",8192,256,65536);
+        OCCLUSION_GLOBAL=builder.defineInRange("maxCellsPerTick",32768,256,262144);
+        OCCLUSION_BOXES=builder.defineInRange("maxBoxesPerPlayer",256,16,256);
+        OCCLUSION_PLANES=builder.comment("Shared client polygon clipping work cap per frame; does not affect bullet collision.").defineInRange("maxPlaneTestsPerFrame",500000,10000,2000000);
+        builder.pop();
         builder.comment("Delayed distant gunfire for accepted AoS shots only. Nearby TACZ audio remains native.",
                         "Distance/delay/volume use listener position at firing; no terrain occlusion or extra chunk loading.",
                         "Both clients and server need this version. Restart the world/server after edits.").push("distantGunshots");
@@ -250,11 +266,13 @@ public final class ServerConfig {
             wind = tacz.aos.wind.WindSettings.DISABLED;
             gunOverrides = java.util.Map.of();
             targeting = DEFAULT_TARGETING;
+            occlusion = DEFAULT_OCCLUSION;
         }
     }
 
     private static void reload(ModConfigEvent event) {
         if (event.getConfig().getSpec() != SPEC) return;
+        occlusion=new Occlusion(OCCLUSION_ENABLED.get(),OCCLUSION_RADIUS.get(),OCCLUSION_CELLS.get(),OCCLUSION_GLOBAL.get(),OCCLUSION_BOXES.get(),OCCLUSION_PLANES.get());
         distantGunshots = new DistantGunshots(DISTANT_SOUND.get(), SOUND_SPEED.get(), SOUND_MIN.get(), SOUND_MAX.get(), SOUND_VOLUME.get());
         targeting = new Targeting(TARGET_SPEED.get(),TARGET_INTERVAL.get(),TARGET_CHECKS.get(),TARGET_CONCURRENT.get(),TARGET_QUEUE.get(),TARGET_INDEX.get(),TARGET_NEW_REGION_INTERVAL.get());
         try {

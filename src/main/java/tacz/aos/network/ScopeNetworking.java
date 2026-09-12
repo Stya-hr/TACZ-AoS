@@ -6,6 +6,8 @@ import java.util.function.Consumer;
 
 /** Client installation supplies the receiver; this class never links client-only Minecraft classes. */
 public final class ScopeNetworking {
+    private static Consumer<ScopeOcclusionPayload> occlusionReceiver = ignored -> {};
+    public static void setOcclusionReceiver(Consumer<ScopeOcclusionPayload> handler){occlusionReceiver=handler;}
     private static Consumer<ScopeTargetsPayload> receiver = ignored -> {};
     private static Consumer<ScopeBlockTargetsPayload> blockTargetReceiver = ignored -> {};
     public static void setBlockTargetReceiver(Consumer<ScopeBlockTargetsPayload> handler){blockTargetReceiver=handler;}
@@ -20,7 +22,8 @@ public final class ScopeNetworking {
     public static void setClientReceiver(Consumer<ScopeTargetsPayload> handler) { receiver = handler; }
     public static void setTrailReceiver(Consumer<ShotTrailsPayload> handler) { trailReceiver = handler; }
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("11");
+        var registrar = event.registrar("12");
+        registrar.playToClient(ScopeOcclusionPayload.TYPE,ScopeOcclusionPayload.STREAM_CODEC,(payload,context)->occlusionReceiver.accept(payload));
         registrar.playToClient(DistantGunshotPayload.TYPE, DistantGunshotPayload.STREAM_CODEC,
                 (payload, context) -> distantGunshotReceiver.accept(payload));
         registrar.playToClient(ScopeBlockTargetsPayload.TYPE, ScopeBlockTargetsPayload.STREAM_CODEC,

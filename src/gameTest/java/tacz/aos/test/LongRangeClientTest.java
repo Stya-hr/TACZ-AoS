@@ -40,6 +40,12 @@ public final class LongRangeClientTest {
     private static volatile int stage, animalId = -1;
     private static volatile String failure;
     private static volatile boolean movement;
+    private static volatile boolean occlusionRequested,occlusionFinished;
+    private static volatile int coverPhase;
+    private static int coverTick,baselineBoxes=-1;
+    private static boolean coverBaselineCaptured;
+    private static int coverBaselinePixels,coverPartialPixels,coverFullPixels=-1,coverRestoredPixels;
+    private static boolean partialCoverSeen,fullCoverSeen,removedCoverSeen;
     private static volatile boolean readyToFire, hitConfirmed;
     private static com.tacz.guns.entity.EntityKineticBullet shotBullet;
     private static Cow shotTarget;
@@ -53,7 +59,7 @@ public final class LongRangeClientTest {
     private static int entitySamples, trailSamples, query, queryKind, shotFrames, impactFrames;
     @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGHEST)
     public static void beforeDraw(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
-        if (!ENABLED || !tacz.aos.client.ShaderCompat.active() || tacz.aos.client.ShaderCompat.shadowPass()) return;
+        if (!ENABLED || tacz.aos.client.ShaderCompat.shadowPass()) return;
         var stage = event.getStage();
         if (stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES
                 && stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
@@ -69,6 +75,14 @@ public final class LongRangeClientTest {
         int samples = org.lwjgl.opengl.GL15C.glGetQueryObjecti(query, org.lwjgl.opengl.GL15C.GL_QUERY_RESULT);
         org.lwjgl.opengl.GL15C.glDeleteQueries(query); query = 0;
         if (queryKind == 1 && animalId >= 0) entitySamples = Math.max(entitySamples, samples);
+        if(queryKind==1 && occlusionRequested && !occlusionFinished) {
+            var stats=tacz.aos.client.ScopedOcclusion.stats(animalId);
+            if(coverPhase==1)coverBaselinePixels=Math.max(coverBaselinePixels,samples);
+            if(coverPhase==2 && stats.output()>0 && stats.clipped()>0 && tacz.aos.client.ScopedOcclusion.boxCount(animalId)>baselineBoxes)
+                coverPartialPixels=Math.max(coverPartialPixels,samples);
+            if(coverPhase==3 && stats.input()>0 && stats.output()==0)coverFullPixels=samples;
+            if(coverPhase==4 && tacz.aos.client.ScopedOcclusion.boxCount(animalId)==baselineBoxes)coverRestoredPixels=Math.max(coverRestoredPixels,samples);
+        }
         if (queryKind == 3 && stage >= 3) blockSamples = Math.max(blockSamples, samples);
         if (queryKind == 2 && shotStarted) trailSamples = Math.max(trailSamples, samples);
     }
@@ -106,6 +120,7 @@ public final class LongRangeClientTest {
             finish(false,"Iris disabled shaders; this is not a shader compatibility pass"); return;
         }
         if (stage>=3 && frames%40==0) TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT visual active={}, targets={}, entity={}, draws={}",ScopedRendering.active(),ScopedRendering.targetCount(),mc.level.getEntity(animalId),draws);
+        mc.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.HIDDEN);
         if (++frames > 2400) { finish(false,"Client timed out, stage="+stage); return; }
         mc.player.setYRot(-90); mc.player.setYHeadRot(-90); mc.player.setXRot(0);
         com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(stage >= 3 && (!shotStarted || tacz.aos.client.ShaderCompat.active() && shotFrames < 8));
@@ -114,6 +129,26 @@ public final class LongRangeClientTest {
             shotFrames++;
             if (shotFrames == 6 && tacz.aos.client.ShaderCompat.active()) Screenshot.grab(mc.gameDirectory,"iris-scoped-trail.png",mc.getMainRenderTarget(),ignored -> {});
         }
+        if(occlusionRequested && !occlusionFinished) {
+            var stats=tacz.aos.client.ScopedOcclusion.stats(animalId);
+            if(coverPhase==1 && ScopedRendering.drewExtra(animalId)) {
+                baselineBoxes=tacz.aos.client.ScopedOcclusion.boxCount(animalId);
+                if(!coverBaselineCaptured){Screenshot.grab(mc.gameDirectory,"occlusion-before-wall.png",mc.getMainRenderTarget(),ignored->{});coverBaselineCaptured=true;}
+            }
+            if(coverPhase==2 && stats.input()>0 && stats.output()>0 && stats.clipped()>0) {
+                if(!partialCoverSeen)Screenshot.grab(mc.gameDirectory,"occlusion-half-wall.png",mc.getMainRenderTarget(),ignored->{});
+                partialCoverSeen=true;
+            }
+            if(coverPhase==3 && stats.input()>0 && stats.output()==0) {
+                if(!fullCoverSeen)Screenshot.grab(mc.gameDirectory,"occlusion-full-wall.png",mc.getMainRenderTarget(),ignored->{});
+                fullCoverSeen=true;
+            }
+            if(coverPhase==4 && baselineBoxes>=0 && tacz.aos.client.ScopedOcclusion.boxCount(animalId)==baselineBoxes && ScopedRendering.drewExtra(animalId)
+                    && (stats.input()==0 || stats.output()>0)) {
+                if(!removedCoverSeen)Screenshot.grab(mc.gameDirectory,"occlusion-removed-wall.png",mc.getMainRenderTarget(),ignored->{});
+                removedCoverSeen=true;
+            }
+        }
         if(stage>=3 && !net.neoforged.fml.ModList.get().isLoaded("voxy") && ticks-stageTick>60) {
             if(ScopedRendering.targetCount()!=0 || tacz.aos.client.VisibleTargetReporter.lastDistance>=0)
                 finish(false,"No-Voxy client selected terrain beyond two-chunk view");
@@ -121,8 +156,8 @@ public final class LongRangeClientTest {
             return;
         }
         if(shotStarted && hitConfirmed) {
-            // Allow packet delivery and the final interpolation, well below the old 50-tick smoke expiry.
-            if (++impactFrames < 10) return;
+            // The bullet stops immediately, but confirmed smoke now fades naturally for up to 50 ticks.
+            if (++impactFrames < 65) return;
             if (tacz.aos.client.ShotTrails.hasTrails() || tacz.aos.client.ShotTrails.drawnPieces() != 0) {
                 finish(false,"Trail continued rendering after confirmed remote impact"); return;
             }
@@ -164,6 +199,8 @@ public final class LongRangeClientTest {
                     mc.createWorldOpenFlows().openWorld(worldName,()->failure="Failed to reopen saved fixture");
                     return;
                 }
+                if(!occlusionFinished) {occlusionRequested=true;return;}
+                if(!partialCoverSeen || !fullCoverSeen || !removedCoverSeen || coverBaselinePixels<=0 || coverPartialPixels<=0 || coverPartialPixels>=coverBaselinePixels || coverFullPixels!=0 || coverRestoredPixels<=0) {finish(false,"Remote cover failed: partial="+partialCoverSeen+", full="+fullCoverSeen+", removed="+removedCoverSeen+", GPU="+coverBaselinePixels+"/"+coverPartialPixels+"/"+coverFullPixels+"/"+coverRestoredPixels);return;}
                 if(!readyToFire) TaczArtOfSniping.LOGGER.info("IRIS_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
                 if(!readyToFire) Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
                 readyToFire = true;
@@ -233,8 +270,20 @@ public final class LongRangeClientTest {
                 if (restored instanceof Cow cow && ScopeActivity.INSTANCE.active(cow) && level.isPositionEntityTicking(cow.blockPosition())) {
                     if (cow==original) throw new AssertionError("Animal was never deserialized");
                     animalId=cow.getId();
-                    if (initialX==0 && cow.onGround() && cow.getNavigation().moveTo(892,80,8,1)) initialX=cow.getX();
+                    if (initialX==0 && cow.onGround()) {cow.setNoAi(false);if(cow.getNavigation().moveTo(892,80,8,1))initialX=cow.getX();}
                     movement |= initialX!=0 && Math.abs(cow.getX()-initialX)>.1;
+                    // Keep the AI witness out of the separate live-fire target lanes after movement is proved.
+                    if(movement){cow.setNoAi(true);cow.getNavigation().stop();cow.setPos(888,80,8);}
+                }
+                if(occlusionRequested && !occlusionFinished && restored instanceof Cow coverCow) {
+                    coverCow.setNoAi(true);coverCow.setNoGravity(true);coverCow.getNavigation().stop();coverCow.setPos(888,80,8);
+                    if(coverPhase==0){coverPhase=1;coverTick=ticks;var other=level.getEntity(cartUuid);if(other!=null)other.setInvisible(true);}
+                    if(ticks-coverTick>=30) {
+                        coverTick=ticks;coverPhase++;
+                        for(int y=80;y<=82;y++)for(int z=5;z<=11;z++)
+                            level.setBlockAndUpdate(new BlockPos(884,y,z),coverPhase==2 && y==80 || coverPhase==3 ? Blocks.STONE.defaultBlockState():Blocks.AIR.defaultBlockState());
+                        if(coverPhase>=5){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT partial={}, full={}, removed={}, GPU={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);}
+                    }
                 }
                 if (level.getChunkSource().getChunkNow(30,0)!=null) throw new AssertionError("Scoping loaded the flight corridor");
                 var cart=level.getEntity(cartUuid);
@@ -245,7 +294,7 @@ public final class LongRangeClientTest {
                     if(!(cart instanceof com.tacz.guns.entity.TargetMinecart targetCart))throw new AssertionError("Saved target minecart missing");
                     var stack=player.getMainHandItem();var gun=IGun.getIGunOrNull(stack);
                     var data=com.tacz.guns.api.TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
-                    for(var position:List.of(new net.minecraft.world.phys.Vec3(878,81.32,6.5),new net.minecraft.world.phys.Vec3(878,80.3,10))) {
+                    for(var position:List.of(new net.minecraft.world.phys.Vec3(878,81.32,6.5),cart.getBoundingBox().getCenter().add(-10,0,0))) {
                         var bullet=new com.tacz.guns.entity.EntityKineticBullet(level,player,stack,data.getAmmoId(),gun.getGunId(stack),false,data,data.getBulletData());
                         bullet.setPos(position);bullet.setDeltaMovement(20,0,0);
                         tacz.aos.ballistics.TargetBallistics.tick(level,bullet,1024,new tacz.aos.ballistics.TargetCollisionSource(level,ScopeActivity.INSTANCE.observationBounds(player)));
@@ -278,7 +327,7 @@ public final class LongRangeClientTest {
                 }
                 if (ticks%40==0) TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT prediction={}, activity={}, entity={}, movement={}, generation={}",
                         ScopeActivity.INSTANCE.predictionStatus(player.getUUID()),ScopeActivity.INSTANCE.status(),restored,movement,GeneratedChunks.INSTANCE.status());
-                if (ticks-stageTick>400) throw new AssertionError("Target not restored/rendered: "+ScopeActivity.INSTANCE.predictionStatus(player.getUUID())+" "+ScopeActivity.INSTANCE.status());
+                if (ticks-stageTick>650) throw new AssertionError("Target not restored/rendered: "+ScopeActivity.INSTANCE.predictionStatus(player.getUUID())+" "+ScopeActivity.INSTANCE.status());
             }
             if (ticks>1800) throw new AssertionError("Preparation timed out at stage "+stage+" "+GeneratedChunks.INSTANCE.status());
         } catch (Throwable e) { failure=e.toString(); }
