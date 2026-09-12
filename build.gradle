@@ -130,6 +130,11 @@ dependencies {
             localRuntime files(curiosJar)
         }
     }
+    if (providers.gradleProperty('crawlondemand_test_jar').isPresent()) {
+        def crawlJar = file("libs/${providers.gradleProperty('crawlondemand_test_jar').get()}")
+        if (!crawlJar.isFile()) throw new GradleException("Missing Crawl on Demand test JAR: ${crawlJar}")
+        localRuntime files(crawlJar)
+    }
     // NeoVoxy also requires Sodium on the client; see libs/README.md.
     if (providers.gradleProperty('enable_voxy_runtime').get().toBoolean()) {
         if (!file("libs/${voxy_jar}").isFile()) {

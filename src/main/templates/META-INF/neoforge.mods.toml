@@ -56,3 +56,10 @@ type="optional"
 # Omit versionRange: NeoForge defaults to UNBOUNDED.
 ordering="AFTER"
 side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="crawlondemand"
+type="optional"
+# Omit versionRange; the optional API bridge fails safely if a future API changes.
+ordering="AFTER"
+side="BOTH"

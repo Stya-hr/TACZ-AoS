@@ -13,6 +13,8 @@ ParCool 为无版本限制的可选兼容，使用缓存反射，编译与普通
 
 `runGameTestServer` 可添加 `'-Pparcool_test_jar=ParCool-1.21.1-4.0.0.3.jar'` 和 `'-Pparcool_test_curios_jar=curios-neoforge-9.5.1+1.21.1.jar'`；测试 3.x 时只指定对应 ParCool JAR；不传这些参数则验证未安装环境。检查日志中的 `ParCool ... both actual launch routes passed` 和 `All ... required tests passed`，不能只凭 Gradle 的退出状态判断测试成功。
 
+Crawl on Demand 的官方 [NeoForge 1.2.0 发布](https://modrinth.com/mod/crawl-on-demand/version/HNDAAz4p) 文件 `crawlondemand-1.21-1.21.5-1.2.0+neoforge.jar` 仅用于测试（SHA-1 `8aa13f9324597500f0740158c367c957f5221667`），不重新分发。使用缓存反射，编译和普通运行无需此 JAR。`runGameTestServer` 添加 `'-Pcrawlondemand_test_jar=crawlondemand-1.21-1.21.5-1.2.0+neoforge.jar'` 检查实际服务端散布；`runClientScopeTest` 加同一参数及 `-Pprone_sway_test_only=true` 检查本地开镜动画。日志应含 `CRAWL_ON_DEMAND_SERVER PASSED` / `CRAWL_ON_DEMAND_CLIENT PASSED`；不传模组参数可验证未安装环境。
+
 隔离测试 `runClientScopeTest`、`runClientLongRangeTest` 支持：
 
 - `-Penable_voxy_runtime=true` 启用 Voxy。

@@ -124,12 +124,49 @@ public final class ScopeClientSmokeTest {
             cooldown.setInt(crawlController,0);operator.crawl(false);idle.setProgressNs(0);idle.update(true);
             if(idle.getProgressNs()<=0 || idle.getProgressNs()>250_000_000L)throw new AssertionError("Standing did not resume without accumulated time");
             if(net.neoforged.fml.ModList.get().isLoaded("parcool"))verifyParCoolIdle(idle);
+            verifyCrawlOnDemandIdle(idle);
             TaczArtOfSniping.LOGGER.info("PRONE_IDLE_CLIENT PASSED: 16 seconds sampled; prone stable, standing/hipfire/excluded gun restored; shoot/bolt/reload preserved");
         } finally {
             player.setItemInHand(InteractionHand.MAIN_HAND,oldStack);player.setOnGround(true);
             cooldown.setInt(crawlController,0);operator.crawl(oldCrawl);cooldown.setInt(crawlController,oldCooldown);
             operator.aim(oldAim);player.setOnGround(oldGround);player.setForcedPose(oldPose);mc.options.setCameraType(oldCamera);
             display.getGunModel().cleanAnimationTransform();
+        }
+    }
+
+    private static void verifyCrawlOnDemandIdle(com.tacz.guns.api.client.animation.ObjectAnimationRunner idle) throws ReflectiveOperationException {
+        var player = Minecraft.getInstance().player;
+        var operator = com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator.fromLocalPlayer(player);
+        if (!net.neoforged.fml.ModList.get().isLoaded("crawlondemand")) {
+            if (tacz.aos.compat.crawlondemand.CrawlOnDemandCompat.isCrawling(player))
+                throw new AssertionError("Absent Crawl on Demand reported crawling");
+            return;
+        }
+        var manager = Class.forName("me.talilon.minecraft.crawlondemand.platform.CrawlStateManager");
+        var setter = manager.getMethod("setCrawling", net.minecraft.world.entity.player.Player.class, boolean.class);
+        var oldStack = player.getMainHandItem();
+        try {
+            setter.invoke(null, player, true);
+            if (operator.isCrawl() || !tacz.aos.client.ProneAimStability.active())
+                throw new AssertionError("Crawl on Demand local input not recognized independently of TACZ");
+            for (int i = 0; i <= 160; i++) {
+                idle.setProgressNs(i * 100_000_000L); idle.update(true);
+                if (idle.getProgressNs() != 0) throw new AssertionError("Crawl on Demand idle advanced at " + i);
+            }
+            operator.aim(false); idle.setProgressNs(1_000_000_000L); idle.update(true);
+            if (idle.getProgressNs() < 1_000_000_000L) throw new AssertionError("Crawl on Demand hipfire idle frozen");
+            operator.aim(true);
+            player.setItemInHand(InteractionHand.MAIN_HAND, GunItemBuilder.create()
+                    .setId(ResourceLocation.parse("tacz:ak47")).build(player.level().registryAccess()));
+            if (tacz.aos.client.ProneAimStability.active()) throw new AssertionError("Crawl on Demand ignored whitelist");
+            player.setItemInHand(InteractionHand.MAIN_HAND, oldStack);
+            setter.invoke(null, player, false); idle.setProgressNs(0); idle.update(true);
+            if (tacz.aos.client.ProneAimStability.active() || idle.getProgressNs() <= 0)
+                throw new AssertionError("Crawl on Demand exit failed to restore idle");
+            TaczArtOfSniping.LOGGER.info("CRAWL_ON_DEMAND_CLIENT PASSED: local input, 16 seconds stable, hipfire/whitelist/exit restored");
+        } finally {
+            setter.invoke(null, player, false);
+            player.setItemInHand(InteractionHand.MAIN_HAND, oldStack); operator.aim(true);
         }
     }
 

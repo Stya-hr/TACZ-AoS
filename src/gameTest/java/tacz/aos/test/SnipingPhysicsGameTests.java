@@ -25,6 +25,61 @@ import tacz.aos.mixin.KineticBulletAccessor;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class SnipingPhysicsGameTests {
+    @GameTest(template = "ballistics", batch = "crawlondemand_spread")
+    public static void optionalCrawlOnDemandControlsBothLaunchRoutes(GameTestHelper helper) throws Exception {
+        var old = tacz.aos.config.ServerConfig.current();
+        var player = new net.neoforged.neoforge.common.util.FakePlayer(helper.getLevel(),
+                new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "crawl-demand-test"));
+        var fixture = new LocalBallisticsGameTests.Fixture(helper, player);
+        player.setDeltaMovement(Vec3.ZERO); player.setOnGround(true);
+        var operator = IGunOperator.fromLivingEntity(player);
+        operator.crawl(false); operator.aim(false);
+        // A visual low pose must never count by itself, even when the optional mod is installed.
+        player.setPose(net.minecraft.world.entity.Pose.SWIMMING);
+        helper.assertTrue(!tacz.aos.compat.crawlondemand.CrawlOnDemandCompat.isCrawling(player),
+                "Swimming pose mistaken for Crawl on Demand input");
+        if (!net.neoforged.fml.ModList.get().isLoaded("crawlondemand")) {
+            helper.succeed(); return;
+        }
+        var manager = Class.forName("me.talilon.minecraft.crawlondemand.platform.CrawlStateManager");
+        var setter = manager.getMethod("setCrawling", net.minecraft.world.entity.player.Player.class, boolean.class);
+        var packet = Class.forName("me.talilon.minecraft.crawlondemand.network.CrawlStatePacket");
+        var handle = packet.getMethod("handle", net.minecraft.world.entity.player.Player.class);
+        var gun = (ModernKineticGunItem) IGun.getIGunOrNull(fixture.stack);
+        var data = TimelessAPI.getCommonGunIndex(gun.getGunId(fixture.stack)).orElseThrow().getGunData();
+        try {
+            for (int state = 0; state < 6; state++) {
+                boolean active = state == 1 || state == 2 || state == 4 || state == 5;
+                // Use the real server packet application, not a flag owned by this mod.
+                handle.invoke(packet.getConstructor(boolean.class).newInstance(active), player);
+                var policy = tacz.aos.config.EligibilityPolicy.parse(state != 5,
+                        state == 2 ? java.util.List.of() : java.util.List.of("tacz:ai_awp"), java.util.List.of());
+                LocalBallisticsGameTests.setSettings(new tacz.aos.config.ServerConfig.Settings(true, policy,
+                        old.maxDistance(), old.maxTrackedEntities(), old.diagnostics(), old.ballistics(),
+                        old.scopeRendering(), old.activity(), old.prediction()));
+                helper.assertTrue(!operator.getDataHolder().isCrawling, "Test accidentally enabled TACZ crawl");
+                helper.assertTrue(tacz.aos.compat.crawlondemand.CrawlOnDemandCompat.isCrawling(player) == active,
+                        "Crawl on Demand server state not read");
+                for (int route = 0; route < 2; route++) {
+                    var bullet = new EntityKineticBullet(helper.getLevel(), player, fixture.stack, data.getAmmoId(),
+                            gun.getGunId(fixture.stack), false, data, data.getBulletData());
+                    bullet.getRandom().setSeed(12345);
+                    if (route == 0) gun.doBulletSpread(operator.getDataHolder(), fixture.stack, player, bullet, 1, 20, 2, 0, 0);
+                    else bullet.shootFromRotation(player, 0, 0, 0, 20, new Vector2d(.2, -.1));
+                    double lateral = Math.hypot(bullet.getDeltaMovement().x, bullet.getDeltaMovement().y);
+                    helper.assertTrue(active && state != 2 && state != 5 ? lateral < 1e-8 : lateral > .01,
+                            "Crawl on Demand spread mismatch: state=" + state + " route=" + route + " lateral=" + lateral);
+                    bullet.discard();
+                }
+            }
+            TaczArtOfSniping.LOGGER.info("CRAWL_ON_DEMAND_SERVER PASSED: packet state, both launch routes, whitelist, disabled policy, start/stop");
+            helper.succeed();
+        } finally {
+            LocalBallisticsGameTests.setSettings(old);
+            setter.invoke(null, player, false);
+        }
+    }
+
     @GameTest(template = "ballistics", batch = "parcool_spread")
     public static void optionalParCoolActionControlsActualBulletSpread(GameTestHelper helper) throws Exception {
         var old = tacz.aos.config.ServerConfig.current();

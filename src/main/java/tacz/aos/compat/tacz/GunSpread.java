@@ -17,8 +17,9 @@ public final class GunSpread {
         var settings = ServerConfig.current();
         return settings.available() && settings.policy().enabled()
                 && settings.policy().gunIds().contains(String.valueOf(bullet.getGunId()))
-                // Either mod's actual action flag qualifies; a swimming/forced low pose alone does not.
+                // Any supported mod's action flag qualifies; a swimming/forced low pose alone does not.
                 && (IGunOperator.fromLivingEntity(player).getDataHolder().isCrawling
-                    || tacz.aos.compat.parcool.ParCoolCompat.isCrawling(player));
+                    || tacz.aos.compat.parcool.ParCoolCompat.isCrawling(player)
+                    || tacz.aos.compat.crawlondemand.CrawlOnDemandCompat.isCrawling(player));
     }
 }
