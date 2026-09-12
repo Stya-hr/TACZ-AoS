@@ -151,7 +151,9 @@ public final class ServerConfig {
         builder.push("eligibility");
         ENABLED = builder.comment("Allow qualified shots to use the enabled sniping features.")
                 .define("enabled", true);
-        GUNS = builder.comment("Allowed TACZ gun IDs (namespace:path). Empty means no guns are allowed.")
+        GUNS = builder.comment("Allowed TACZ gun IDs (namespace:path). Empty means no guns are allowed.",
+                        "Also grants zero spread while TACZ or optional ParCool crawling, without needing a scope, ADS or rangefinder.",
+                        "Prone zero spread follows eligibility.enabled; standing and non-player shots retain native spread.")
                 .defineListAllowEmpty("guns", EligibilityPolicy.DEFAULT_GUNS, () -> "", value -> value instanceof String);
         SCOPES = builder.comment("Scope ID whitelist. Every aiming magnification is allowed within 3 blocks of a placed rangefinder.",
                         "Entries: scope_id or scope_id|ordered zoom levels (optional server fallback projection metadata).",

@@ -5,10 +5,17 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import tacz.aos.compat.tacz.GunPhysics;
+import tacz.aos.compat.tacz.GunSpread;
+import org.joml.Vector2d;
 
 /** TACZ Lua calcSpread uses this separate launch route. */
 @Mixin(value = EntityKineticBullet.class, remap = false)
 public abstract class KineticLaunchMixin {
+    @ModifyVariable(method = "shoot(DDFLorg/joml/Vector2d;)V", at = @At("HEAD"), argsOnly = true, ordinal = 0)
+    private Vector2d tacz_aos$proneSpread(Vector2d scriptSpread) {
+        return GunSpread.zeroWhileProne((EntityKineticBullet) (Object) this) ? new Vector2d() : scriptSpread;
+    }
+
     @ModifyVariable(method = "shoot(DDFLorg/joml/Vector2d;)V", at = @At("HEAD"), argsOnly = true, ordinal = 0)
     private float tacz_aos$gunSpeed(float nativeSpeed) {
         return GunPhysics.launchSpeed((EntityKineticBullet) (Object) this, nativeSpeed);

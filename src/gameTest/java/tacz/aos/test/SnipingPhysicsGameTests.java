@@ -25,6 +25,152 @@ import tacz.aos.mixin.KineticBulletAccessor;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class SnipingPhysicsGameTests {
+    @GameTest(template = "ballistics", batch = "parcool_spread")
+    public static void optionalParCoolActionControlsActualBulletSpread(GameTestHelper helper) throws Exception {
+        var old = tacz.aos.config.ServerConfig.current();
+        // GameTestHelper.makeMockPlayer() reports isLocalPlayer=true even on the server.
+        var serverPlayer = new net.neoforged.neoforge.common.util.FakePlayer(helper.getLevel(),
+                new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "parcool-spread-test"));
+        var fixture = new LocalBallisticsGameTests.Fixture(helper, serverPlayer);
+        var player = fixture.player;
+        player.setPos(player.position().add(0, 40, 0)); player.setOldPosAndRot();
+        player.setDeltaMovement(Vec3.ZERO); player.setOnGround(true);
+        var operator = IGunOperator.fromLivingEntity(player);
+        operator.crawl(false); operator.aim(false);
+        if (!net.neoforged.fml.ModList.get().isLoaded("parcool")) {
+            helper.assertTrue(!tacz.aos.compat.parcool.ParCoolCompat.isCrawling(player), "Absent optional mod reported crawling");
+            helper.succeed(); return;
+        }
+        Class<?> abilityType;
+        boolean modern;
+        try { abilityType = Class.forName("com.alrex.parcool.common.Parkourability"); modern = true; }
+        catch (ClassNotFoundException e) {
+            abilityType = Class.forName("com.alrex.parcool.common.attachment.common.Parkourability"); modern = false;
+        }
+        Object ability = abilityType.getMethod("get", net.minecraft.world.entity.player.Player.class).invoke(null, player);
+        helper.assertTrue(ability != null, "ParCool player attachment missing");
+        Object crawl;
+        if (modern) {
+            Object key = Class.forName("com.alrex.parcool.common.action.ParCoolActions").getField("CRAWL").get(null);
+            crawl = abilityType.getMethod("get", Class.forName("com.alrex.parcool.api.action.ActionEntry")).invoke(ability, key);
+        } else {
+            crawl = abilityType.getMethod("get", Class.class).invoke(ability, Class.forName("com.alrex.parcool.common.action.impl.Crawl"));
+        }
+        var gun = (ModernKineticGunItem) IGun.getIGunOrNull(fixture.stack);
+        var data = TimelessAPI.getCommonGunIndex(gun.getGunId(fixture.stack)).orElseThrow().getGunData();
+        try {
+            for (int state = 0; state < 5; state++) {
+                // Start/stop through the same action methods used by ParCool's server packet handler.
+                boolean active = state == 1 || state == 2 || state == 4;
+                if (active) {
+                    if (modern) crawl.getClass().getMethod("start").invoke(crawl);
+                    else crawl.getClass().getMethod("start", net.minecraft.world.entity.player.Player.class, abilityType,
+                            java.nio.ByteBuffer.class).invoke(crawl, player, ability, java.nio.ByteBuffer.allocate(0));
+                } else {
+                    if (modern) crawl.getClass().getMethod("finish").invoke(crawl);
+                    else crawl.getClass().getMethod("finish", net.minecraft.world.entity.player.Player.class).invoke(crawl, player);
+                }
+                var policy = tacz.aos.config.EligibilityPolicy.parse(true,
+                        state == 2 ? java.util.List.of() : java.util.List.of("tacz:ai_awp"), java.util.List.of());
+                LocalBallisticsGameTests.setSettings(new tacz.aos.config.ServerConfig.Settings(true, policy,
+                        old.maxDistance(), old.maxTrackedEntities(), old.diagnostics(), old.ballistics(), old.scopeRendering(), old.activity(), old.prediction()));
+                helper.assertTrue(!operator.getDataHolder().isCrawling, "ParCool test accidentally enabled TACZ crawl");
+                helper.assertTrue(tacz.aos.compat.parcool.ParCoolCompat.isCrawling(player) == active, "ParCool action transition was not read");
+                for (int route = 0; route < 2; route++) {
+                    var bullet = new EntityKineticBullet(helper.getLevel(), player, fixture.stack, data.getAmmoId(),
+                            gun.getGunId(fixture.stack), false, data, data.getBulletData());
+                    bullet.getRandom().setSeed(12345);
+                    if (route == 0) gun.doBulletSpread(operator.getDataHolder(), fixture.stack, player, bullet, 1, 20, 2, 0, 0);
+                    else bullet.shootFromRotation(player, 0, 0, 0, 20, new Vector2d(.2, -.1));
+                    double lateral = Math.hypot(bullet.getDeltaMovement().x, bullet.getDeltaMovement().y);
+                    helper.assertTrue(active && state != 2 ? lateral < 1e-8 : lateral > .01,
+                            "ParCool actual spread mismatch: state=" + state + " route=" + route + " lateral=" + lateral);
+                    bullet.discard();
+                }
+            }
+            tacz.aos.TaczArtOfSniping.LOGGER.info("ParCool {} crawl start/stop, whitelist and both actual launch routes passed", modern ? "4.x" : "3.x");
+            helper.succeed();
+        } finally {
+            LocalBallisticsGameTests.setSettings(old);
+            if (modern) crawl.getClass().getMethod("finish").invoke(crawl);
+            else crawl.getClass().getMethod("finish", net.minecraft.world.entity.player.Player.class).invoke(crawl, player);
+        }
+    }
+
+    @GameTest(template = "ballistics", batch = "prone_spread")
+    public static void proneWhitelistClearsBothLaunchRoutesAndRestoresNativeSpread(GameTestHelper helper) {
+        var old = tacz.aos.config.ServerConfig.current();
+        var player = helper.makeMockPlayer(net.minecraft.world.level.GameType.SURVIVAL);
+        player.setPos(helper.absoluteVec(new Vec3(4, 10, 4)));
+        player.setOldPosAndRot(); player.setOnGround(true);
+        player.setDeltaMovement(new Vec3(.13, 0, .21));
+        // Bare gun, no rangefinder and no ADS: only the gun whitelist and TACZ crawl flag apply.
+        var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
+                .build(helper.getLevel().registryAccess());
+        player.setItemInHand(InteractionHand.MAIN_HAND, stack);
+        var gun = (ModernKineticGunItem) IGun.getIGunOrNull(stack);
+        var data = TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
+        var operator = IGunOperator.fromLivingEntity(player);
+        operator.initialData(); operator.aim(false);
+        var cache = new AttachmentCacheProperty(); cache.eval(stack, data); operator.updateCacheProperty(cache);
+        var npc = net.minecraft.world.entity.EntityType.ZOMBIE.create(helper.getLevel());
+        npc.setPos(player.position()); npc.setOnGround(true); npc.setDeltaMovement(player.getDeltaMovement());
+        var npcOperator = IGunOperator.fromLivingEntity(npc);
+        npcOperator.initialData(); npcOperator.crawl(true);
+        npc.setItemInHand(InteractionHand.MAIN_HAND, stack.copy());
+        var npcCache = new AttachmentCacheProperty(); npcCache.eval(stack, data); npcOperator.updateCacheProperty(npcCache);
+        try {
+            for (int state = 0; state < 8; state++) {
+                // Allowed prone, standing, swimming pose only, excluded, disabled, NPC, unavailable, prone again.
+                var policy = tacz.aos.config.EligibilityPolicy.parse(state != 4,
+                        state == 3 ? java.util.List.of("other_pack:sniper") : java.util.List.of("tacz:ai_awp"),
+                        java.util.List.of());
+                LocalBallisticsGameTests.setSettings(new tacz.aos.config.ServerConfig.Settings(state != 6, policy,
+                        old.maxDistance(), old.maxTrackedEntities(), old.diagnostics(), old.ballistics(),
+                        old.scopeRendering(), old.activity(), old.prediction()));
+                operator.crawl(state != 1 && state != 2);
+                player.setPose(state == 2 ? net.minecraft.world.entity.Pose.SWIMMING : net.minecraft.world.entity.Pose.STANDING);
+                net.minecraft.world.entity.LivingEntity shooter = state == 5 ? npc : player;
+                boolean shouldClear = state == 0 || state == 7;
+                for (int route = 0; route < 2; route++) {
+                    var actual = new EntityKineticBullet(helper.getLevel(), shooter, stack, data.getAmmoId(),
+                            gun.getGunId(stack), false, data, data.getBulletData());
+                    var reference = new EntityKineticBullet(helper.getLevel(), shooter, stack, data.getAmmoId(),
+                            gun.getGunId(stack), false, data, data.getBulletData());
+                    actual.getRandom().setSeed(12345); reference.getRandom().setSeed(12345);
+                    var scriptSpread = new Vector2d(.2, -.1);
+                    if (route == 0) {
+                        gun.doBulletSpread(IGunOperator.fromLivingEntity(shooter).getDataHolder(), stack, shooter,
+                                actual, 1, 20, 2, -8, -90);
+                        reference.shootFromRotation(shooter, -8, -90, 0, 20, 0f);
+                    } else {
+                        actual.shootFromRotation(shooter, -8, -90, 0, 20, scriptSpread);
+                        reference.shootFromRotation(shooter, -8, -90, 0, 20, new Vector2d());
+                    }
+                    double difference = actual.getDeltaMovement().distanceTo(reference.getDeltaMovement());
+                    helper.assertTrue(shouldClear ? difference < 1e-8 : difference > .01,
+                            "Wrong prone spread: state=" + state + " route=" + route + " delta=" + difference);
+                    helper.assertTrue(scriptSpread.x == .2 && scriptSpread.y == -.1, "Mutated script-owned spread vector");
+                    var actualFields = (KineticBulletAccessor) actual;
+                    var referenceFields = (KineticBulletAccessor) reference;
+                    helper.assertTrue(actualFields.tacz_aos$getGravity() == referenceFields.tacz_aos$getGravity()
+                                    && actualFields.tacz_aos$getFriction() == referenceFields.tacz_aos$getFriction(),
+                            "Prone spread changed gravity/drag");
+                    if (shouldClear) {
+                        double speed = tacz.aos.compat.tacz.GunPhysics.launchSpeed(reference, 20);
+                        helper.assertTrue(Math.abs(actual.getDeltaMovement().subtract(shooter.getKnownMovement()).length() - speed) < 1e-5,
+                                "Prone spread changed speed or inherited shooter movement");
+                    }
+                    actual.discard(); reference.discard();
+                }
+            }
+            helper.succeed();
+        } finally {
+            operator.crawl(false); npc.discard();
+            LocalBallisticsGameTests.setSettings(old);
+        }
+    }
+
     @GameTest(template = "ballistics", batch = "global_physics_damage", timeoutTicks = 200)
     public static void nativeAndManagedShotsDamageTargetOnPredictedCurve(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);

@@ -5,10 +5,16 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import tacz.aos.compat.tacz.GunPhysics;
+import tacz.aos.compat.tacz.GunSpread;
 
 /** Default TACZ firing inherits this vanilla overload. */
 @Mixin(Projectile.class)
 public abstract class ProjectileLaunchMixin {
+    @ModifyVariable(method = "shoot(DDDFF)V", at = @At("HEAD"), argsOnly = true, ordinal = 1)
+    private float tacz_aos$proneSpread(float nativeSpread) {
+        return GunSpread.zeroWhileProne((Projectile) (Object) this) ? 0f : nativeSpread;
+    }
+
     @ModifyVariable(method = "shoot(DDDFF)V", at = @At("HEAD"), argsOnly = true, ordinal = 0)
     private float tacz_aos$gunSpeed(float nativeSpeed) {
         return GunPhysics.launchSpeed((Projectile) (Object) this, nativeSpeed);

@@ -9,6 +9,10 @@
 Voxy 与 Iris 均为 `compileOnly`，编译需把这两个 JAR 放在本目录。服务器和普通客户端不需要安装它们。
 本地第三方 JAR 由 `.gitignore` 排除，其他开发者需自行取得，不重新分发。
 
+ParCool 为无版本限制的可选兼容，使用缓存反射，编译与普通运行不需要其 JAR。官方 Modrinth 的 `ParCool-1.21.1-4.0.0.3.jar`、`ParCool-1.21.1-3.4.3.3-NF.jar` 放在此处仅供隔离测试，不同时加载两个版本。4.0.0.3 的发布元数据还要求 Curios，测试使用 `curios-neoforge-9.5.1+1.21.1.jar`。
+
+`runGameTestServer` 可添加 `'-Pparcool_test_jar=ParCool-1.21.1-4.0.0.3.jar'` 和 `'-Pparcool_test_curios_jar=curios-neoforge-9.5.1+1.21.1.jar'`；测试 3.x 时只指定对应 ParCool JAR；不传这些参数则验证未安装环境。检查日志中的 `ParCool ... both actual launch routes passed` 和 `All ... required tests passed`，不能只凭 Gradle 的退出状态判断测试成功。
+
 隔离测试 `runClientScopeTest`、`runClientLongRangeTest` 支持：
 
 - `-Penable_voxy_runtime=true` 启用 Voxy。

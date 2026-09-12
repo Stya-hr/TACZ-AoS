@@ -36,6 +36,10 @@ Voxy 选点依据其不透明地形缓冲，不依赖光影包将 LOD 深度合�
 
 ## 配置
 
+`eligibility.guns` 中的枪械由玩家在 **TACZ 或 ParCool 匍匐状态**下射击时，随机散布归零；不要求安装瞄准镜、开镜或靠近测距仪。普通发射和 TACZ `calcSpread` 脚本的最终散布均适用。起身、枪械不在白名单或 `eligibility.enabled=false` 时保留原有散布；NPC 不适用。此规则不修改共享枪械数据，不消除风偏、重力、射手移动速度、镜头后坐力和烟线卷曲，也不改变已射出的子弹。将霰弹枪加入白名单也会使匍匐时多颗弹丸的散布归零。
+
+ParCool 是无版本限制的可选依赖，不打包进本模组。兼容层识别 3.x 的 `Parkourability.get(player).get(Crawl.class).isDoing()` 和 4.x 的 `Parkourability.get(player).get(ParCoolActions.CRAWL).isDoing()`，读取其现有服务端动作同步，无新增网络消息。两种匍匐标记不互相修改；只要任意一种仍生效，白名单枪械就保持零散布。不会仅凭原版游泳/低矮姿态判断匍匐。接口只解析一次，每发查询当前状态，不缓存玩家或匍匐结果。未安装时不访问 ParCool 类；未来接口不匹配时停用此兼容并记录一次警告，保留 TACZ 匍匐支持。无版本限制不代表能预先保证所有未来版本的 API 兼容；仍需选择适用于 Minecraft 1.21.1 NeoForge 的 ParCool，并在多人服务端与客户端安装。
+
 服务端配置 `tacz_aos-server.toml`，默认最大距离仍为 1024；可将 `limits.maxDistance` 调至 2048。`ballistics.maxDistance=0` 跟随此值。配置由 NeoForge 同步客户端。修改后重进世界/重连。
 
 ```toml

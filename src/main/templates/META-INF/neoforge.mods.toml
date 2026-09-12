@@ -49,3 +49,10 @@ type="optional"
 versionRange="${voxy_version_range}"
 ordering="AFTER"
 side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="parcool"
+type="optional"
+# Omit versionRange: NeoForge defaults to UNBOUNDED.
+ordering="AFTER"
+side="BOTH"
