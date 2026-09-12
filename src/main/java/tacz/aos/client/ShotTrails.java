@@ -48,7 +48,7 @@ public final class ShotTrails {
                     .setCullState(NO_CULL).setDepthTestState(LEQUAL_DEPTH_TEST).setWriteMaskState(COLOR_WRITE)
                     .createCompositeState(false));
     private static final TrailHistory history = new TrailHistory();
-    private static final TrailHistory localHistory = new TrailHistory(TrailHistory.ImpactMode.FADE_SMOKE);
+    private static final TrailHistory localHistory = new TrailHistory();
     private static ClientLevel level;
     private static long tick;
     private static ByteBufferBuilder bytes;

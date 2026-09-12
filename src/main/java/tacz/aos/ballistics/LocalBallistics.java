@@ -111,7 +111,7 @@ public final class LocalBallistics {
     private void collectVisual(Flight flight, boolean terminal, Map<Viewer, List<TrailSegment>> batches) {
         if (flight.visualStart == null || flight.visualEnd == null) {
             if (!terminal || flight.ticks == 0) return;
-            // Removal/cancellation before movement still has to retire previously sent client smoke.
+            // Removal/cancellation before movement must stop the head; confirmed smoke keeps fading.
             flight.visualStart = flight.visualEnd = flight.bullet.position();
             flight.visualSpeed = 0;
         }

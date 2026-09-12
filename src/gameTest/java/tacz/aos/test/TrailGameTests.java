@@ -21,7 +21,7 @@ import java.util.List;
 @PrefixGameTestTemplate(false)
 public final class TrailGameTests {
     @GameTest(template = "ballistics", batch = "trails")
-    public static void descendingShotStopsAtGroundAndRetiresClientSmoke(GameTestHelper helper) {
+    public static void descendingShotStopsAtGroundWhileClientSmokeFades(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         for (int x = 3; x <= 18; x++) for (int z = 3; z <= 6; z++)
             helper.setBlock(new BlockPos(x, 3, z), Blocks.STONE);
@@ -36,8 +36,12 @@ public final class TrailGameTests {
         history.accept(new TrailSegment(42, 1, start.x, start.y, start.z, end.x, end.y, end.z,
                 (float) new Vec3(10, -8, 0).length(), true), 10);
         helper.assertTrue(history.hasVisibleSamples(10.5), "Final approach was lost");
-        helper.assertTrue(history.visibleSamples(11).isEmpty(), "Shooter smoke kept rendering after ground impact");
-        var observer = new tacz.aos.trails.TrailHistory(tacz.aos.trails.TrailHistory.ImpactMode.FADE_SMOKE);
+        history.expire(12);
+        helper.assertTrue(history.hasVisibleSamples(12) && !history.hasMovingHead(42, 12),
+                "Shooter lost smoke or kept the bullet head after impact");
+        helper.assertTrue(history.visibleSamples(12).stream().allMatch(sample -> sample.segment().y1() >= ground - .001),
+                "Retained shooter smoke crossed the ground");
+        var observer = new tacz.aos.trails.TrailHistory();
         history.samples().forEach(sample -> tacz.aos.trails.TrailAudience.clip(sample.segment(), (x,z) -> true)
                 .forEach(piece -> observer.accept(piece, 10)));
         observer.expire(12);
@@ -45,6 +49,8 @@ public final class TrailGameTests {
                 "Observer lost the wake or kept a head after impact");
         helper.assertTrue(observer.visibleSamples(12).stream().allMatch(sample -> sample.segment().y1() >= ground - .001),
                 "Retained observer smoke crossed the ground");
+        history.expire(62);
+        helper.assertTrue(!history.hasVisibleSamples(62), "Shooter wake did not expire");
         observer.expire(62);
         helper.assertTrue(!observer.hasVisibleSamples(62), "Observer wake did not expire");
         helper.succeed();

@@ -8,39 +8,49 @@ import tacz.aos.trails.TrailStyle;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TrailHistoryTest {
-    @Test void impactRetiresSmokeAndHeadAfterFinalInterpolationForThatShotOnly() {
+    @Test void impactStopsHeadButKeepsEachShotsSmokeOnItsOwnClock() {
         var h = new TrailHistory();
         h.accept(segment(1, 1, false), 10);
-        h.accept(segment(2, 1, false), 10);
-        h.accept(segment(1, 2, true), 11);
-        assertEquals(3, h.visibleSamples(11.5).size());
-        assertEquals(1, h.visibleSamples(12).size());
-        assertEquals(2, h.visibleSamples(12).getFirst().segment().shot());
-        h.expire(12);
-        h.accept(segment(1, 3, false), 13);
-        assertEquals(1, h.visibleSamples(13).size(), "Late update revived a completed shot");
-        assertTrue(h.hasVisibleSamples(13));
+        h.accept(segment(2, 1, false), 40);
+        h.accept(segment(1, 32, true), 41);
+        assertTrue(h.hasMovingHead(1, 41.5));
+        h.expire(42);
+        assertFalse(h.hasMovingHead(1, 42));
+        assertEquals(3, h.visibleSamples(42).size());
+        var confirmed = h.samples();
+        h.accept(segment(1, 33, false), 43);
+        assertEquals(confirmed, h.visibleSamples(43), "Late update extended a stopped bullet");
+        h.expire(62);
+        assertEquals(2, h.visibleSamples(62).size(), "Old smoke was refreshed at impact");
+        assertTrue(h.samples().stream().noneMatch(s -> s.segment().shot() == 1 && s.segment().step() == 1));
+        h.expire(94);
+        assertFalse(h.hasVisibleSamples(94));
     }
-    @Test void zeroMovementTerminationHidesExistingTrailImmediately() {
+    @Test void zeroMovementTerminationStopsHeadWithoutClearingOrRefreshingSmoke() {
         var h = new TrailHistory(); h.accept(segment(1, 1, false), 10);
-        h.accept(new TrailSegment(1, 1, 2, 80, 0, 2, 80, 0, 0, true), 10.5);
-        assertFalse(h.hasVisibleSamples(10.5));
-        assertTrue(h.visibleSamples(10.5).isEmpty());
-        h.expire(11); assertTrue(h.isEmpty());
-        h.accept(segment(1, 2, false), 12);
-        assertFalse(h.hasVisibleSamples(12));
+        h.accept(new TrailSegment(1, 2, 2, 80, 0, 2, 80, 0, 0, true), 10.5);
+        assertTrue(h.hasVisibleSamples(10.5));
+        assertFalse(h.hasMovingHead(1, 10.5));
+        assertEquals(1, h.samples().size());
+        assertEquals(10, h.samples().getFirst().start());
+        h.accept(segment(1, 3, false), 12);
+        assertEquals(1, h.samples().size());
+        h.expire(62); assertTrue(h.isEmpty());
     }
-    @Test void laggedTerminalCannotLeaveSmokeForAnotherTwoPointFiveSeconds() {
+    @Test void laggedTerminalStopsInterpolationWhileSmokeStillFades() {
         var h = new TrailHistory();
         for (int step = 1; step <= 20; step++) h.accept(segment(1, step, false), 10);
         h.accept(segment(1, 21, true), 10);
-        assertTrue(h.hasVisibleSamples(10.5));
-        assertFalse(h.hasVisibleSamples(11));
-        assertTrue(h.visibleSamples(11).isEmpty());
+        assertTrue(h.hasMovingHead(1, 10.5));
+        assertFalse(h.hasMovingHead(1, 11));
+        h.expire(35);
+        assertTrue(h.hasVisibleSamples(35));
+        assertTrue(h.samples().stream().allMatch(s -> s.segment().x1() <= 22));
+        h.expire(63); assertTrue(h.isEmpty());
     }
 
     @Test void fastObserversKeepOnlyConfirmedSmokeAfterImpactWithoutAStationaryHead() {
-        var h = new TrailHistory(TrailHistory.ImpactMode.FADE_SMOKE);
+        var h = new TrailHistory();
         // A 40-block/tick shot arrives from behind the viewer at x=740 and stops at the wall x=748.
         h.accept(new TrailSegment(9, 19, 680, 81.6, 9.4, 720, 81.3, 9.4, 40, false), 100);
         h.accept(new TrailSegment(9, 20, 720, 81.3, 9.4, 748, 81.0, 9.4, 39, true), 101);
@@ -59,7 +69,7 @@ class TrailHistoryTest {
     }
 
     @Test void observerStopDoesNotRefreshSmokeOrReviveFromLatePackets() {
-        var h = new TrailHistory(TrailHistory.ImpactMode.FADE_SMOKE);
+        var h = new TrailHistory();
         h.accept(segment(1, 1, false), 10);
         h.accept(new TrailSegment(1, 2, 2, 80, 0, 2, 80, 0, 0, true), 35);
         assertEquals(1, h.samples().size(), "A stop spawned fresh smoke");
@@ -73,7 +83,7 @@ class TrailHistoryTest {
     }
 
     @Test void observerSmokeNeverBridgesUnloadedChunksAndIsHiddenWhenTheyUnload() {
-        var h = new TrailHistory(TrailHistory.ImpactMode.FADE_SMOKE);
+        var h = new TrailHistory();
         var s = new TrailSegment(1, 1, 8, 80, 8, 56, 80, 8, 48, true);
         tacz.aos.trails.TrailAudience.clip(s, (x,z) -> x == 0 || x == 3).forEach(p -> h.accept(p, 10));
         h.expire(12);
