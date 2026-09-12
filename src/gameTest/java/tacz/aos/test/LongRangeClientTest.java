@@ -281,8 +281,10 @@ public final class LongRangeClientTest {
                     if(ticks-coverTick>=30) {
                         coverTick=ticks;coverPhase++;
                         for(int y=80;y<=82;y++)for(int z=5;z<=11;z++)
-                            level.setBlockAndUpdate(new BlockPos(884,y,z),coverPhase==2 && y==80 || coverPhase==3 ? Blocks.STONE.defaultBlockState():Blocks.AIR.defaultBlockState());
-                        if(coverPhase>=5){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT partial={}, full={}, removed={}, GPU={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);}
+                            level.setBlockAndUpdate(new BlockPos(884,y,z),coverPhase==2 && y==80 ? Blocks.STONE.defaultBlockState()
+                                    : coverPhase==3 ? Blocks.OAK_LEAVES.defaultBlockState().setValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT,true)
+                                    : coverPhase==4 ? Blocks.GLASS.defaultBlockState() : Blocks.AIR.defaultBlockState());
+                        if(coverPhase>=5){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT stonePartial={}, leavesHidden={}, glassVisible={}, GPU={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);}
                     }
                 }
                 if (level.getChunkSource().getChunkNow(30,0)!=null) throw new AssertionError("Scoping loaded the flight corridor");

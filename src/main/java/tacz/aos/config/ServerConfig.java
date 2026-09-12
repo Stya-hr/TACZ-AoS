@@ -93,7 +93,7 @@ public final class ServerConfig {
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
-        builder.comment("Partial occlusion of remote entities using live nearby opaque shapes; no chunk loads or terrain rendering.",
+        builder.comment("Partial occlusion of remote entities using live nearby non-glass shapes; no chunk loads or terrain rendering.",
                 "Refresh follows scopeRendering.intervalTicks. Budget exhaustion leaves unchecked geometry visible.").push("occlusion");
         OCCLUSION_ENABLED=builder.define("enabled",true);
         OCCLUSION_RADIUS=builder.comment("Maximum length of the local sight corridor in front of each observed entity.").defineInRange("radius",24,4,32);

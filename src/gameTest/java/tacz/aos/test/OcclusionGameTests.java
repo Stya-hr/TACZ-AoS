@@ -35,6 +35,32 @@ public final class OcclusionGameTests {
         h.assertTrue(budget[0]==0,"Cell scan was not bounded");
         h.assertTrue(h.getLevel().getChunkSource().getLoadedChunksCount()==loaded,"Occlusion requested a missing chunk");h.succeed();
     }
+    @GameTest(template="ballistics",batch="occlusion")
+    public static void everyNonGlassMaterialOccludesIncludingLeavesAndSpecialModels(GameTestHelper h) {
+        for(int x=2;x<=18;x++)for(int y=4;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);
+        var eye=h.absoluteVec(new Vec3(4,6,8.5));
+        var target=new AABB(h.absoluteVec(new Vec3(14,5,8)),h.absoluteVec(new Vec3(15,7,9)));
+        var pos=new BlockPos(10,5,8);
+        for(var block:List.of(Blocks.OAK_LEAVES,Blocks.ICE,Blocks.SLIME_BLOCK,Blocks.HONEY_BLOCK,
+                Blocks.OAK_DOOR,Blocks.OAK_TRAPDOOR,Blocks.OAK_FENCE,Blocks.IRON_BARS,Blocks.CHEST,Blocks.SHORT_GRASS,Blocks.WATER)) {
+            h.setBlock(pos,block);
+            var boxes=ScopeOcclusion.collect(h.getLevel(),eye,target,12,new int[]{8192},32);
+            h.assertTrue(!boxes.isEmpty(),"Material was skipped: "+block);
+            if(block==Blocks.OAK_LEAVES) {
+                var a=h.absolutePos(pos);
+                h.assertTrue(boxes.stream().anyMatch(b->b.minX()==a.getX() && b.maxX()==a.getX()+1 && b.minY()==a.getY() && b.maxY()==a.getY()+1),
+                        "Leaf texture holes were preserved instead of opaque leaf geometry");
+            }
+        }
+        for(var glass:List.of(Blocks.GLASS,Blocks.GLASS_PANE,Blocks.TINTED_GLASS,Blocks.RED_STAINED_GLASS,Blocks.BLUE_STAINED_GLASS_PANE)) {
+            h.setBlock(pos,glass);
+            h.assertTrue(ScopeOcclusion.collect(h.getLevel(),eye,target,12,new int[]{8192},32).isEmpty(),"Glass must remain see-through: "+glass);
+        }
+        h.setBlock(pos,Blocks.AIR);
+        h.assertTrue(ScopeOcclusion.collect(h.getLevel(),eye,target,12,new int[]{8192},32).isEmpty(),"Air became an occluder");
+        h.succeed();
+    }
+
     @GameTest(template="empty",batch="occlusion")
     public static void occlusionPacketRoundTripAndAllocationBounds(GameTestHelper h) {
         var payload=new ScopeOcclusionPayload(h.getLevel().dimension().location(),List.of(new ScopeOcclusionPayload.Target(42,UUID.randomUUID(),new BlockPos(900,80,8),

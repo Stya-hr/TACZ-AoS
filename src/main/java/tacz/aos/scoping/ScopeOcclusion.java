@@ -61,12 +61,16 @@ public final class ScopeOcclusion {
                     if(x<=xmax) {
                         if(budget[0]--<=0){budget[0]=0;break outer;}
                         var pos=new BlockPos(x,y,z);var state=getter.getBlockState(pos);
-                        if(opaque(state)) {
+                        if(occludes(state)) {
                             var shape=state.getShape(getter,pos);
+                            // A non-glass block must not disappear from the occlusion policy just because
+                            // its selection shape is empty (fluids/special renderers), or unusually complex.
+                            if(shape.isEmpty())shape=net.minecraft.world.phys.shapes.Shapes.block();
                             if(net.minecraft.world.level.block.Block.isShapeFullBlock(shape))full=true;
                             else {
                                 var parts=shape.toAabbs();
-                                if(parts.size()<=8)for(var a:parts)boxes.add(new OccluderBox(a.minX+x,a.minY+y,a.minZ+z,a.maxX+x,a.maxY+y,a.maxZ+z));
+                                if(parts.size()>8)parts=List.of(shape.bounds());
+                                for(var a:parts)boxes.add(new OccluderBox(a.minX+x,a.minY+y,a.minZ+z,a.maxX+x,a.maxY+y,a.maxZ+z));
                             }
                         }
                     }
@@ -82,12 +86,14 @@ public final class ScopeOcclusion {
                 .sorted(Comparator.comparingDouble(b->new AABB(b.minX(),b.minY(),b.minZ(),b.maxX(),b.maxY(),b.maxZ()).distanceToSqr(center)))
                 .limit(limit).toList();
     }
-    private static boolean opaque(BlockState s) {
+    private static boolean occludes(BlockState s) {
         var b=s.getBlock();
-        if(s.isAir() || s.getRenderShape()!=RenderShape.MODEL || b instanceof HalfTransparentBlock || b instanceof LeavesBlock
-                || b instanceof StainedGlassPaneBlock)return false;
-        return s.canOcclude() || b instanceof FenceBlock || b instanceof WallBlock || b instanceof DoorBlock
-                || b instanceof TrapDoorBlock || b instanceof StairBlock || b instanceof SlabBlock;
+        // Glass is the sole material exception. Do not confuse translucent/cutout materials with glass:
+        // leaves, ice, slime, doors, plants and block-entity models all participate regardless of shaders.
+        return !s.isAir() && !s.is(net.neoforged.neoforge.common.Tags.Blocks.GLASS_BLOCKS)
+                && !s.is(net.neoforged.neoforge.common.Tags.Blocks.GLASS_PANES)
+                && b!=Blocks.GLASS && b!=Blocks.GLASS_PANE && b!=Blocks.TINTED_GLASS
+                && !(b instanceof StainedGlassBlock) && !(b instanceof StainedGlassPaneBlock);
     }
     private static ArrayList<OccluderBox> merge(List<OccluderBox> source,int axis) {
         var groups=new HashMap<List<Double>,List<OccluderBox>>();
