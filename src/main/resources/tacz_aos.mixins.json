@@ -16,6 +16,7 @@
     "ScopedDeathMessageMixin"
   ],
   "client": [
+    "ProneIdleAnimationMixin",
     "ScopeRangeLensMixin",
     "ScopeFarPlaneMixin",
     "ScopedEntityRendererMixin",

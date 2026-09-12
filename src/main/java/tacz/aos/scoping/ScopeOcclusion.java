@@ -16,6 +16,7 @@ import tacz.aos.occlusion.*;
 
 /** Bounded, live target-side visual geometry. Does not traverse the distant corridor or request chunks. */
 public final class ScopeOcclusion {
+    private static final AABB FULL_BLOCK=new AABB(0,0,0,1,1,1);
     private record Sent(ScopeOcclusionPayload payload,long tick) {}
     private static final Map<UUID,Sent> sent=new HashMap<>();
     private static int remaining;
@@ -61,18 +62,9 @@ public final class ScopeOcclusion {
                     if(x<=xmax) {
                         if(budget[0]--<=0){budget[0]=0;break outer;}
                         var pos=new BlockPos(x,y,z);var state=getter.getBlockState(pos);
-                        if(occludes(state)) {
-                            var shape=state.getShape(getter,pos);
-                            // A non-glass block must not disappear from the occlusion policy just because
-                            // its selection shape is empty (fluids/special renderers), or unusually complex.
-                            if(shape.isEmpty())shape=net.minecraft.world.phys.shapes.Shapes.block();
-                            if(net.minecraft.world.level.block.Block.isShapeFullBlock(shape))full=true;
-                            else {
-                                var parts=shape.toAabbs();
-                                if(parts.size()>8)parts=List.of(shape.bounds());
-                                for(var a:parts)boxes.add(new OccluderBox(a.minX+x,a.minY+y,a.minZ+z,a.maxX+x,a.maxY+y,a.maxZ+z));
-                            }
-                        }
+                        var parts=OcclusionShapes.boxes(state,getter,pos);
+                        if(parts.size()==1 && parts.getFirst().equals(FULL_BLOCK))full=true;
+                        else for(var a:parts)boxes.add(new OccluderBox(a.minX+x,a.minY+y,a.minZ+z,a.maxX+x,a.maxY+y,a.maxZ+z));
                     }
                     if(full){if(run==Integer.MIN_VALUE)run=x;}
                     else if(run!=Integer.MIN_VALUE){boxes.add(new OccluderBox(run,y,z,x,y+1,z+1));run=Integer.MIN_VALUE;}
@@ -85,15 +77,6 @@ public final class ScopeOcclusion {
         return boxes.stream().filter(b->intersectsShadow(b,eye,bounds))
                 .sorted(Comparator.comparingDouble(b->new AABB(b.minX(),b.minY(),b.minZ(),b.maxX(),b.maxY(),b.maxZ()).distanceToSqr(center)))
                 .limit(limit).toList();
-    }
-    private static boolean occludes(BlockState s) {
-        var b=s.getBlock();
-        // Glass is the sole material exception. Do not confuse translucent/cutout materials with glass:
-        // leaves, ice, slime, doors, plants and block-entity models all participate regardless of shaders.
-        return !s.isAir() && !s.is(net.neoforged.neoforge.common.Tags.Blocks.GLASS_BLOCKS)
-                && !s.is(net.neoforged.neoforge.common.Tags.Blocks.GLASS_PANES)
-                && b!=Blocks.GLASS && b!=Blocks.GLASS_PANE && b!=Blocks.TINTED_GLASS
-                && !(b instanceof StainedGlassBlock) && !(b instanceof StainedGlassPaneBlock);
     }
     private static ArrayList<OccluderBox> merge(List<OccluderBox> source,int axis) {
         var groups=new HashMap<List<Double>,List<OccluderBox>>();

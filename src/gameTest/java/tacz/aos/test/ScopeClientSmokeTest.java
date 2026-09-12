@@ -63,7 +63,102 @@ public final class ScopeClientSmokeTest {
     private static int zoomFrames, zoomBaseline;
     private static boolean zoomRangeObserved;
     private static com.mojang.blaze3d.platform.NativeImage beforeTrail;
-    private static int irisQuery;
+    private static int irisQuery, proneWarmup;
+
+    /** Exercise the installed client mixin with TACZ's real AWP animation prototypes and local crawl input. */
+    private static void verifyProneIdle() throws ReflectiveOperationException {
+        var mc=Minecraft.getInstance();var player=mc.player;
+        var operator=com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator.fromLocalPlayer(player);
+        var display=com.tacz.guns.api.TimelessAPI.getGunDisplay(player.getMainHandItem()).orElseThrow();
+        var controller=display.getAnimationStateMachine().getAnimationController();
+        var prototypesField=com.tacz.guns.api.client.animation.AnimationController.class.getDeclaredField("prototypes");
+        prototypesField.setAccessible(true);
+        @SuppressWarnings("unchecked") var prototypes=(java.util.Map<String,com.tacz.guns.api.client.animation.ObjectAnimation>)prototypesField.get(controller);
+        var idle=new com.tacz.guns.api.client.animation.ObjectAnimationRunner(
+                new com.tacz.guns.api.client.animation.ObjectAnimation(prototypes.get("idle")));
+        idle.getAnimation().playType=com.tacz.guns.api.client.animation.ObjectAnimation.PlayType.LOOP;
+        Object crawlController=null;
+        for(Class<?> type=player.getClass();type!=null;type=type.getSuperclass())for(var field:type.getDeclaredFields())
+            if(field.getType()==com.tacz.guns.client.gameplay.LocalPlayerCrawl.class) {
+                field.setAccessible(true);crawlController=field.get(player);
+            }
+        if(crawlController==null)throw new AssertionError("Local TACZ crawl controller not found");
+        var cooldown=com.tacz.guns.client.gameplay.LocalPlayerCrawl.class.getDeclaredField("crawCooldownTicks");cooldown.setAccessible(true);
+        int oldCooldown=cooldown.getInt(crawlController);
+        boolean oldCrawl=operator.isCrawl(),oldAim=operator.isAim(),oldGround=player.onGround();
+        var oldStack=player.getMainHandItem();var oldCamera=mc.options.getCameraType();
+        var oldPose=player.getForcedPose();
+        try {
+            player.setOnGround(true);cooldown.setInt(crawlController,0);operator.crawl(false);operator.aim(true);
+            idle.run();idle.setProgressNs(3_550_000_000L);idle.update(true);
+            if(idle.getProgressNs()<3_550_000_000L)throw new AssertionError("Standing idle was suppressed");
+            cooldown.setInt(crawlController,0);operator.crawl(true);
+            if(!operator.isCrawl() || !tacz.aos.client.ProneAimStability.active())throw new AssertionError("Real local TACZ crawl not recognized");
+            // Start at the pronounced shake, then cover more than two full idle cycles without sleeping.
+            for(int i=0;i<=320;i++) {
+                idle.setProgressNs(i*50_000_000L);idle.update(true);
+                if(idle.getProgressNs()!=0 || !idle.isRunning())throw new AssertionError("Prone idle advanced at sample "+i);
+            }
+            for(String name:java.util.List.of("static_idle","shoot","bolt","reload_empty")) {
+                var prototype=prototypes.get(name);if(prototype==null)throw new AssertionError("Missing control animation "+name);
+                var control=new com.tacz.guns.api.client.animation.ObjectAnimationRunner(new com.tacz.guns.api.client.animation.ObjectAnimation(prototype));
+                control.getAnimation().playType=com.tacz.guns.api.client.animation.ObjectAnimation.PlayType.PLAY_ONCE_HOLD;
+                control.run();control.setProgressNs(10_000_000L);control.updateSoundOnly();
+                if(control.getProgressNs()==0)throw new AssertionError("Non-idle animation frozen: "+name);
+            }
+            // TACZ's LOOP mode wraps even an explicitly stopped runner; test a native stoppable track instead.
+            idle.getAnimation().playType=com.tacz.guns.api.client.animation.ObjectAnimation.PlayType.PLAY_ONCE_STOP;
+            idle.stop();idle.update(true);
+            if(!idle.isStopped())throw new AssertionError("Stopped idle was resurrected");
+            idle.getAnimation().playType=com.tacz.guns.api.client.animation.ObjectAnimation.PlayType.LOOP;
+            idle.reset();idle.run();operator.aim(false);idle.setProgressNs(1_000_000_000L);idle.update(true);
+            if(idle.getProgressNs()<1_000_000_000L)throw new AssertionError("Unscoped idle was suppressed");
+            operator.aim(true);
+            player.setItemInHand(InteractionHand.MAIN_HAND,GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ak47")).build(mc.level.registryAccess()));
+            idle.setProgressNs(1_000_000_000L);idle.update(true);
+            if(idle.getProgressNs()<1_000_000_000L)throw new AssertionError("Non-whitelisted gun became stable");
+            player.setItemInHand(InteractionHand.MAIN_HAND,oldStack);
+            mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_BACK);
+            if(tacz.aos.client.ProneAimStability.active())throw new AssertionError("Affected third-person animation");
+            mc.options.setCameraType(oldCamera);
+            cooldown.setInt(crawlController,0);operator.crawl(false);idle.setProgressNs(0);idle.update(true);
+            if(idle.getProgressNs()<=0 || idle.getProgressNs()>250_000_000L)throw new AssertionError("Standing did not resume without accumulated time");
+            if(net.neoforged.fml.ModList.get().isLoaded("parcool"))verifyParCoolIdle(idle);
+            TaczArtOfSniping.LOGGER.info("PRONE_IDLE_CLIENT PASSED: 16 seconds sampled; prone stable, standing/hipfire/excluded gun restored; shoot/bolt/reload preserved");
+        } finally {
+            player.setItemInHand(InteractionHand.MAIN_HAND,oldStack);player.setOnGround(true);
+            cooldown.setInt(crawlController,0);operator.crawl(oldCrawl);cooldown.setInt(crawlController,oldCooldown);
+            operator.aim(oldAim);player.setOnGround(oldGround);player.setForcedPose(oldPose);mc.options.setCameraType(oldCamera);
+            display.getGunModel().cleanAnimationTransform();
+        }
+    }
+
+    private static void verifyParCoolIdle(com.tacz.guns.api.client.animation.ObjectAnimationRunner idle) throws ReflectiveOperationException {
+        var player=Minecraft.getInstance().player;
+        Class<?> abilityType;boolean modern;
+        try {abilityType=Class.forName("com.alrex.parcool.common.Parkourability");modern=true;}
+        catch(ClassNotFoundException old){abilityType=Class.forName("com.alrex.parcool.common.attachment.common.Parkourability");modern=false;}
+        Object ability=abilityType.getMethod("get",net.minecraft.world.entity.player.Player.class).invoke(null,player);
+        Object crawl;
+        if(modern) {
+            Object key=Class.forName("com.alrex.parcool.common.action.ParCoolActions").getField("CRAWL").get(null);
+            crawl=abilityType.getMethod("get",Class.forName("com.alrex.parcool.api.action.ActionEntry")).invoke(ability,key);
+        } else crawl=abilityType.getMethod("get",Class.class).invoke(ability,Class.forName("com.alrex.parcool.common.action.impl.Crawl"));
+        try {
+            if(modern)crawl.getClass().getMethod("start").invoke(crawl);
+            else crawl.getClass().getMethod("start",net.minecraft.world.entity.player.Player.class,abilityType,java.nio.ByteBuffer.class)
+                    .invoke(crawl,player,ability,java.nio.ByteBuffer.allocate(0));
+            if(!tacz.aos.client.ProneAimStability.active())throw new AssertionError("ParCool local crawl did not stabilize ADS");
+            idle.setProgressNs(3_550_000_000L);idle.update(true);
+            if(idle.getProgressNs()!=0)throw new AssertionError("ParCool idle retained periodic shake");
+        } finally {
+            if(modern)crawl.getClass().getMethod("finish").invoke(crawl);
+            else crawl.getClass().getMethod("finish",net.minecraft.world.entity.player.Player.class).invoke(crawl,player);
+        }
+        idle.update(true);
+        if(tacz.aos.client.ProneAimStability.active() || idle.getProgressNs()<=0)throw new AssertionError("ParCool exit did not restore idle");
+        TaczArtOfSniping.LOGGER.info("PARCOOL_PRONE_IDLE_CLIENT PASSED: local {} action start/stop",modern?"4.x":"3.x");
+    }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST) public static void beforeTrailFrame(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
         if (ENABLED && !trailStageCaptured && event.getStage() == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
@@ -132,6 +227,21 @@ public final class ScopeClientSmokeTest {
         if (mc.player == null || mc.level == null || cowId < 0) return;
         if (net.neoforged.fml.ModList.get().isLoaded("iris") && !tacz.aos.client.ShaderCompat.active()) {
             fail("Iris disabled shaders; this is not a shader compatibility pass"); mc.stop(); return;
+        }
+        if (Boolean.getBoolean("tacz_aos.proneSwayOnly")) {
+            // This visual feature does not require a rangefinder or remote entity subscription.
+            // In particular, ParCool 3.x can end the fixture's creative flight above the ground.
+            var gun = IGun.getIGunOrNull(mc.player.getMainHandItem());
+            if (mc.screen != null || gun == null || !gun.getGunId(mc.player.getMainHandItem())
+                    .equals(ResourceLocation.parse("tacz:ai_awp"))) return;
+            com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(true);
+            com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator.fromLocalPlayer(mc.player).aim(true);
+            if (++proneWarmup < 40) return;
+            try {
+                verifyProneIdle();
+                java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS");
+            } catch (Throwable failure) { fail("Prone idle check failed: " + failure); }
+            mc.stop(); return;
         }
         if (observerFeedback) {
             com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(false);
@@ -241,6 +351,10 @@ public final class ScopeClientSmokeTest {
             if (mc.level.getEntity(itemId) instanceof net.minecraft.world.entity.item.ItemEntity && ScopedRendering.extraDraws() >= 2)
                 itemObserved = true;
             if (drawnTicks == 0) firstRenderedX = mc.level.getEntity(cowId).getX();
+            if (drawnTicks == 20) {
+                try { verifyProneIdle(); }
+                catch (Throwable failure) { fail("Prone idle check failed: "+failure); return; }
+            }
             if (++drawnTicks == 60) {
                 if (!navigating || Math.abs(mc.level.getEntity(cowId).getX() - firstRenderedX) < 0.1) { fail("Remote pose stayed frozen: target="+tacz.aos.client.VisibleTargetReporter.lastDistance+", activity="+tacz.aos.scoping.ScopeActivity.INSTANCE.status()+", generation="+tacz.aos.terrain.GeneratedChunks.INSTANCE.status()); return; }
                 if (!itemObserved) { fail("Non-living item did not render remotely"); return; }

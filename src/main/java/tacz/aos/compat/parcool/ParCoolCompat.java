@@ -5,7 +5,7 @@ import net.minecraft.world.entity.player.Player;
 import net.neoforged.fml.ModList;
 import tacz.aos.TaczArtOfSniping;
 
-/** Optional read-only bridge to ParCool's synchronized action state, never its visual swimming pose. */
+/** Optional read-only bridge to ParCool's local/synchronized action state, never its visual swimming pose. */
 public final class ParCoolCompat {
     private ParCoolCompat() {}
 
@@ -25,7 +25,7 @@ public final class ParCoolCompat {
         }
     }
 
-    // Resolve once after mods have initialized, only if a qualifying non-TACZ crawl shot needs it.
+    // Resolve once after mods have initialized, when a qualifying shot or first-person animation needs it.
     private static final class Holder {
         private static final Access ACCESS = resolve();
     }
@@ -57,6 +57,6 @@ public final class ParCoolCompat {
     private static synchronized void disable(Throwable reason) {
         if (failed) return;
         failed = true;
-        TaczArtOfSniping.LOGGER.warn("ParCool crawl API unavailable; disabling ParCool zero-spread integration. TACZ crawling remains supported.", reason);
+        TaczArtOfSniping.LOGGER.warn("ParCool crawl API unavailable; disabling ParCool prone integration. TACZ crawling remains supported.", reason);
     }
 }

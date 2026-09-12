@@ -68,6 +68,7 @@ neoForge {
             client()
             gameDirectory = file('build/client-scope-test')
             systemProperty 'tacz_aos.clientScopeTest', 'true'
+            systemProperty 'tacz_aos.proneSwayOnly', providers.gradleProperty('prone_sway_test_only').orElse('false').get()
             programArguments.addAll '--width', '960', '--height', '540'
         }
         clientLongRangeTest {
