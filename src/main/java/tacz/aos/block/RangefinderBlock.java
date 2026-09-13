@@ -47,7 +47,7 @@ public final class RangefinderBlock extends Block {
         var pos = context.getClickedPos();
         if (pos.getY() >= context.getLevel().getMaxBuildHeight() - 1
                 || !context.getLevel().getBlockState(pos.above()).canBeReplaced(context)) return null;
-        return defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
+        return defaultBlockState().setValue(FACING, context.getHorizontalDirection());
     }
     @Override public void setPlacedBy(Level level, BlockPos pos, BlockState state, LivingEntity placer, ItemStack stack) {
         level.setBlock(pos.above(), state.setValue(HALF, DoubleBlockHalf.UPPER), UPDATE_ALL);

@@ -9,11 +9,9 @@ config="${mod_id}.mixins.json"
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
+logoFile="assets/tacz_aos/logo.png"
 authors="Sange"
-description='''
-TACZ: Art of Sniping (TACZ: AoS) — a long-range sniping extension for TACZ on Minecraft 1.21.1 NeoForge.
-Designed for scoped sniper rifles, with optional NeoVoxy distant-terrain integration.
-'''
+description="A TACZ addon with realistic ballistics and tactical equipment that allows players to snipe other entities from extreme distances."
 
 [[dependencies.${mod_id}]]
 modId="neoforge"

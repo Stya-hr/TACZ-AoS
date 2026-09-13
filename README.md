@@ -1,426 +1,91 @@
 # TACZ: Art of Sniping
 
-简称 **TACZ: AoS**，模组 ID：`tacz_aos`。
+**English** | [简体中文](README.zh-CN.md)
 
-主类为 `tacz.aos.TaczArtOfSniping`，配置文件为 `tacz_aos-server.toml`，命令前缀为 `/tacz_aos`。
+**TACZ: AoS** is a TACZ addon for long-range sniping with realistic ballistics. By **Sange**.
 
-启动游戏即可在当前游戏实例的 `config/tacz_aos-server.toml` 自动生成配置，无需先进入世界。已有文件不会被覆盖；首次生成时优先采用 `defaultconfigs/`（或 NeoForge 指定的默认配置目录）中的同名模板。存档 `serverconfig/` 的同名文件仍优先于全局配置；多人游戏实际使用服务器同步的配置，本地文件不会覆盖服务器规则。修改后建议重新启动世界／服务器。
-更换模组标识后，客户端与服务器需一起更新；旧配置需手动迁移，旧标识下的测距仪不会自动转换。
+Allows players to snipe other entities from extreme distances.
 
-Minecraft 1.21.1 / NeoForge 21.1.248 / Java 21。必选 TACZ 1.1.8-hotfix-r6；可选 NeoVoxy 0.4.3-beta.1 integrations、Iris 1.8.x 与其 Sodium 前置。依赖不打包进本模组。客户端和服务端均需安装本扩展。
+## Requirements
 
-## 当前狙击规则
+Minecraft **1.21.1**, **NeoForge 21.1.248 or newer**, Java **21**, and the [TACZ 1.21.1 port](https://modrinth.com/mod/tacz-1.21.1) (**1.1.8-hotfix-r6**, supported range: below 1.2). Install AoS and TACZ on both the client and server.
 
-玩家距离完整测距仪两格占位包围盒不超过 3 blocks，使用白名单枪械和瞄具并开镜，即可启用。所有倍率允许；只有光学筒式视图显示镜内测距与风速。
+## What's included
 
-本版本采用**可见目标区域加载与局部碰撞**，已经移除碰撞快照采集、磁盘缓存、快照恢复和在途快照保留。无需迁移旧配置或旧缓存；旧缓存文件不再读取，也不会自动删除用户存档文件。
+- **Rangefinder:** a two-block-tall tripod that enables scoped sniping within **3 blocks**. It enables the features; measurements follow the player's aim.
+- **Tactical Collection Belt:** wear it in the leggings slot or an existing Curios belt slot. Kills with **any TACZ gun** bring dropped items and XP to your feet, including other mods' items using the normal death-drop system. No rangefinder or aiming is needed.
+- Distant entity rendering and simulation, scope range/wind/humidity readings, and visible bullet smoke trails.
+- Multiplayer flyby sounds, delayed distant gunshots, and special long-range player kill messages.
+- Real-scale gravity, optional wind and humidity effects, and configurable gun speed/drag overrides. These physics changes also affect ordinary TACZ kinetic rounds outside sniping mode.
+- Zero random spread and reduced scope idle sway while prone with an allowed gun. Recoil remains.
 
-1. 原版地形：客户端只查询原版视距内实际存在的区块，遇到缺失区块即停止；没有 Voxy 时，视距外地形不会成为加载目标。
-2. Voxy 地形：原版查询无法提供前方目标时，使用 Voxy 地形渲染通道的独立深度取得候选位置。通过三个单像素 PBO 和非阻塞 GPU fence 异步读取，不访问 Voxy 数据库。可选客户端 Mixin 在地形绘制完成时捕获同一帧的深度、矩阵和硬件 NDC 映射，避开 Iris 的手部深度与后处理缓冲。深度是可见简化表面，可能有 LOD 精度偏差；较近的有效可见表面优先。
-3. 客户端每 2 tick 报告一次候选直线距离；服务端验证资格、维度、距离、视线方向和新鲜度。客户端位置只能作为加载提示，无法直接造成伤害。
-4. 服务端先检查玩家到候选点的视线经过的所有区块列是否达到 FULL。只扫描存档 Status/xPos/zPos，不读取方块调色板，不加载或生成途中区块。未知状态批量异步查询；缺失或未完整生成阻止加载。因此隔着未生成地带的 Voxy“浮岛”不能启用目标区域。
-5. 稳定瞄准后，按预算添加目标核心的原生区块票据，使存档实体恢复并运行真实 AI。目标与必要邻接区域必须先确认已完整生成。核心默认 3×3，FULL 足迹为 7×7；无需发送完整地形给远处射手。
-6. 实际枪械参数与风计算曲线，只在当前保留的目标核心内查找方块/实体交点。交点维持已有区域，不沿曲线拓展新区块加载。区块准备完成后会在周期更新中重算，不要求再次移动镜头。
-7. 新位置加载受角速度、稳定时长和申请间隔限制。扫镜只暂停新位置申请；既有区域默认保留 3 秒，支持先指向目标，再抬枪口补偿下坠。每人默认最多保留两个区域（`activity.maxRegionsPerPlayer`），全服默认最多四个。
-8. 开枪时固定这发子弹的物理参数、风和目标核心集合。区域外仅推进飞行与烟迹，区域内逐 tick 对真实实体和方块做线段碰撞。移动目标可躲开，命中仍调用 TACZ 的伤害、爆头、穿透数量与事件。关镜、移动离开仪器或拆除仪器不取消已接受的子弹；在途引用维持目标区域至结束或硬超时。
+Both items appear in TACZ's miscellaneous creative tab alongside its gun workbench. Craft them as follows; `.` means an empty slot:
 
-**明确的玩法取舍：** 狙击弹忽略选定核心外的一切方块和实体，包括已经加载的墙或山体；目标核心内的墙仍会挡弹。只检查准星直线路径的生成状态，曲线下坠/风偏经过的其他区块不再查询生成或地形。普通非狙击射击保留 TACZ 的正常碰撞。没有目标核心时，已接管子弹可以显示飞行，但没有远端命中区域。
+| Rangefinder | Tactical Collection Belt |
+| --- | --- |
+| `G D G` | `. D .` |
+| `. I .` | `L R L` |
+| `I . I` | `. A .` |
 
-其他玩家与第三方区块加载器的票据不受影响；本模组只增减自己的引用。实体订阅按视野、数量及预算筛选，沿途不再做可见性射线，实际绘制仍进行场景深度测试。
+`G` = clear glass pane, `D` = diamond, `I` = iron ingot, `L` = leather, `R` = redstone dust, `A` = gold ingot.
 
-Voxy 选点依据其不透明地形缓冲，不依赖光影包将 LOD 深度合并回原版缓冲。天空与无效深度不会产生目标；透明材质不保证成为独立测距表面。阴影绘制阶段不提交选点、不重复渲染远处实体与弹道。
+## How to play
 
-开启 Iris 光影时，烟迹使用标准粒子材质，让光影包生成正确的材质附件；不绘制独立的弹头发光点。未开启光影时保留原有程序烟迹。两种路径保持原有轨迹、宽度与颜色，飞行中的烟迹最多残留 1 秒；收到服务端结束通知后，最后一段最多再插值 1 tick 到确认的终点，随后停止弹头；射手和旁观者已经形成的烟迹均按各段原有年龄自然淡出，不因命中整条清除或重新计时，也不再延伸到命中点之后。是否出现 Bloom、雾中对比度以及是否照亮周围地形取决于光影包；本模组没有向任意光影包注入通用动态点光源，也不修改用户的光影包文件。
+1. Explore the area you intend to shoot into. Use [NHblock-Johnsnow's NeoVoxy fork](https://github.com/NHblock-Johnsnow/neo-voxy) to see terrain beyond vanilla render distance.
+2. Place a rangefinder, stay within **3 blocks**, and equip an allowed gun with an allowed scope.
+3. Aim steadily at visible terrain near your target. AoS loads and simulates the target area so distant creatures, players and TACZ targets can appear and be hit.
+4. Read the scope information, then compensate for bullet drop and wind. Target areas remain loaded briefly while adjusting your aim; accepted shots keep their target area available during flight.
 
-已用本地 Iris 1.8.14-beta.1 + Eclipse 光影验证约 888 blocks 的 Voxy 测距、存档实体 AI/绘制和实际伤害，以及无 Voxy 时的原版地形选点、各倍率界面与烟迹。测试包含实际 GPU 片元检查，且要求光影成功启用。其他光影包仍受其自身编译与材质支持影响。
+All aiming magnifications can enable sniping. Readouts appear only in supported optical scope views, not backup iron sights or open sights. Defaults include **AWP, M95, M107, M700, Kar98 and Springfield 1873**, with several TACZ scopes.
 
-## 战术收集腰带
+Without Voxy, terrain outside vanilla render distance cannot be selected as a new target. A sightline crossing ungenerated terrain will not load a distant target.
 
-`tacz_aos:tactical_collection_belt` 使用 16×16 迷彩像素贴图，可装备在原版裤子槽（手持右键可穿戴），或其他模组/数据包已提供的 Curios `belt` 功能槽。本模组不增加 Curios 槽位；外观槽、停用槽和仅放在背包中的腰带不生效。腰带与测距仪一同列于 TACZ 创造模式物品栏。
+## Performance and aiming trade-offs
 
-佩戴时，玩家使用任意 TACZ 枪械直接击杀生物或玩家，会将实际死亡掉落的物品与经验移到射手脚下；不要求白名单、瞄具、开镜或测距仪。收集保留物品数量、组件、正常拾取规则与其他模组修改后的经验数值，不重新生成战利品、不强行放进背包。致命伤的来源决定是否收集，持枪近战或先中枪后摔死不会误触发。背包保留规则及取消掉落事件仍然有效；同时佩戴两条也不会重复掉落。正常运行只在死亡掉落时检查装备，不进行每 tick 扫描、区块加载或新增网络同步。
+AoS uses a small set of target areas instead of loading every chunk along a bullet's entire flight path.
 
-工作台合成：第一行「空、钻石、空」，第二行「皮革、红石粉、皮革」，第三行「空、金锭、空」。获得钻石时解锁配方。
+**Why select an area with the crosshair before following the bullet's trajectory?** The crosshair follows the camera's line of sight, so AoS can quickly obtain a visible target surface from Voxy's already-rendered LOD depth without loading the intervening chunks. A bullet's curved path does not follow that same viewing ray and may pass behind terrain hidden from the camera. The current LOD depth integration cannot reliably determine its first collision from that view alone. Accurate trajectory-first targeting would require collision data along the path up to the first hit—such as terrain snapshots read or cached from the relevant chunks—and additional collision checks. Maintaining and retrieving that data adds work and can delay targeting at extreme distances. Crosshair-first loading avoids this requirement:
 
-Curios 为可选依赖，支持 Minecraft 1.21.1 NeoForge 的 `9.5.1 ≤ 版本 < 10.0.0`，已用 9.5.1 测试；未安装时保留裤子槽与完整收集功能。Curios 本体不打包进本模组。
+1. **The crosshair requests loading.** While you are eligible to snipe and aiming steadily, AoS requests the area around the visible surface under your crosshair. Beyond vanilla render distance, Voxy's rendered LOD surface supplies that candidate position. This reflects what is visible in the LOD image, not a precise check of the latest terrain along the entire path.
+2. **Target areas remain briefly after you look away**—about three seconds by default—so you have time to adjust your aim.
+3. **The predicted trajectory keeps a target area active.** AoS periodically recalculates the curved trajectory using your gun's ballistics and environmental effects. If it predicts a block or entity hit within an existing target area, that area is renewed. The curve does not load new areas or keep every loaded chunk it passes through active.
 
-## 狙击配置
+This matters when compensating for bullet drop: raising the crosshair above a creature may point it at a much more distant hillside. The original target area can remain active because the predicted bullet still lands there, even while the crosshair requests the farther area. **Aim too high, however, and the predicted shot may miss the original area entirely.** Once its retention time expires, the creature may disappear from your view. This can be normal: point the crosshair back at its last position or nearby terrain, wait for it to appear, then raise your aim a little less.
 
-`eligibility.guns` 中的枪械由玩家在 **TACZ、ParCool 或 Crawl on Demand 匍匐状态**下射击时，随机散布归零；不要求安装瞄准镜、开镜或靠近测距仪。普通发射和 TACZ `calcSpread` 脚本的最终散布均适用。起身、枪械不在白名单或 `eligibility.enabled=false` 时保留原有散布；NPC 不适用。此规则不修改共享枪械数据，不消除风偏、重力、射手移动速度、镜头后坐力和烟线卷曲，也不改变已射出的子弹。将霰弹枪加入白名单也会使匍匐时多颗弹丸的散布归零。
+**The crosshair loads; the predicted impact retains.** Loading, entity AI and synchronization still have a cost, especially with several snipers, but requests, active areas and prediction work are budgeted. The accuracy trade-off is deliberate: sniping bullets check collisions **inside retained target areas only**, so obstacles elsewhere along the flight path can be bypassed.
 
-白名单枪械在第一人称、TACZ、ParCool 或 Crawl on Demand 匍匐并开镜时，还会稳定 TACZ 标准 `idle` 待机动画：默认步枪约 7.27 秒一轮的小幅摆动与较大周期晃动固定在起始姿态。客户端读取各模组的本地匍匐状态，不依赖服务端状态回传、测距仪、瞄具 ID 或倍率。起身、收镜或切换非白名单枪械后恢复正常计时，不积累暂停期间的时间；保持动画停止/过渡状态和持枪基础姿态。射击后坐力、拉栓、换弹、鼠标转向产生的持枪惯性和其他模组镜头效果不被禁用。此规则只识别标准 `idle` 动画；自定义枪包若把额外晃动写在其他动画或脚本里，需要单独适配。
+For example, the crosshair may see a target while the lower, curved trajectory would actually hit an intervening ridge. If that ridge is outside the retained target areas, the shot can pass through it. AoS accepts this visibility-versus-trajectory edge case in exchange for responsive, lower-cost long-range aiming. Its impact on balance depends on the terrain and how players use it; terrain inside the target areas still blocks shots normally.
 
-ParCool 是无版本限制的可选依赖，不打包进本模组。兼容层识别 3.x 的 `Parkourability.get(player).get(Crawl.class).isDoing()` 和 4.x 的 `Parkourability.get(player).get(ParCoolActions.CRAWL).isDoing()`，读取其现有服务端动作同步，无新增网络消息。两种匍匐标记不互相修改；只要任意一种仍生效，白名单枪械就保持零散布。不会仅凭原版游泳/低矮姿态判断匍匐。接口只解析一次，每发查询当前状态，不缓存玩家或匍匐结果。未安装时不访问 ParCool 类；未来接口不匹配时停用此兼容并记录一次警告，保留 TACZ 匍匐支持。无版本限制不代表能预先保证所有未来版本的 API 兼容；仍需选择适用于 Minecraft 1.21.1 NeoForge 的 ParCool，并在多人服务端与客户端安装。
+## Configuration
 
-Crawl on Demand 同样是无版本限制的可选依赖（mod ID `crawlondemand`），不打包进本模组。读取它的 `CrawlStateManager.isCrawling(player)`：服务端用于实际射击散布，客户端用于开镜待机稳定，沿用它的本地输入及服务端同步，不新增网络消息，不修改任何匍匐标记，不用 `Pose.SWIMMING` 推测匍匐。只对白名单枪械生效，不要求测距仪或特定瞄具；起身即恢复，其他模组的有效匍匐状态仍可生效。已检查 1.21–1.21.5 的 NeoForge 1.2.0 版；接口仅解析一次，未安装时不加载其类，未来 API 不兼容时记录一次警告并停用该桥接，不影响其他匍匐兼容。多人游戏需在客户端和服务器安装相应模组。
+Launch the game once to generate `config/tacz_aos-server.toml`. A world's `serverconfig/tacz_aos-server.toml`, if present, takes precedence. In multiplayer, edit the **server's** active file. Restart the world/server after changes.
 
-服务端配置 `tacz_aos-server.toml`，默认最大距离仍为 1024；可将 `limits.maxDistance` 调至 2048。`ballistics.maxDistance=0` 跟随此值。配置由 NeoForge 同步客户端。修改后重进世界/重连。
+To support another TACZ gun pack, append its **gun ID** to `guns` and its **scope attachment ID** to `scopeRules` under `[eligibility]`. Use pack IDs such as `pack:rifle`, not the generic TACZ gun item ID. Keep the existing entries you want to use. For example:
 
 ```toml
 [eligibility]
-enabled = true
-guns = ["tacz:ai_awp", "tacz:m95", "tacz:m700", "tacz:m107", "tacz:kar98", "tacz:springfield1873"]
-scopeRules = ["tacz:scope_mk5hd|5,25,1.25", "tacz:scope_vudu|6.5,1.35", "tacz:scope_lpvo_1_6|6.25,1.25", "tacz:scope_standard_8x|4.5,10", "tacz:scope_1873_6x|6", "tacz:scope_98k|4.25"]
+guns = ["tacz:ai_awp", "your_pack:sniper"]
+scopeRules = ["tacz:scope_mk5hd|5,25,1.25", "your_pack:scope"]
 
 [limits]
 maxDistance = 1024
-maxTrackedEntities = 32
-
-[targeting]
-stableDegreesPerSecond = 10.0
-requestIntervalTicks = 5
-newRegionIntervalTicks = 10
-checksPerSecond = 512
-concurrentChecks = 32
-maxQueuedChecks = 4096
-maxIndexedChunks = 131072
-
-[activity]
-enabled = true
-radius = 1
-stableTicks = 3
-retentionTicks = 60
-maxFullChunks = 196
-maxDependencyChunks = 4096
-maxRegions = 4
-maxRegionsPerPlayer = 2
-startsPerSecond = 2
-loadTimeoutTicks = 100
-maxQueriesPerTick = 2
-
-[prediction]
-intervalTicks = 8
-maxMillisPerTick = 4.0
-maxEntityChecks = 8192
-
-[ballistics]
-enabled = true
-maxDistance = 0
-maxActiveBullets = 128
-maxFlightTicks = 600
-extendLifetime = true
 ```
 
-生成状态索引只保留内存坐标与状态：FULL 最多缓存 10 分钟，未完整生成/读取失败短暂缓存 2 秒；区块真实加载会立即更新状态。排队查询不再被当前目标使用时会过期；已开始的异步读盘不会阻塞主线程。磁盘冷查询、服务器过载和网络仍可能产生等待，不保证所有情况下小于一秒。
+Replace `your_pack:*` with real installed IDs. A scope may optionally specify its actual magnifications in gun-pack order, e.g. `your_pack:scope|4,8,1`; this is projection metadata, **not a magnification whitelist**. The client uses the pack's actual scope/view data. Custom scope renderers may need additional compatibility work for readouts.
 
-稳定速度使用平滑角速度，退出阈值为进入阈值的 1.25 倍。`stableTicks` 是连续稳定时间，不是准星目标点必须固定不动的时间。`requestIntervalTicks` 限制所有服务端目标检查，包括路径未知和预算拒绝；`newRegionIntervalTicks` 单独限制每位玩家成功创建新区域的最短间隔，默认 10 tick（正常 20 TPS 下 0.5 秒），设为 0 可关闭这层额外冷却。首次稳定瞄准不额外等待，已有区域续期及共享不受新区域冷却限制。收镜、切换枪械、离开测距仪和切换维度不会重置冷却；退出服务器后清理。冷却结束只检查当前最新目标，不排队加载扫镜经过的旧位置。`startsPerSecond` 是全服滚动窗口的新区域硬上限。预算包括尚在加载、短暂保留和在途子弹引用的区域。
+`limits.maxDistance` is the maximum targeting distance in blocks: **1024 by default**, or **2048** for longer shots. It also limits sniping bullet travel by default, so curved flight consumes slightly more distance than a straight line. `ballistics.maxDistance = 0` follows this limit; a positive value can only lower the bullet limit. Raising the range does not remove terrain or loading-budget restrictions.
 
-`/tacz_aos status` 查看资格、目标区、子弹和局部预测；管理员使用 `/tacz_aos generation` 查看生成索引大小、排队数量和累计扫描次数。旧 `/tacz_aos cache` 已删除。
+## Compatibility
 
-## 开发与回归
+| Optional mod | Integration |
+| --- | --- |
+| [**NeoVoxy (NHblock-Johnsnow)**](https://github.com/NHblock-Johnsnow/neo-voxy) | Select distant LOD terrain; AoS supplies target-area entities. Compatibility has only been tested with this fork. Other Voxy forks are not guaranteed to work, so this fork is recommended for playing with AoS. |
+| **Iris** | Scope targeting, entity occlusion and bullet trails with shaders. Supports 1.8.x; appearance depends on the shader pack. |
+| **Curios** | Collection belt support in an existing functional `belt` slot. No extra slots are added; cosmetic slots do not activate it. Supports 9.5.1–9.x. |
+| **ParCool / Crawl on Demand** | Their crawling states enable prone accuracy and idle-sway suppression for allowed guns. |
 
-```powershell
-.\gradlew.bat build
-.\gradlew.bat runGameTestServer
-.\gradlew.bat runClientLongRangeTest
-.\gradlew.bat runClientLongRangeTest -Penable_voxy_runtime=true
-.\gradlew.bat runClientLongRangeTest -Penable_voxy_runtime=true -Penable_iris_runtime=true
-.\gradlew.bat runClientScopeTest
-```
+Use builds for Minecraft 1.21.1 NeoForge and install each optional mod's own dependencies. Other TACZ gun packs using standard gun/projectile APIs can be added through configuration; custom projectiles or renderers may require integration. Existing chunk-loader and player chunk tickets are respected.
 
-产物：`build/libs/tacz_aos-1.0.0.jar`。客户端集成测试使用独立 build 下的世界；测试代码不进入发布 JAR。
+## License
 
-服务端测试覆盖生成状态 FULL/缺口、无区块加载的元数据扫描、区块网格边界、稳定瞄准、目标区碰撞、移动目标、TACZ 伤害/爆头/事件和物理一致性。远距客户端测试使用 2 区块视距：有 Voxy 时实际访问约 900 格外区域后离开，清空生成索引，验证深度选点、存档牛恢复/AI/绘制、关镜后命中和途中不加载；无 Voxy 时验证无法选中视距外目标。
-
-## 全局枪械参数配置
-
-使用已有 `config/tacz_aos-server.toml` 的 `[gunOverrides]` 节；若存档 `serverconfig/` 存在同名配置，应修改实际生效的存档文件。
-这里选择配置文件，便于服主直接按枪 ID 编辑少量数值，并复用 NeoForge 的服务端配置管理；无需改 TACZ JAR、解包枪包或维护数据包优先级。
-建议退出存档／停止服务器后修改，再重新进入／启动，不使用 `/reload` 管理这些设置。
-
-```toml
-[gunOverrides]
-enabled = true
-entries = [
-  "tacz:ai_awp|speed=905|friction=0.023833333",
-  "tacz:m95|speed=858|friction=0.014333333",
-  "tacz:m107|speed=858|friction=0.014333333",
-  "tacz:m700|speed=822.96|friction=0.030666667",
-  "tacz:kar98|speed=780|friction=0.0275"
-]
-```
-
-向列表追加 `"your_pack:rifle_id|speed=800|friction=0.02"` 即可覆盖第三方 TACZ 枪包中对应 ID 的枪。
-也可只写 `"tacz:ak47|speed=715"`：只覆盖初速，基础阻力继续使用该枪原值；不需要把它加入狙击白名单。
-普通动能弹的空气重力固定为 9.80665 blocks/s²（每 tick 0.024516625），没有开关，也不接受 `gravity` 字段。未列入覆盖列表的枪械同样适用；春田保留原版初速和基础阻力，但重力统一。
-ID 是枪包内枪械 ID（例如 `tacz:ai_awp`），不是通用物品 ID `tacz:modern_kinetic_gun`。
-未安装的枪 ID 不会导致加载失败，等对应枪包安装后再匹配；拼错但语法合法的 ID 不会匹配任何枪。
-
-| 字段 | 单位与含义 | 允许范围 |
-| --- | --- | --- |
-| `speed` | 出膛速度 blocks/s，1 block 当作 1 米；内部除以 20。是最终值，覆盖 TACZ 全局速度倍率和配件初速变化 | 大于 0，不超过 5120 |
-| `friction` | 基准湿度下每 tick 损失的空气速度比例，例如 0.02 表示损失 2%；不是现实阻力系数 Cd | 大于等于 0，小于 1 |
-
-字段省略则保留对应基础值；删除一条枪械记录恢复该枪的初速和基础阻力。`enabled = false` 或 `entries = []` 关闭初速/基础阻力覆盖，不关闭固定重力、风或湿度；环境影响由独立开关控制。
-同一枪 ID 只能出现一次，一行中每个字段也只能出现一次；最多 1024 个 ID。
-非法数值、重复项或未知字段会拒绝整份覆盖列表并在日志记录错误，其他狙击功能继续按自己的配置运行。
-每次发射只进行一次 ID 查询与少量字段赋值，不在飞行途中反复切换参数，也不修改 TACZ 的共享枪械数据或配件缓存。
-
-## 湿度与固定重力
-
-普通 TACZ 动能弹统一启用固定重力；风、湿度分别由 `wind.enabled`、`humidity.enabled` 控制，默认均开启。不依赖测距仪或狙击白名单；测距仪只限制镜内信息和远端加载等狙击功能。配置不做旧布局迁移，更新时删除旧配置并重新生成；客户端/服务端需使用相同版本。
-
-湿度单位为相对湿度 `% RH`，服务端在同一维度共享。没有温度、气压、生物群系、玩家坐标或沿途区块查询。默认拟真强度由固定系数折算，湿度增加使空气阻力略减；这只是湿度单因素模型，不是完整气象系统。无天光维度不施加湿度效果，水中沿用 TACZ 水阻/水中重力系数。
-
-```toml
-[humidity]
-enabled = true
-weatherEffects = true
-seedSalt = 0
-periodTicks = 4000
-transitionTicks = 200
-distribution = "TRIANGULAR"
-minimumRH = 5.0
-maximumRH = 99.0
-referenceRH = 50.0
-densityCoefficient = 0.0087264
-phases = [
-  "0|6000|65",
-  "6000|10000|45",
-  "10000|16000|60",
-  "16000|20000|70",
-  "20000|24000|80"
-]
-
-[humidity.clear]
-saturationBias = 0.0
-amplitude = 8.0
-[humidity.rain]
-saturationBias = 0.65
-amplitude = 5.0
-[humidity.thunder]
-saturationBias = 0.8
-amplitude = 3.0
-```
-
-`phases` 的每项是 `起始tick|结束tick|晴天均值`，包含起点、不含终点，按顺序无缝覆盖 0–24000；0 是早上 06:00，6000 是正午，18000 是午夜。可增删/调整时段，均值须在上下限内。`periodTicks` 从每个时段起点重新划分随机分段；最后一段可短于设定长度。
-
-天气均值为 `晴天均值 + saturationBias × (100 − 晴天均值)`，再限制到 RH 上下限。`amplitude` 是上下浮动的百分点，靠近边界时对称缩小，避免截断随机数引入额外均值偏移。默认三角分布 `amplitude × (u1 − u2)` 更常接近均值；也可选择 `UNIFORM` 均匀分布。
-
-世界种子、维度、日期、时段、分段和独立盐值决定随机数，不会因开镜或移动重新抽取。时段/分段采用确定性平滑过渡；天气改变以 `transitionTicks` 平滑到新天气均值（天气过渡进度仅保存在内存，重进后直接按当前天气计算）。零过渡时间为立即切换。单维度每 tick 至多计算一次，无文件缓存或额外区块加载。
-
-`densityCoefficient=c` 控制湿度对空气密度的修正，`referenceRH` 指定基础摩擦的校准湿度：
-`k=(1-c*RH/100)/(1-c*referenceRH/100)`，`实际friction=1-(1-基础friction)^k`。默认 RH 从 50% 升到 95% 时，AWP 的 0.023833333 变为约 0.023740457。系数可配置 0–0.1，零只关闭物理修正而保留湿度读数；要完全关闭功能并隐藏读数，用 `humidity.enabled=false`。
-
-实际发射（含 TACZ 脚本散布入口）与弹道预测使用同一换算；已发射子弹固定本发修正，原生出生包携带最终摩擦，接管子弹沿用相同数值，烟迹继续跟随服务端实际路径。横风耦合也使用修正后的摩擦。其他模组自定义弹丸/绕过标准入口的脚本，以及爆炸/燃烧弹不在普通动能环境模型范围内。
-
-配置验证、确定性/均值/边界/过渡数值测试，原生与接管实际轨迹测试，以及客户端四种风/湿度开关组合的镜内显示测试覆盖此功能。
-
-## 风场与横风偏移
-
-默认开启。`wind.enabled = false` 关闭风场采样、新发射子弹的风偏和镜内风速行；原有枪械参数覆盖和狙击功能继续按各自配置运行。
-所有通过 TACZ 原版／脚本散布发射入口发射的普通 `EntityKineticBullet` 都使用风偏，不要求靠近测距仪、开镜或枪械白名单，包含其他 TACZ 枪包和非玩家射手。
-爆炸／燃烧变种不加入风偏；自定义弹丸或绕过标准发射入口的脚本不保证支持。
-
-同一维度所有位置、玩家共享当前 XZ 风向量，方向均匀随机。无天光的维度没有风，不模拟室内遮风或地形导致的局地风。
-服务端以世界种子、`seedSalt`、游戏天数、当天时段编号、天气组合生成确定性风场，只在这些条件变化时重新采样。
-重新开镜、切枪、玩家移动不会重新抽风；保存后重进同一时间／天气得到同一个结果。关闭日夜循环也会冻结基于日间时间的时段推进。
-每个游戏日按 24000 tick 计算，时段长度不能整除一天时，当天最后一个时段较短；睡觉／修改时间会进入相应时段。
-
-风速采用截断 Rayleigh 分布，低至中等风速常见、大风较少，始终不超过 `maxSpeed`；这是可调的游戏天气模型。
-`meanSpeed` 是截断前的均值，因此采样后的实际均值会略低。雨天／雷暴使用各自的参数；天气切换可立即更换风场。
-
-在 `config/tacz_aos-server.toml` 中修改（存档 `serverconfig/` 同名文件优先），建议停止世界／服务器后编辑：
-
-```toml
-[wind]
-enabled = true
-weatherEffects = true
-seedSalt = 0
-
-[wind.clear]
-periodTicks = 4000
-meanSpeed = 4.0
-maxSpeed = 5.0
-
-[wind.rain]
-periodTicks = 2000
-meanSpeed = 8.0
-maxSpeed = 9.0
-
-[wind.thunder]
-periodTicks = 1000
-meanSpeed = 12.0
-maxSpeed = 14.0
-```
-
-速度单位为 blocks/s（按米/秒解释）；更新周期允许 20–24000 tick，速度满足 `0 <= meanSpeed <= maxSpeed <= 30`。
-均值设为 0 表示该天气无风。`weatherEffects = false` 始终使用晴天参数，不受天气切换影响。
-非法参数组合会禁用风偏并记录日志，不影响其他功能。
-
-**物理计算**：从水平风向量中移除沿初始枪线的分量，只保留垂直于枪线水平投影的横风。
-每发子弹固定发射时的横风，后续时段／天气变化和收镜不会改变该发子弹的风参数；配置修改也仅影响后续发射。
-预测每次使用当时风场，实际开枪重新取当时风场；若恰好跨过时段边界，需要按新读数瞄准。
-
-以每 tick 为单位，`w` 为横风速度除以 20，`f` 为枪械实际空气阻力，更新顺序为：
-
-```text
-位置 += 当前速度
-下一 tick 速度 = 当前速度 × (1 - f) + w × f - 重力
-```
-
-相当于让空气阻力作用于子弹相对空气的速度，保留原有前向衰减与重力，不直接将风速当成子弹横向速度。
-零阻力就没有风偏，阻力较大的子弹更受风影响；忽略顺／逆风分量，也不计算旋偏、气动跳跃等更复杂效应。
-这一设计符合风偏依赖空气阻力的原则，参考 [Hornady 外弹道说明](https://www.hornady.com/team-hornady/ballistic-information/ballistic-resources/external-ballistics?age=confirmed)。
-实际精度取决于枪包的初速和固定阻力是否接近现实，不能等同于使用真实弹丸阻力曲线的完整弹道解算器。
-水中继续使用原有水阻与重力系数，不增加空气横风力；已经产生的横向速度仍会按水阻衰减。
-
-弹着点预测、TACZ 原生 tick、目标区域局部碰撞积分使用同一横风算法；烟迹来自实际子弹的位置，不单独生成另一条曲线。
-目标区域仍只根据预测的首次有效弹着点申请，已有未知区域截断、区块加载和资源预算保持原规则。
-每 tick 只增加少量常数次乘加，没有额外区块读取；较弯曲的路径可能访问不同碰撞单元，但仍受原有预算约束。
-原生子弹生成消息附带每发固定横风（16 字节），镜内更新消息增加 9 字节，没有广播逐 tick 风场的额外消息。
-
-**镜内显示**：在测距仪附近使用白名单枪械／瞄具开镜时，圆筒光学视图左下角显示绿色读数：测距、可选风速、可选湿度各占一行。
-第一行是缩小后的直线距离；第二行例如 `2.3 block/s →`，数值为当前瞄准方向的横风分量大小，箭头表示子弹被吹向右侧，需向反方向补偿。
-转动视角会用已收到的世界风向重新投影箭头；顺逆风／无风显示 `0.0 block/s` 和横杠，不伪造方向。
-湿度行显示例如 `65.0 % RH`。关闭风或湿度会隐藏对应条目，剩余条目自动收拢；所有行一起受实际镜片圆形边界约束，备用开放式／机械瞄具不显示。读数过期显示未知，离开测距仪／收镜按现有规则隐藏。
-刷新复用已有测距消息，默认每 4 tick 一次；天气与时间槽切换会在后续刷新中显示。
-客户端和服务端均须更新到网络协议 10。
-
-验证覆盖日／时段／天气与盐值确定性、风速边界及分布、横风投影和箭头符号、关闭开关、原生生成消息同步、阻力滞后解析公式、
-原生与目标区域弹道的逐 tick 对照、风偏预测落点上的实际命中，以及真实客户端环境读数显示与离开测距仪后隐藏。
-
-## 测距仪方块
-
-新增 `tacz_aos:rangefinder`，中文名“测距仪”，位于 TACZ 枪械工作台所在的创造模式物品栏。
-放置后为附近 3 格的玩家启用本扩展；仪器方向不限制有效范围，多个玩家可以共享。
-测距仪只提供启用条件，不发射测距射线，也不提供测距起点、方向或读数；直线测距始终使用玩家眼部位置和瞄准方向。
-它仍是有碰撞的普通方块：真正瞄准仪器实体部分时可以命中；射线经过其旁边或三脚架空隙时不会被虚构的整格／邻域形状阻挡。
-屏幕与按钮仍属于静态装饰，没有右键界面，实际测距读数显示在玩家瞄具内。
-
-方块上下占两格，支持四个水平朝向；放置时仪器前面朝向玩家。三根倾斜长方体组成黑色三脚架，顶部包括黑色仪器箱、
-突出物镜、辅助窗口、背面目镜、小屏幕、按键和侧面调节块。使用一个 64×64 像素贴图和普通 JSON 方块／物品模型，
-没有方块实体、逐 tick 更新或专用方块渲染器。模型及贴图可由 `tools/generate_rangefinder_model.py` 再生成。
-
-需要坚实的底部支撑和连续两格可放置空间。拆除上半部、下半部或移除支撑时会清除整机；生存模式只掉落一个物品，
-创造模式不掉落。上下半部共用朝向，只有下半部拥有掉落表，活塞不能将两半分别推走。
-破坏音效使用铁砧音效，粒子使用铁砧纹理；放置等其他音效保留原来的工作台木质音效；硬度 2、爆炸抗性 3，斧为有效工具。
-
-合成产出一个测距仪：
-
-```text
-ABA
-XCX
-CXC
-```
-
-X 为空位；A 为无色玻璃板，B 为钻石，C 为铁锭；共消耗 2 个无色玻璃板、1 个钻石和 3 个铁锭。
-获得钻石后解锁配方书条目。
-
-服务端测试验证实际物品放置、四向状态、上下半部拆除、移除支撑、创造模式拆除、不足两格时拒绝放置、
-配方与音效；客户端验证世界／物品模型无缺失贴图、创造模式栏归属，并保存 `rangefinder-block.png` 和 `rangefinder-front.png`。
-
-全局物理回归覆盖默认六枪的生产散布派发入口、TACZ 专用散布入口、远离测距仪／收镜／所有倍率、未覆盖参数回退、原生子弹生成消息往返同步，以及预测曲线上的实际原生／接管伤害。
-
-
-## 多人近失弹反馈
-
-本模组接管的狙击子弹现在向附近旁观者提供反馈；旁观者不需要枪械、开镜或测距仪。
-射手仍接收完整已确认轨迹，其他玩家仅接收其原版区块跟踪范围中、已发送地形的轨迹部分。
-每段在服务端按区块边界裁切，客户端接收及绘制时再次检查当前地形，禁止跨未接收区块连线。
-Voxy LOD 不算真实客户端区块。每段局部烟迹最多持续 20 tick（20 TPS 下约 1 秒）；收到终点片段只停止运动和弹头，已有烟迹在命中点前原地淡出。终点不在旁观者接收范围内时，已有局部烟迹同样正常到期消散。不向新来的观察者回放旧弹道。
-
-每 tick 合并每位接收者的轨迹包，旁观轨迹最多 128 段；射手自己的全程轨迹有独立批次。
-无需额外加载区块、创建客户端子弹实体或重算弹道碰撞，仅遍历当前维度玩家并检查已有区块跟踪状态。
-一颗在飞子弹每位旁观者约增加 1.2 KB/s 的原始轨迹数据（未计包头、压缩和跨区块碎片）。
-
-子弹实际运动线段在玩家耳边 5 blocks 内经过时，会播放短促、带空间定位的破空声；音量系数为 max(0, 1 - 距离 / 5)，最响为原始素材的 1 倍，5 格及以外静音。距离按耳部到实际三维弹道线段计算；客户端接收时再次检查范围，关闭原版二次距离衰减，仍受游戏主音量和“玩家”分类音量控制。
-使用当前 tick 的实际安全线段计算最近接近点，绝不将撞墙后的延长线用于触发声音。
-一颗子弹对同一位玩家最多播放一次；射手和直接命中的玩家不重复收到近失弹声音。
-客户端每 tick 最多播放 4 个本模组破空声，极端密集射击时省略多余音效。
-这是近失弹听觉反馈，没有额外模拟音速传播延迟或复杂建筑声学。
-当前破空声为项目维护者替换的 1 秒素材，已转换为单声道 Vorbis；旧素材署名保留在 THIRD_PARTY_NOTICES.md 中作为历史记录。
-
-已核实 TACZ 1.1.8-hotfix-r6 普通动能弹使用 BulletHoleOption 产生弹孔，没有通用方块碎屑飞溅。
-原生飞行继续使用其原有反馈；目标区域内撞到当前已加载、能确认碰撞表面的方块时，补发相同弹孔给 32 blocks 内且已接收该区块的玩家。
-目标区域外、无法确认的碰撞表面或真实方块已不存在时，不生成虚构弹孔，也不触发方块破坏或额外加载。
-
-新增验证涵盖区块边界/负坐标/空洞裁切、近失距离与音量、包边界、观察者无设备接收、声音去重、实际弹孔包与无新增区块加载。
-客户端测试附加无测距仪、未开镜场景，检查局部轨迹、未加载区块拒绝绘制、Ogg 音源启动及残留过期，并输出 observer-trail.png。
-客户端与服务器需同时更新（网络协议 11）。
-
-### 远距离枪声传播
-
-仅本模组成功接管的射击使用延迟远处枪声。TACZ 原版第三人称枪声立即发送，且要求接收者跟踪射手区块；本模组保留近处原声，将远处通知单独延迟发送，远处玩家不必加载射手或射手的区块。
-
-```toml
-[distantGunshots]
-enabled = true
-speedOfSound = 343.0
-minDistance = 128
-maxDistance = 0
-volume = 0.65
-```
-
-`minDistance` 以下仍使用 TACZ 的近距离枪声；`maxDistance = 0` 表示使用最远狙击距离。超过上限不发送远处枪声。开枪瞬间记录同维度玩家的位置，按 `ceil(距离 / 声速 × 20)` tick 安排播放：1000 blocks 为 59 tick，2048 blocks 为 120 tick。声音通常晚于超音速子弹到达，但不强制颠倒慢速子弹与声音的物理先后顺序；服务器低于 20 TPS 时传播与子弹模拟一起变慢，网络延迟仍会叠加。
-
-声音传播独立于子弹，命中、关镜或射手离开测距仪不会取消已发出的声音；接收者退出或换维度会取消其待播放声音。只通知开枪时已在听力范围内的玩家；时间与响度按当时距离固定，播放方位指向当时的开枪位置。听者移动不重新调度，也不查询地形遮挡或回声路径。
-
-当前统一枪声音效为项目维护者替换的约 2.034 秒素材，已转换为单声道 Vorbis；`tools/generate_distant_gunshot.py` 是旧合成素材的脚本，不会在构建时覆写当前音频。距离越远响度越低，消音射击额外乘以 0.2。音效属于“玩家”音量分类，可通过资源包替换 `assets/tacz_aos/sounds/distant_gunshot.ogg`。
-
-每维度最多保留 4096 条待播放通知，每 tick 最多处理 64 条，客户端每 tick 最多播放 4 次。超额或积压超过 20 tick 的通知丢弃，避免随后集中爆响。每人每发只增加一个约几十字节的通知，不加载区块、不随子弹逐 tick 发送声音，也不复制枪械实体。延迟队列按播放时间排序，仅处理到期记录。
-
-### 狙击击杀提示
-
-本模组接管的子弹直接击杀另一名玩家时，将原有死亡消息替换为“XXX被YYY从302.7格外一枪打爆了。”。距离取致命命中时双方视点之间的三维直线距离，保留一位小数，不使用子弹飞行曲线长度。提示描述致命的一枪，不要求爆头或目标此前满血。
-
-消息沿用原版的死亡界面与公共聊天广播，不额外发送第二条，因此不会与 TACZ 原死亡提示重复。遵守 `showDeathMessages` 游戏规则和队伍死亡消息可见性。中文客户端显示中文文案，英文客户端显示英文；缺少新翻译时回退到英文。
-
-仅改变本模组正在执行的子弹伤害所产生的提示，普通 TACZ 射击仍使用原提示。开枪后关镜不改变已接管子弹的资格；非致命伤、被取消的死亡、先受枪伤再因坠落等其他原因死亡、自伤及击杀非玩家生物均不使用此文案。实现不保存长期击杀标记、不加载区块，也不增加独立广播包。
-
-
-## TACZ 远距离标靶
-
-支持 `tacz:target` 方块标靶和 `tacz:target_minecart` 矿车标靶。仍需在测距仪附近使用白名单枪械与瞄具开镜，
-由现有可见目标／弹着区域加载机制取得标靶所在区域；可以先瞄准标靶附近的地形，不要求先看见或精确指向标靶。
-Voxy 仍为可选项：没有 Voxy 时，不能凭空选择尚未渲染的远处地形。
-
-方块标靶仅同步位置、朝向、倒下状态、光照及有预算限制的外观数据，客户端复用 TACZ 的模型和动画，
-不伪造区块、不发送整片地形。原版已收到该区块时由原生渲染器负责，避免重复绘制。
-矿车标靶复用现有实体订阅与 TACZ 原生命中回调。两类标靶共用 `maxTrackedEntities` 观察数量上限；
-方块实体候选扫描也限制为 `scopeRendering.maxCandidates`，只检查当前目标区域的驻留区块，不新增区块票据。
-方块标靶状态随现有订阅刷新周期发送（默认 4 tick），每包最多 64 个标靶，外观 NBT 单个最多 8 KiB、合计最多 32 KiB。
-
-接管子弹撞到目标区域内的 TACZ 方块标靶时调用其原生方块命中入口，保留正面命中要求、红石分数、伤害提示和复位规则。
-当前 TACZ 版本的方块标靶在命中后倒下，经过 100 个正常模拟 tick 自动抬起；矿车标靶使用其原生受击晃动与恢复。
-倒下后的碰撞形状随真实服务端状态变化。目标区域外仍沿用本模组既有的忽略沿途地形取舍。
-客户端与服务器需同时更新至本版本（网络协议 10）。
-
-
-加载节流参数均位于服务端 `tacz_aos-server.toml`：`targeting.stableDegreesPerSecond`（0.1–180°/秒）、
-`activity.stableTicks`（2–100 tick）、`targeting.requestIntervalTicks`（2–40 tick）、
-`targeting.newRegionIntervalTicks`（0–200 tick），以及 `activity.startsPerSecond`（每 20 tick 1–20 个新区域）。
-客户端不能自行覆盖服务器的加载限制；时间按服务器 tick 计算。建议停止世界／服务器后编辑已有配置，再重新进入。
-节流回归测试覆盖失败重试限速、首次无额外等待、收镜后保留冷却、最新目标替换旧目标，以及区域共享和飞行引用。
-
-`activity.maxRegionsPerPlayer` 可配置为 1–32，默认 2；每人区域计数包含共享区域、收镜保留和在飞子弹引用，仍受全服预算限制。
-
-音频替换沿用 `assets/tacz_aos/sounds/bullet_flyby.ogg` 和 `distant_gunshot.ogg` 文件名时无需改声音注册。使用 Ogg Vorbis 单声道以保留空间定位，替换后重新构建 JAR；声音时长不参与传播延迟计算。
-
-### 远处实体的实时局部遮挡
-
-开镜订阅的远处实体会被其附近最新的实体掩体局部遮挡，草和作物不再算作掩体。例如胸前的墙只裁掉身体被挡住的部分，露出的头部继续显示；拆掉墙后恢复显示。客户端不接收完整区块，也不绘制这些遮挡方块的颜色、材质或光照，Voxy 的旧 LOD 外观不会因此更新。
-
-服务端只检查实体朝射手方向的一段已加载区域，不加载沿途区块、不读取存档、不改变弹道碰撞。材质筛选先于形状分析：空气、玻璃及玻璃板（含普通/染色/遮光玻璃和 NeoForge 玻璃标签中的模组方块）、草、作物、花、树苗、藤蔓、水生植被等不参与遮挡。通过基类与作物/花/树苗标签识别同类模组植被；水、火、发光地衣、幽匿脉络，以及使用 `HalfTransparentBlock` 的冰/黏液/蜂蜜等已知透明材质也不作为掩体。树叶基类或树叶标签始终按实心方块处理，不保留叶片贴图间隙。
-
-石头等不透明掩体参与遮挡；台阶、楼梯、门、活板门、栅栏、墙和箱子等按当前选取形状的长方体分解，保留真实空隙与开关状态，完整方块合并为长方体。不根据 `canOcclude=false` 一概排除，因为门和许多实体模型也有这一属性。除前述明确排除的材质外，未知模组方块保守参与：形状不超过 8 个长方体时精确处理，超过时用至少覆盖整个方块格的包围盒（同时保留格外凸出部分）；缺失形状时按整格遮挡。服务端无法可靠推断任意模组贴图的透明度，因此未知模型不会被自动判成透明。此规则仅改变本模组实体遮挡，不改变地形材质或子弹碰撞。
-
-客户端将实体模型多边形减去掩体从相机方向投出的遮挡范围，保留未遮挡部分及插值后的贴图坐标、颜色、法线和光照，再交给原来的实体材质绘制。因此兼容正常渲染和 Iris 材质，不向主画面写入不可见方块深度，不遮住天空、枪械或烟线。不依赖 Voxy 安装，也不改变原版已接收区块的正常遮挡。此功能补充的是目标附近实时遮挡；不能据此保证任意远处、未同步的整条视线路径精确遮挡，旧 LOD 中已拆除的墙也不会被自动删除。
-
-服务端配置：
-
-```toml
-[occlusion]
-enabled = true
-radius = 24
-maxCellsPerPlayer = 8192
-maxCellsPerTick = 32768
-maxBoxesPerPlayer = 256
-maxPlaneTestsPerFrame = 500000
-```
-
-`radius` 为目标朝射手方向的局部查询长度，单位 blocks。细长查询区域覆盖实体大小并留有移动余量。扫描共享每玩家及全服务器预算，最多每实体 32 个遮挡体、每玩家 256 个；相邻完整方块合并后再截取。更新跟随 `scopeRendering.intervalTicks`（默认 4 tick，即正常 TPS 下约 0.2 秒），形状不变时不重复发送，20 tick 发送一次保活。数据为有界列表替换，并非完整区块包或无限增量日志；客户端超时、退出或换世界清理数据。协议版本已更新，多人游戏的服务器与客户端均需更新模组。
-
-`maxPlaneTestsPerFrame` 限制客户端多边形裁切工作，单个多边形还限制为最多 32 个可见碎片。达到扫描、同步或裁切预算时，未处理的部分保持可见，不凭空把整个半遮挡实体隐藏。大量复杂模型或快速改造地形时可能短暂漏遮挡；普通目标附近搭墙、挖掘无需沿途加载或整片地形重建。
-
-遮挡验证包括 10000 组随机视线与独立射线/方块相交结果对照、半身墙和细柱的部分裁切、方块放置/拆除/玻璃、无新增区块加载、网络包上限，以及 2 区块视距下约 880 格远的实际 Voxy 客户端。普通渲染和 Iris + Eclipse 均验证了半身、全遮挡及拆墙恢复；GPU 查询中完整掩体后的实体可见片元为 0。被隐藏的实体仍正常同步和运行 AI，遮挡不会取消其目标区域租约。
+[MIT](LICENSE) — Copyright © 2026 **Sange**. Third-party assets retain their own rights; see [asset notices](src/main/resources/THIRD_PARTY_NOTICES.md) and the [original template license](TEMPLATE_LICENSE.txt).

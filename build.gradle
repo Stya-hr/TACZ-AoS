@@ -7,7 +7,7 @@ plugins {
 
 version = mod_version
 group = mod_group_id
-base { archivesName = mod_id }
+base { archivesName = "${mod_id}-neoforge-${minecraft_version}" }
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 tasks.named('wrapper', Wrapper).configure {
@@ -163,6 +163,10 @@ dependencies {
 }
 
 tasks.named('test', Test).configure { useJUnitPlatform() }
+
+tasks.named('jar', Jar).configure {
+    from('LICENSE', 'TEMPLATE_LICENSE.txt')
+}
 
 tasks.named('runClientScopeTest').configure {
     def result = layout.projectDirectory.file('build/client-scope-test/scope-result.txt').asFile
