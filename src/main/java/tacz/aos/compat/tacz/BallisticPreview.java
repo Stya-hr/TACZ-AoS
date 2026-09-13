@@ -51,13 +51,16 @@ public record BallisticPreview(Vec3 start, Vec3 velocity, float gravity, float f
         if (cachedSpeed == null) return Optional.empty();
         float speed = (float) (cachedSpeed * AmmoConfig.GLOBAL_BULLET_SPEED_MODIFIER.get());
         speed = Mth.clamp(speed / 20.0f, 0, Float.MAX_VALUE);
-        float gravity = Mth.clamp(data.getGravity(), 0, Float.MAX_VALUE);
+        float gravity = GunPhysics.GRAVITY_PER_TICK;
         float friction = Mth.clamp(data.getFriction(), 0, Float.MAX_VALUE);
         var profile = tacz.aos.config.ServerConfig.gunOverrides().get(gun.getGunId(stack).toString());
         if (profile != null) {
             speed = profile.speedOr(speed);
-            gravity = profile.gravityOr(gravity);
             friction = profile.frictionOr(friction);
+        }
+        if (player.level() instanceof net.minecraft.server.level.ServerLevel server) {
+            friction = tacz.aos.humidity.HumidityModel.friction(friction,
+                    tacz.aos.humidity.HumidityField.current(server).densityRatio());
         }
         float seconds = data.getLifeSecond();
         if (!Float.isFinite(speed) || !Float.isFinite(gravity) || !Float.isFinite(friction)

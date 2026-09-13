@@ -8,6 +8,9 @@ import java.util.List;
 
 public final class ServerConfig {
     public static final ModConfigSpec SPEC;
+    private static final HumidityConfig HUMIDITY;
+    private static volatile tacz.aos.humidity.HumiditySettings humidity = tacz.aos.humidity.HumiditySettings.DISABLED;
+    public static tacz.aos.humidity.HumiditySettings humidity() { return humidity; }
     public record Occlusion(boolean enabled,int radius,int cellsPerPlayer,int cellsPerTick,int boxesPerPlayer,int planeTestsPerFrame) {}
     public static final Occlusion DEFAULT_OCCLUSION=new Occlusion(true,24,8192,32768,256,500000);
     private static volatile Occlusion occlusion=DEFAULT_OCCLUSION;
@@ -93,6 +96,7 @@ public final class ServerConfig {
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
+        HUMIDITY = new HumidityConfig(builder);
         builder.comment("Remote entity occlusion by nearby solid shapes/leaves; vegetation and glass are excluded, complex shapes use conservative cover.",
                 "Refresh follows scopeRendering.intervalTicks. Budget exhaustion leaves unchecked geometry visible.").push("occlusion");
         OCCLUSION_ENABLED=builder.define("enabled",true);
@@ -141,10 +145,12 @@ public final class ServerConfig {
                         "Restart the world/server after editing. Native TACZ spawn packets synchronize actual bullet physics.")
                 .push("gunOverrides");
         GUN_OVERRIDES_ENABLED = builder.define("enabled", true);
-        GUN_OVERRIDES = builder.comment("gun_id|speed=meters/second|gravity=meters/second^2|friction=fraction lost per tick.",
-                        "Any TACZ gun-pack namespace is accepted. Omitted properties and unlisted guns stay native.",
+        GUN_OVERRIDES = builder.comment("gun_id|speed=meters/second|friction=fraction lost per tick at humidity.referenceRH.",
+                        "Ordinary kinetic gravity is always 9.80665 blocks/s^2, with no gravity override or toggle.",
+                        "Any TACZ gun-pack namespace is accepted. Omitted speed/friction keep their native base values.",
+                        "Disabling this list does not disable fixed gravity or separately configured wind/humidity.",
                         "Speed is final muzzle speed, overriding TACZ's global speed multiplier and attachment speed changes.",
-                        "Limits: speed (0,5120], gravity [0,400], friction [0,1); at most 1024 unique gun IDs.",
+                        "Limits: speed (0,5120], friction [0,1); at most 1024 unique gun IDs.",
                         "Empty entries disables all overrides. Invalid entries reject the entire override list.")
                 .defineListAllowEmpty("entries", GunPhysicsOverride.DEFAULTS, () -> "", value -> value instanceof String);
         builder.pop();
@@ -266,6 +272,8 @@ public final class ServerConfig {
             current = UNAVAILABLE;
             distantGunshots = SILENT_GUNSHOTS;
             wind = tacz.aos.wind.WindSettings.DISABLED;
+            humidity = tacz.aos.humidity.HumiditySettings.DISABLED;
+            tacz.aos.humidity.HumidityField.clear();
             gunOverrides = java.util.Map.of();
             targeting = DEFAULT_TARGETING;
             occlusion = DEFAULT_OCCLUSION;
@@ -274,6 +282,12 @@ public final class ServerConfig {
 
     private static void reload(ModConfigEvent event) {
         if (event.getConfig().getSpec() != SPEC) return;
+        try {
+            humidity = HUMIDITY.read();
+        } catch (IllegalArgumentException exception) {
+            humidity = tacz.aos.humidity.HumiditySettings.DISABLED;
+            TaczArtOfSniping.LOGGER.error("Invalid humidity config; humidity disabled: {}", exception.getMessage());
+        }
         occlusion=new Occlusion(OCCLUSION_ENABLED.get(),OCCLUSION_RADIUS.get(),OCCLUSION_CELLS.get(),OCCLUSION_GLOBAL.get(),OCCLUSION_BOXES.get(),OCCLUSION_PLANES.get());
         distantGunshots = new DistantGunshots(DISTANT_SOUND.get(), SOUND_SPEED.get(), SOUND_MIN.get(), SOUND_MAX.get(), SOUND_VOLUME.get());
         targeting = new Targeting(TARGET_SPEED.get(),TARGET_INTERVAL.get(),TARGET_CHECKS.get(),TARGET_CONCURRENT.get(),TARGET_QUEUE.get(),TARGET_INDEX.get(),TARGET_NEW_REGION_INTERVAL.get());

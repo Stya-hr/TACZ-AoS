@@ -8,15 +8,17 @@ import net.minecraft.world.phys.Vec3;
 import tacz.aos.TaczArtOfSniping;
 
 /** A measurement and its sampled sight line, never a client instruction to load terrain. */
-public record RangePayload(ResourceLocation dimension, Vec3 eye, Vec3 direction, float distance, boolean windEnabled, float windX, float windZ) implements CustomPacketPayload {
+public record RangePayload(ResourceLocation dimension, Vec3 eye, Vec3 direction, float distance,
+                           boolean windEnabled, float windX, float windZ, boolean humidityEnabled, float humidity) implements CustomPacketPayload {
     public RangePayload(ResourceLocation dimension, Vec3 eye, Vec3 direction, float distance) {
-        this(dimension, eye, direction, distance, false, 0, 0);
+        this(dimension, eye, direction, distance, false, 0, 0, false, 0);
     }
     public static final Type<RangePayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(TaczArtOfSniping.MOD_ID, "range"));
     public static final StreamCodec<RegistryFriendlyByteBuf, RangePayload> STREAM_CODEC = new StreamCodec<>() {
         public RangePayload decode(RegistryFriendlyByteBuf buf) {
             return new RangePayload(buf.readResourceLocation(), new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble()),
-                    new Vec3(buf.readFloat(), buf.readFloat(), buf.readFloat()), buf.readFloat(), buf.readBoolean(), buf.readFloat(), buf.readFloat());
+                    new Vec3(buf.readFloat(), buf.readFloat(), buf.readFloat()), buf.readFloat(), buf.readBoolean(), buf.readFloat(), buf.readFloat(),
+                    buf.readBoolean(), buf.readFloat());
         }
         public void encode(RegistryFriendlyByteBuf buf, RangePayload value) {
             buf.writeResourceLocation(value.dimension());
@@ -24,13 +26,15 @@ public record RangePayload(ResourceLocation dimension, Vec3 eye, Vec3 direction,
             buf.writeFloat((float) value.direction.x); buf.writeFloat((float) value.direction.y); buf.writeFloat((float) value.direction.z);
             buf.writeFloat(value.distance);
             buf.writeBoolean(value.windEnabled); buf.writeFloat(value.windX); buf.writeFloat(value.windZ);
+            buf.writeBoolean(value.humidityEnabled); buf.writeFloat(value.humidity);
         }
     };
     public RangePayload {
         if (!Double.isFinite(eye.x + eye.y + eye.z) || !Double.isFinite(direction.lengthSqr())
                 || Math.abs(direction.lengthSqr() - 1) > .001 || !Float.isFinite(distance)
                 || distance < -1 || distance > 16384 || !Float.isFinite(windX) || !Float.isFinite(windZ)
-                || Math.hypot(windX, windZ) > 30.0001) throw new IllegalArgumentException("Invalid range sample");
+                || Math.hypot(windX, windZ) > 30.0001 || !Float.isFinite(humidity) || humidity < 0 || humidity > 100)
+            throw new IllegalArgumentException("Invalid range sample");
     }
     public Type<? extends CustomPacketPayload> type() { return TYPE; }
 }

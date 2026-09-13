@@ -4,26 +4,24 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Absolute muzzle speed (m/s), acceleration (m/s²), and fractional air speed loss per tick. */
-public record GunPhysicsOverride(Float speed, Float gravity, Float friction) {
+/** Absolute muzzle speed (m/s) and fractional air speed loss per tick at reference humidity. */
+public record GunPhysicsOverride(Float speed, Float friction) {
     public static final List<String> DEFAULTS = List.of(
-            "tacz:ai_awp|speed=905|gravity=9.80665|friction=0.023833333",
-            "tacz:m95|speed=858|gravity=9.80665|friction=0.014333333",
-            "tacz:m107|speed=858|gravity=9.80665|friction=0.014333333",
-            "tacz:m700|speed=822.96|gravity=9.80665|friction=0.030666667",
-            "tacz:kar98|speed=780|gravity=9.80665|friction=0.0275");
+            "tacz:ai_awp|speed=905|friction=0.023833333",
+            "tacz:m95|speed=858|friction=0.014333333",
+            "tacz:m107|speed=858|friction=0.014333333",
+            "tacz:m700|speed=822.96|friction=0.030666667",
+            "tacz:kar98|speed=780|friction=0.0275");
 
     public GunPhysicsOverride {
-        if (speed == null && gravity == null && friction == null)
+        if (speed == null && friction == null)
             throw new IllegalArgumentException("At least one physics property is required");
         check(speed, 5120, false, "speed");
-        check(gravity, 400, true, "gravity");
         check(friction, 1, true, "friction");
         if (friction != null && friction >= 1) throw new IllegalArgumentException("friction must be < 1");
     }
 
     public float speedOr(float nativeValue) { return speed == null ? nativeValue : speed / 20f; }
-    public float gravityOr(float nativeValue) { return gravity == null ? nativeValue : gravity / 400f; }
     public float frictionOr(float nativeValue) { return friction == null ? nativeValue : friction; }
 
     public static Map<String, GunPhysicsOverride> parse(List<? extends String> entries) {
@@ -39,12 +37,12 @@ public record GunPhysicsOverride(Float speed, Float gravity, Float friction) {
                 String[] pair = parts[i].split("=", -1);
                 if (pair.length != 2) throw new IllegalArgumentException("Expected property=value: " + entry);
                 String name = pair[0].trim();
-                if (!List.of("speed", "gravity", "friction").contains(name))
+                if (!List.of("speed", "friction").contains(name))
                     throw new IllegalArgumentException("Unknown gun physics property: " + name);
                 if (fields.putIfAbsent(name, Float.parseFloat(pair[1].trim())) != null)
                     throw new IllegalArgumentException("Duplicate property: " + entry);
             }
-            var profile = new GunPhysicsOverride(fields.get("speed"), fields.get("gravity"), fields.get("friction"));
+            var profile = new GunPhysicsOverride(fields.get("speed"), fields.get("friction"));
             if (result.putIfAbsent(id, profile) != null) throw new IllegalArgumentException("Duplicate gun override: " + id);
         }
         return Map.copyOf(result);

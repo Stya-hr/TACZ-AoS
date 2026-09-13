@@ -342,8 +342,10 @@ public final class SnipingPhysicsGameTests {
                 double speed = changed ? speeds[i] : nativeSpeed;
                 helper.assertTrue(Math.abs(bullet.getDeltaMovement().subtract(player.getKnownMovement()).length() - speed) < 1e-4,
                         "Wrong launch speed: " + ids[i] + " state=" + state);
-                helper.assertTrue(Math.abs(fields.tacz_aos$getGravity() - (changed ? 9.80665f / 400f : originalGravity)) < 1e-7
-                                && Math.abs(fields.tacz_aos$getFriction() - (changed ? drags[i] : originalDrag)) < 1e-7,
+                float expectedDrag = tacz.aos.humidity.HumidityModel.friction(changed ? drags[i] : originalDrag,
+                        tacz.aos.humidity.HumidityField.current(helper.getLevel()).densityRatio());
+                helper.assertTrue(Math.abs(fields.tacz_aos$getGravity() - 9.80665f / 400f) < 1e-7
+                                && Math.abs(fields.tacz_aos$getFriction() - expectedDrag) < 1e-7,
                         "Wrong gravity/drag: " + ids[i] + " state=" + state);
                 helper.assertTrue(preview.velocity().distanceTo(bullet.getDeltaMovement()) < 1e-4
                                 && preview.gravity() == fields.tacz_aos$getGravity() && preview.friction() == fields.tacz_aos$getFriction(),

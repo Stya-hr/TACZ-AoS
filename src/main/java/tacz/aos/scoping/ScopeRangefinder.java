@@ -38,8 +38,9 @@ public final class ScopeRangefinder {
         }
         nanos += System.nanoTime() - started;
         var wind = tacz.aos.wind.WindField.current(player.serverLevel());
+        var humidity = tacz.aos.humidity.HumidityField.current(player.serverLevel());
         PacketDistributor.sendToPlayer(player, new RangePayload(player.serverLevel().dimension().location(), eye, direction, distance,
-                ServerConfig.wind().enabled(), (float) wind.x(), (float) wind.z()));
+                ServerConfig.wind().enabled(), (float) wind.x(), (float) wind.z(), humidity.enabled(), (float) humidity.percent()));
     }
 
     /** Zero gravity/drag here denotes a geometric straight ray, not guessed firearm parameters. */

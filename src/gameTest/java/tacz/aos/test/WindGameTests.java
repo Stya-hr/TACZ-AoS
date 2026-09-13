@@ -74,16 +74,22 @@ public final class WindGameTests {
     @GameTest(template = "ballistics", batch = "wind")
     public static void windReadoutNetworkRoundTripAndBounds(GameTestHelper helper) {
         var sample = new RangePayload(helper.getLevel().dimension().location(), Vec3.ZERO, new Vec3(1,0,0), 100,
-                true, 3, -4);
+                true, 3, -4, true, 65.3f);
         var buffer = new RegistryFriendlyByteBuf(io.netty.buffer.Unpooled.buffer(), helper.getLevel().registryAccess());
         try {
             RangePayload.STREAM_CODEC.encode(buffer, sample);
             helper.assertTrue(sample.equals(RangePayload.STREAM_CODEC.decode(buffer)), "Wind readout lost data in transit");
         } finally { buffer.release(); }
         boolean rejected = false;
-        try { new RangePayload(sample.dimension(), Vec3.ZERO, sample.direction(), 1, true, Float.NaN, 0); }
+        try { new RangePayload(sample.dimension(), Vec3.ZERO, sample.direction(), 1, true, Float.NaN, 0, false, 0); }
         catch (IllegalArgumentException expected) { rejected = true; }
         helper.assertTrue(rejected, "Non-finite wind accepted by network payload");
+        for (float humidity : new float[] {Float.NaN, -1, 101}) {
+            rejected = false;
+            try { new RangePayload(sample.dimension(), Vec3.ZERO, sample.direction(), 1, false, 0, 0, true, humidity); }
+            catch (IllegalArgumentException expected) { rejected = true; }
+            helper.assertTrue(rejected, "Invalid humidity accepted by network payload");
+        }
         helper.succeed();
     }
 }

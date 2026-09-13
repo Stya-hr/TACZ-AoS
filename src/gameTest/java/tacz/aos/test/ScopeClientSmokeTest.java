@@ -64,6 +64,45 @@ public final class ScopeClientSmokeTest {
     private static boolean zoomRangeObserved;
     private static com.mojang.blaze3d.platform.NativeImage beforeTrail;
     private static int irisQuery, proneWarmup;
+    private static int environmentStage = -1, environmentFrames, windBaseline, humidityBaseline, rangeBaseline;
+    private static tacz.aos.wind.WindSettings savedWind;
+    private static tacz.aos.humidity.HumiditySettings savedHumidity;
+
+    private static void environmentHudCheck() throws ReflectiveOperationException, java.io.IOException {
+        var mc = Minecraft.getInstance();
+        com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(true);
+        IGunOperator.fromLivingEntity(mc.player).aim(true);
+        var wf = ServerConfig.class.getDeclaredField("wind"); wf.setAccessible(true);
+        var hf = ServerConfig.class.getDeclaredField("humidity"); hf.setAccessible(true);
+        boolean wind = (environmentStage & 1) == 0, humidity = (environmentStage & 2) == 0;
+        if (environmentFrames == 0) {
+            if (environmentStage == 0) { savedWind = ServerConfig.wind(); savedHumidity = ServerConfig.humidity(); }
+            wf.set(null, wind ? tacz.aos.wind.WindSettings.DEFAULT : tacz.aos.wind.WindSettings.DISABLED);
+            hf.set(null, humidity ? HumidityGameTests.constant(65) : tacz.aos.humidity.HumiditySettings.DISABLED);
+        }
+        environmentFrames++;
+        if (environmentFrames == 15) {
+            windBaseline = tacz.aos.client.ScopeRangeHud.windDraws();
+            humidityBaseline = tacz.aos.client.ScopeRangeHud.humidityDraws();
+            rangeBaseline = tacz.aos.client.ScopeRangeHud.draws();
+        }
+        if (environmentFrames < 35) return;
+        boolean windDrawn = tacz.aos.client.ScopeRangeHud.windDraws() > windBaseline;
+        boolean humidityDrawn = tacz.aos.client.ScopeRangeHud.humidityDraws() > humidityBaseline;
+        if (windDrawn != wind || humidityDrawn != humidity || tacz.aos.client.ScopeRangeHud.draws() <= rangeBaseline
+                || humidity && Math.abs(tacz.aos.client.ScopeRangeHud.displayedHumidity() - 65) > .001
+                || !humidity && Double.isFinite(tacz.aos.client.ScopeRangeHud.displayedHumidity())
+                || !wind && Double.isFinite(tacz.aos.client.ScopeRangeHud.displayedCrosswind()))
+            throw new AssertionError("Wrong environmental HUD rows: stage=" + environmentStage + " wind=" + windDrawn + " humidity=" + humidityDrawn);
+        Screenshot.grab(mc.gameDirectory, "environment-hud-" + environmentStage + ".png", mc.getMainRenderTarget(), ignored -> {});
+        TaczArtOfSniping.LOGGER.info("ENVIRONMENT_HUD PASSED stage {} wind={} humidity={}", environmentStage, wind, humidity);
+        environmentFrames = 0;
+        if (++environmentStage == 4) {
+            wf.set(null, savedWind); hf.set(null, savedHumidity);
+            java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("scope-result.txt"), "PASS");
+            mc.stop();
+        }
+    }
 
     /** Exercise the installed client mixin with TACZ's real AWP animation prototypes and local crawl input. */
     private static void verifyProneIdle() throws ReflectiveOperationException {
@@ -262,6 +301,11 @@ public final class ScopeClientSmokeTest {
                     registry -> registry.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), mc.screen);
         }
         if (mc.player == null || mc.level == null || cowId < 0) return;
+        if (environmentStage >= 0) {
+            try { environmentHudCheck(); }
+            catch (Throwable failure) { fail("Environment HUD check failed: " + failure); mc.stop(); }
+            return;
+        }
         if (net.neoforged.fml.ModList.get().isLoaded("iris") && !tacz.aos.client.ShaderCompat.active()) {
             fail("Iris disabled shaders; this is not a shader compatibility pass"); mc.stop(); return;
         }
@@ -389,6 +433,7 @@ public final class ScopeClientSmokeTest {
                 itemObserved = true;
             if (drawnTicks == 0) firstRenderedX = mc.level.getEntity(cowId).getX();
             if (drawnTicks == 20) {
+                if (Boolean.getBoolean("tacz_aos.environmentHudOnly")) { environmentStage = 0; return; }
                 try { verifyProneIdle(); }
                 catch (Throwable failure) { fail("Prone idle check failed: "+failure); return; }
             }

@@ -22,7 +22,7 @@ public final class ScopeNetworking {
     public static void setClientReceiver(Consumer<ScopeTargetsPayload> handler) { receiver = handler; }
     public static void setTrailReceiver(Consumer<ShotTrailsPayload> handler) { trailReceiver = handler; }
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("12");
+        var registrar = event.registrar("13");
         registrar.playToClient(ScopeOcclusionPayload.TYPE,ScopeOcclusionPayload.STREAM_CODEC,(payload,context)->occlusionReceiver.accept(payload));
         registrar.playToClient(DistantGunshotPayload.TYPE, DistantGunshotPayload.STREAM_CODEC,
                 (payload, context) -> distantGunshotReceiver.accept(payload));
