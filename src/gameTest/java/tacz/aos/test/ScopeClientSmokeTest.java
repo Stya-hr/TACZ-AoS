@@ -292,7 +292,7 @@ public final class ScopeClientSmokeTest {
                         || tacz.aos.client.ShotTrails.hasDistantTrails()) { fail("Observer drew an unloaded/full-distance trail"); return; }
             }
             if (observerFrames == 30) Screenshot.grab(mc.gameDirectory, "observer-trail.png", mc.getMainRenderTarget(), ignored -> {});
-            if (observerFrames >= 45 && observerFrames <= 55 && tacz.aos.client.ShotTrails.drawnPieces() > 0)
+            if (observerFrames >= 23 && observerFrames <= 27 && tacz.aos.client.ShotTrails.drawnPieces() > 0)
                 observerWakeAfterImpact = true;
             if (observerFrames >= 95 && tacz.aos.client.ShotTrails.hasTrails()) {
                 fail("Observer smoke outlived its bounded fade"); return;
@@ -449,7 +449,7 @@ public final class ScopeClientSmokeTest {
                 net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
                         new tacz.aos.network.NearMissPayload(level.dimension().location(),eye.x+1,eye.y,eye.z+1,.8f));
             }
-            if (observerServerFrames == 35) {
+            if (observerServerFrames == 20) {
                 var eye = player.getEyePosition();
                 var stop = new tacz.aos.trails.TrailSegment(900001,2,eye.x+12,eye.y,eye.z+10,
                         eye.x+12,eye.y,eye.z+10,0,true);

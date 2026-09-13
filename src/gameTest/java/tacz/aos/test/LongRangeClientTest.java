@@ -156,7 +156,7 @@ public final class LongRangeClientTest {
             return;
         }
         if(shotStarted && hitConfirmed) {
-            // The bullet stops immediately, but confirmed smoke now fades naturally for up to 50 ticks.
+            // The bullet stops immediately, but confirmed smoke fades for its configured lifetime.
             if (++impactFrames < 65) return;
             if (tacz.aos.client.ShotTrails.hasTrails() || tacz.aos.client.ShotTrails.drawnPieces() != 0) {
                 finish(false,"Trail continued rendering after confirmed remote impact"); return;
