@@ -24,5 +24,8 @@
   "tacz_aos.reason.no_nearby_rangefinder": "No complete rangefinder within 3 blocks",
   "subtitle.tacz_aos.bullet_flyby": "Bullet whizzes past",
   "subtitle.tacz_aos.distant_gunshot": "Distant gunshot",
-  "death.attack.tacz_aos.sniped": "%1$s was sniped by %2$s from %3$s blocks away."
+  "death.attack.tacz_aos.sniped": "%1$s was sniped by %2$s from %3$s blocks away.",
+  "item.tacz_aos.tactical_collection_belt": "Tactical Collection Belt",
+  "item.tacz_aos.tactical_collection_belt.equipment": "Equip in the legs slot or a Curios belt slot",
+  "item.tacz_aos.tactical_collection_belt.effect": "TACZ gun kills bring drops and experience to your feet"
 }

@@ -13,7 +13,8 @@
     "TrackedEntityMixin",
     "ScopedMobActivityMixin",
     "DistantGunshotMixin",
-    "ScopedDeathMessageMixin"
+    "ScopedDeathMessageMixin",
+    "BeltExperienceMixin"
   ],
   "client": [
     "ProneIdleAnimationMixin",

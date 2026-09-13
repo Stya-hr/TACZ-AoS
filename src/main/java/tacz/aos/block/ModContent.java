@@ -24,9 +24,14 @@ public final class ModContent {
             BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_BLACK).sound(RANGEFINDER_SOUND).strength(2, 3)
                     .noOcclusion().pushReaction(PushReaction.DESTROY)));
     public static final DeferredItem<BlockItem> RANGEFINDER_ITEM = ITEMS.registerSimpleBlockItem(RANGEFINDER);
+    public static final DeferredItem<tacz.aos.item.TacticalCollectionBeltItem> TACTICAL_COLLECTION_BELT = ITEMS.register(
+            "tactical_collection_belt", () -> new tacz.aos.item.TacticalCollectionBeltItem(new net.minecraft.world.item.Item.Properties()));
     private ModContent() {}
     public static void register(IEventBus bus) { BLOCKS.register(bus); ITEMS.register(bus); bus.addListener(ModContent::creative); }
     private static void creative(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey().equals(ModCreativeTabs.OTHER_TAB.getKey())) event.accept(RANGEFINDER_ITEM);
+        if (event.getTabKey().equals(ModCreativeTabs.OTHER_TAB.getKey())) {
+            event.accept(RANGEFINDER_ITEM);
+            event.accept(TACTICAL_COLLECTION_BELT);
+        }
     }
 }

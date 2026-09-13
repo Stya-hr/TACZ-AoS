@@ -1,5 +1,7 @@
 # 本地可选依赖
 
+战术收集腰带使用 `curios-neoforge-9.5.1+1.21.1.jar` 作为编译期 API，运行时 Curios 可选，不打包进发布 JAR。可从 [Curios 官方页面](https://modrinth.com/mod/curios) 获取对应 NeoForge 版本。独立兼容测试使用 `'-Pcurios_test_jar=curios-neoforge-9.5.1+1.21.1.jar'`，无需启用 ParCool。本模组只注册 `curios:belt` 物品标签和腰带物品能力，不提供槽位。
+
 本扩展使用以下用户提供的客户端依赖，均不打包进发布 JAR：
 
 - `neo-voxy-0.4.3-beta.1-mc1.21.1-neoforge-integrations.jar`，mod ID `voxy`。

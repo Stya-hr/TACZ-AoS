@@ -24,5 +24,8 @@
   "tacz_aos.reason.no_nearby_rangefinder": "3 格以内没有完整的测距仪",
   "subtitle.tacz_aos.bullet_flyby": "子弹掠过",
   "subtitle.tacz_aos.distant_gunshot": "远处枪声",
-  "death.attack.tacz_aos.sniped": "%1$s被%2$s从%3$s格外一枪打爆了。"
+  "death.attack.tacz_aos.sniped": "%1$s被%2$s从%3$s格外一枪打爆了。",
+  "item.tacz_aos.tactical_collection_belt": "战术收集腰带",
+  "item.tacz_aos.tactical_collection_belt.equipment": "装备于裤子槽或 Curios 腰带槽",
+  "item.tacz_aos.tactical_collection_belt.effect": "TACZ 枪械击杀的掉落物与经验会转移到脚下"
 }

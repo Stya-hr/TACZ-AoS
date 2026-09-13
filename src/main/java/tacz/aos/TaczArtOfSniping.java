@@ -43,6 +43,7 @@ public final class TaczArtOfSniping {
 
     private void commonSetup(FMLCommonSetupEvent event) {
         event.enqueueWork(() -> {
+            if (net.neoforged.fml.ModList.get().isLoaded("curios")) tacz.aos.compat.curios.CuriosBeltCompat.register();
             var directory = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get();
             var defaults = net.neoforged.fml.loading.FMLPaths.GAMEDIR.get()
                     .resolve(net.neoforged.fml.loading.FMLConfig.defaultConfigPath());

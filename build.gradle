@@ -120,6 +120,13 @@ dependencies {
     taczBundledApi "maven.modrinth:tacz-1.21.1:${tacz_version}"
     compileOnly files("libs/${voxy_jar}")
     compileOnly files('libs/iris-neoforge-1.8.14-beta.1+mc1.21.1.jar')
+    compileOnly files('libs/curios-neoforge-9.5.1+1.21.1.jar')
+    gameTestCompileOnly files('libs/curios-neoforge-9.5.1+1.21.1.jar')
+    if (providers.gradleProperty('curios_test_jar').isPresent()) {
+        def curiosJar = file("libs/${providers.gradleProperty('curios_test_jar').get()}")
+        if (!curiosJar.isFile()) throw new GradleException("Missing Curios test JAR: ${curiosJar}")
+        localRuntime files(curiosJar)
+    }
     // Optional integration uses cached reflection; selecting a local JAR is only for compatibility tests.
     if (providers.gradleProperty('parcool_test_jar').isPresent()) {
         def parcoolJar = file("libs/${providers.gradleProperty('parcool_test_jar').get()}")
