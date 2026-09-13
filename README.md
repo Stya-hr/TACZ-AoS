@@ -86,6 +86,8 @@ Replace `your_pack:*` with real installed IDs. A scope may optionally specify it
 
 Use builds for Minecraft 1.21.1 NeoForge and install each optional mod's own dependencies. Other TACZ gun packs using standard gun/projectile APIs can be added through configuration; custom projectiles or renderers may require integration. Existing chunk-loader and player chunk tickets are respected.
 
+**Not supported together: [Tacz Bullet Improvement](https://modrinth.com/mod/tacz-tacz-bullet-improvement).** Its published description replaces TACZ's traveling bullets with instant raycast hits, which conflicts with AoS's flight-time simulation, bullet drop, wind drift and impact prediction. Its listed releases also target Minecraft 1.20–1.20.1 Forge, rather than AoS's 1.21.1 NeoForge. Do not combine them; a future port would still need dedicated integration.
+
 ## License
 
 [MIT](LICENSE) — Copyright © 2026 **Sange**. Third-party assets retain their own rights; see [asset notices](src/main/resources/THIRD_PARTY_NOTICES.md) and the [original template license](TEMPLATE_LICENSE.txt).

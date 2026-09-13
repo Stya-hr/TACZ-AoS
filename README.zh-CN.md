@@ -86,6 +86,8 @@ maxDistance = 1024
 
 请选择适用于 Minecraft 1.21.1 NeoForge 的版本，并安装各可选模组自身的前置。使用标准枪械与弹丸接口的其他 TACZ 枪包可通过配置扩展；自定义弹丸或渲染器可能需要额外适配。本模组会保留其他玩家和区块加载器已有的加载请求。
 
+**不支持同时使用：[Tacz Bullet Improvement](https://modrinth.com/mod/tacz-tacz-bullet-improvement)。** 其公开说明将 TACZ 的飞行子弹替换为瞬时射线命中，与 AoS 的飞行时间、下坠、风偏和着弹预测机制冲突。其列出的发布版本也面向 Minecraft 1.20–1.20.1 Forge，而 AoS 使用 1.21.1 NeoForge。请勿搭配使用；即使未来移植到相同版本，仍需专门适配。
+
 ## 许可证
 
 [MIT](LICENSE) — Copyright © 2026 **Sange**。第三方素材保留各自权利，参见[素材声明](src/main/resources/THIRD_PARTY_NOTICES.md)及[原始模板许可证](TEMPLATE_LICENSE.txt)。
