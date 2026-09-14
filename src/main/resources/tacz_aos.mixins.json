@@ -14,7 +14,8 @@
     "ScopedMobActivityMixin",
     "DistantGunshotMixin",
     "ScopedDeathMessageMixin",
-    "BeltExperienceMixin"
+    "BeltExperienceMixin",
+    "BeltSpecialLootMixin"
   ],
   "client": [
     "ProneIdleAnimationMixin",

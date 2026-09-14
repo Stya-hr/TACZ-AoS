@@ -50,6 +50,7 @@ repo/
 !/src/gameTest/java/tacz/aos/test/OcclusionGameTests.java
 !/src/gameTest/java/tacz/aos/test/HumidityGameTests.java
 !/src/gameTest/java/tacz/aos/test/BeltLootGameTests.java
+!/src/gameTest/java/tacz/aos/test/SpecialLootGameTests.java
 /src/test/**
 !/src/test/java/
 !/src/test/java/tacz/
@@ -57,3 +58,6 @@ repo/
 !/src/test/java/tacz/aos/ShadowClipperTest.java
 !/src/test/java/tacz/aos/HumidityModelTest.java
 /artifacts/
+/Video/
+/tts_output_20260913_231318/
+/tools/

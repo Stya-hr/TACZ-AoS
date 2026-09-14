@@ -52,7 +52,7 @@ public final class RangefinderBlockGameTests {
             helper.assertTrue(lower.is(ModContent.RANGEFINDER.get()) && upper.is(ModContent.RANGEFINDER.get())
                     && lower.getValue(RangefinderBlock.HALF) == DoubleBlockHalf.LOWER
                     && upper.getValue(RangefinderBlock.HALF) == DoubleBlockHalf.UPPER
-                    && upper.getValue(RangefinderBlock.FACING) == player.getDirection().getOpposite(), "Incorrect halves/facing");
+                    && upper.getValue(RangefinderBlock.FACING) == player.getDirection(), "Incorrect halves/facing");
             if (mode == 0) player.gameMode.destroyBlock(pos);
             if (mode == 1) player.gameMode.destroyBlock(pos.above());
             if (mode == 2) level.destroyBlock(pos.below(), false);

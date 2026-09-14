@@ -179,7 +179,7 @@ public final class BeltLootGameTests {
         }
     }
 
-    private static final class Fixture implements AutoCloseable {
+    static final class Fixture implements AutoCloseable {
         final GameTestHelper h;
         final FakePlayer player;
         final Zombie victim;

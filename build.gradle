@@ -36,6 +36,11 @@ sourceSets {
     }
 }
 configurations.gameTestImplementation.extendsFrom configurations.implementation
+tasks.named('processGameTestResources', ProcessResources).configure {
+    from('src/gameTest/resources/data/tacz_aos/structure/ballistics.nbt') {
+        into 'data/tacz_aos_lootcompat/structure'
+    }
+}
 
 neoForge {
     version = project.neo_version
@@ -93,7 +98,7 @@ neoForge {
                     file('src/main/resources/').getAbsolutePath()
         }
         configureEach {
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            systemProperty 'neoforge.enabledGameTestNamespaces', providers.gradleProperty('gametest_namespaces').orElse(project.mod_id).get()
             systemProperty 'forge.logging.markers', 'REGISTRIES'
             logLevel = org.slf4j.event.Level.DEBUG
         }
@@ -121,6 +126,18 @@ dependencies {
     compileOnly files("libs/${voxy_jar}")
     compileOnly files('libs/iris-neoforge-1.8.14-beta.1+mc1.21.1.jar')
     compileOnly files('libs/curios-neoforge-9.5.1+1.21.1.jar')
+    // APIs for upcoming loot integrations; no runtime or transitive mod dependencies.
+    compileOnly("maven.modrinth:lightmans-currency:${lightmans_currency_version}") { transitive = false }
+    compileOnly("maven.modrinth:collectors-album:${collectors_album_version}") { transitive = false }
+    compileOnly("maven.modrinth:champions-unofficial:${champions_unofficial_version}") { transitive = false }
+    // Explicitly opt in only when testing the real loot producers and their required libraries.
+    if (providers.gradleProperty('enable_loot_compat_runtime').orElse('false').get().toBoolean()) {
+        localRuntime("maven.modrinth:lightmans-currency:${lightmans_currency_version}") { transitive = false }
+        localRuntime("maven.modrinth:collectors-album:${collectors_album_version}") { transitive = false }
+        localRuntime("maven.modrinth:champions-unofficial:${champions_unofficial_version}") { transitive = false }
+        localRuntime('maven.modrinth:configuration:6Mztfq1u') { transitive = false }
+        localRuntime('maven.modrinth:architectury-api:1IiqEQGl') { transitive = false }
+    }
     gameTestCompileOnly files('libs/curios-neoforge-9.5.1+1.21.1.jar')
     if (providers.gradleProperty('curios_test_jar').isPresent()) {
         def curiosJar = file("libs/${providers.gradleProperty('curios_test_jar').get()}")
