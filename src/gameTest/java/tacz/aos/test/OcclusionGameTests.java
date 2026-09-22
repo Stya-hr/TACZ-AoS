@@ -17,6 +17,60 @@ import tacz.aos.scoping.ScopeOcclusion;
 
 @GameTestHolder("tacz_aos") @PrefixGameTestTemplate(false)
 public final class OcclusionGameTests {
+    @GameTest(setupTicks=20, template="ballistics",batch="occlusion_fairness")
+    public static void movingObservationCannotStarveNewTarget(GameTestHelper h) throws Exception {
+        var level=h.getLevel();var base=h.absoluteVec(new Vec3(14,0,8.5));
+        var position=new Vec3(base.x,250,base.z);
+        for(int x=((int)position.x>>4)-3;x<=((int)position.x>>4)+1;x++)
+            for(int z=((int)position.z>>4)-1;z<=((int)position.z>>4)+3;z++)level.getChunk(x,z);
+        var packets=new ArrayList<ScopeOcclusionPayload>();
+        var player=new net.minecraftforge.common.util.FakePlayer(level,new com.mojang.authlib.GameProfile(UUID.randomUUID(),"fair-cover"));
+        player.connection=new net.minecraft.server.network.ServerGamePacketListenerImpl(level.getServer(),
+                new net.minecraft.network.Connection(net.minecraft.network.protocol.PacketFlow.SERVERBOUND) {
+                    @Override public void send(net.minecraft.network.protocol.Packet<?> packet) {
+                        if(packet instanceof net.minecraft.network.protocol.game.ClientboundCustomPayloadPacket p
+                                && TestPackets.decode(p) instanceof ScopeOcclusionPayload cover)packets.add(cover);
+                    }
+                },player);
+        player.setPos(position.add(-880,0,0));
+        var moving=net.minecraft.world.entity.EntityType.COW.create(level);moving.setPos(position);
+        var newcomer=net.minecraft.world.entity.EntityType.COW.create(level);newcomer.setPos(position.add(0,0,32));
+        int cost=0;
+        for(var target:List.of(moving,newcomer)) {
+            int[] cells={8192};
+            var geometry=ScopeOcclusion.collectGeometry(level,player.getEyePosition(),target.getBoundingBox().inflate(2,1,2),24,cells,32,64);
+            h.assertTrue(geometry.complete(),"Fairness fixture has unknown cover");cost=Math.max(cost,8192-cells[0]);
+        }
+        var field=tacz.aos.config.ServerConfig.class.getDeclaredField("occlusion");field.setAccessible(true);var old=field.get(null);
+        try {
+            field.set(null,new tacz.aos.config.ServerConfig.Occlusion(true,24,cost+8,32768,256));
+            ScopeOcclusion.clear();ScopeOcclusion.beginTick(100,Set.of(player.getUUID()));ScopeOcclusion.update(player,List.of(moving));
+            h.assertTrue(packets.get(packets.size()-1).targets().get(0).complete(),"Initial observation did not finish");
+            // Its old coverage is now invalid. Absolute urgency used to consume every refresh before new targets.
+            moving.setPos(position.add(3,0,0));
+            ScopeOcclusion.beginTick(104,Set.of(player.getUUID()));ScopeOcclusion.update(player,List.of(moving,newcomer));
+            h.assertTrue(packets.get(packets.size()-1).targets().stream().anyMatch(t->t.id()==newcomer.getId() && t.complete()),
+                    "Urgent moving observation starved a newly aimed target");
+        } finally {field.set(null,old);ScopeOcclusion.clear();}
+        h.succeed();
+    }
+    @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
+    public static void diagonalMovementEnvelopeFitsDefaultScanBudget(GameTestHelper h) {
+        var base=h.absoluteVec(new Vec3(12,0,12));
+        var center=new Vec3(base.x,h.getLevel().getMaxBuildHeight()-48,base.z);
+        var target=new AABB(center.add(-2.45,-1.7,-2.45),center.add(2.45,1.7,2.45));
+        for(var direction:List.of(new Vec3(1,0,0),new Vec3(1,0,1),new Vec3(1,1,1),new Vec3(-1,1,-1))) {
+            var eye=center.add(direction.normalize().scale(880));
+            var area=target.inflate(35);
+            for(int x=(int)Math.floor(area.minX/16);x<=Math.floor(area.maxX/16);x++)
+                for(int z=(int)Math.floor(area.minZ/16);z<=Math.floor(area.maxZ/16);z++)h.getLevel().getChunk(x,z);
+            int[] budget={8192};
+            var result=ScopeOcclusion.collectGeometry(h.getLevel(),eye,target,24,budget,32,64);
+            h.assertTrue(result.complete(),"A clear diagonal walking volume permanently exhausts the default budget: "+direction+", remaining="+budget[0]+", boxes="+result.boxes().size()+", plants="+result.plants().size());
+            h.assertTrue(budget[0]>0,"Diagonal scan exhausted its entire budget");
+        }
+        h.succeed();
+    }
     @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
     public static void liveCoverTracksPlacementRemovalAndTransparentBlocksWithoutChunkLoads(GameTestHelper h) {
         for(int x=2;x<=18;x++)for(int y=4;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);

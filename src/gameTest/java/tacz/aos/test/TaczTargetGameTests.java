@@ -49,11 +49,13 @@ public final class TaczTargetGameTests {
         TargetBallistics.tick(level,shot,1024,new TargetCollisionSource(level,List.of()));
         h.assertTrue(level.getBlockState(pos).getValue(TargetBlock.STAND),"Transit target was hit outside selected core");shot.discard();h.succeed();
     }
-    @GameTest(setupTicks=20, template="ballistics",timeoutTicks=30)
+    @GameTest(setupTicks=20, template="ballistics",batch="target_minecart",timeoutTicks=30)
     public static void minecartUsesNativeHitAndRecovery(GameTestHelper h) {
         var f=new LocalBallisticsGameTests.Fixture(h);var pos=h.absoluteVec(new Vec3(20,5,4.5));
-        var cart=new TargetMinecart(h.getLevel(),pos.x,pos.y,pos.z);cart.setNoGravity(true);cart.xOld=pos.x;cart.yOld=pos.y;cart.zOld=pos.z;h.getLevel().addFreshEntity(cart);
+        // Isolate native hit/recovery from parallel structure preparation; initialize compensated position.
+        var cart=new TargetMinecart(h.getLevel(),pos.x,pos.y,pos.z);cart.setNoGravity(true);cart.setOldPosAndRot();h.getLevel().addFreshEntity(cart);
         var shot=f.bullet(new Vec3(4,6,4.5),new Vec3(24,0,0));
+        h.assertTrue(h.getLevel().getEntity(cart.getId())==cart,"Minecart fixture is not accessible in its section");
         var step=TargetBallistics.tick(h.getLevel(),shot,1024,new TargetCollisionSource(h.getLevel(),List.of(new AABB(pos,pos).inflate(4))));
         h.assertTrue(cart.getHurtTime()>0 && cart.getDamage()>0 && !cart.isRemoved(),"Native target minecart hit feedback missing: "+step+", hurt="+cart.getHurtTime()+", damage="+cart.getDamage()+", box="+cart.getBoundingBox()+", owner="+shot.getOwner());
         shot.discard();

@@ -12,6 +12,61 @@ import tacz.aos.scoping.*;
 import java.util.*;
 @GameTestHolder(TaczArtOfSniping.MOD_ID) @PrefixGameTestTemplate(false)
 public final class ScopeRetentionGameTests {
+    @GameTest(setupTicks=20, template="ballistics",batch="scope_air_retention",timeoutTicks=300)
+    public static void airbornePathKeepsExistingCoreWithoutAnyImpact(GameTestHelper h) {
+        var level=h.getLevel();var old=ServerConfig.current();var activity=ScopeActivity.INSTANCE;
+        var player=FakePlayerFactory.get(level,new GameProfile(UUID.randomUUID(),"air-retention"));
+        new LocalBallisticsGameTests.Fixture(h,player);register(player,true);
+        try {
+            LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(true,old.policy(),1024,32,false,old.ballistics(),old.scopeRendering(),
+                    new ServerConfig.Activity(true,0,2,60,196,4096,4,20,600),new ServerConfig.Prediction(8,100,8192)));
+            var event=new TickEvent.ServerTickEvent(TickEvent.Phase.START,()->true,level.getServer());activity.tick(event);
+            player.setYRot(-90);player.setXRot(0);
+            Vec3 target=player.getEyePosition().add(96,0,0);
+            for(int x=player.chunkPosition().x-3;x<=(int)Math.floor(target.x/16)+3;x++)
+                for(int z=player.chunkPosition().z-3;z<=player.chunkPosition().z+3;z++)level.getChunk(x,z);
+            player.setPos(player.getX(),200,player.getZ());player.setOldPosAndRot();TestRangefinders.placeNear(player);
+            player.setYRot(-90);player.setYHeadRot(-90);player.setXRot(0);target=player.getEyePosition().add(96,0,0);
+            activity.consider(player,target);
+            h.assertTrue(activity.status().regions()==1,"Initial core was not admitted");
+            // Aim slightly above the target. There is no new reticle report and no collision in its core.
+            player.setXRot(-12);
+            for(int i=0;i<100;i++){activity.tick(event);activity.update(player,List.of());}
+            h.assertTrue("RANGE".equals(activity.predictionStatus(player.getUUID())),"Unexpected prediction: "+activity.predictionStatus(player.getUUID())+" / "+activity.status());
+            h.assertTrue(activity.status().regions()==1 && activity.status().admitted()>=1,
+                    "Traversed air core expired because prediction had no final collision");
+            IGunOperator.fromLivingEntity(player).aim(false);
+            for(int i=0;i<65;i++)activity.tick(event);
+            h.assertTrue(activity.status().regions()==0,"Unscoping failed to expire the retained core");
+        } finally {activity.releaseAll();register(player,false);LocalBallisticsGameTests.setSettings(old);}
+        h.succeed();
+    }
+
+    @GameTest(setupTicks=20, template="ballistics",batch="scope_fast_reuse",timeoutTicks=300)
+    public static void fastAimCannotRevokeAnAlreadyOwnedCore(GameTestHelper h) {
+        var level=h.getLevel();var old=ServerConfig.current();var activity=ScopeActivity.INSTANCE;
+        var player=FakePlayerFactory.get(level,new GameProfile(UUID.randomUUID(),"fast-reuse"));
+        new LocalBallisticsGameTests.Fixture(h,player);register(player,true);
+        try {
+            LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(true,old.policy(),1024,32,false,old.ballistics(),old.scopeRendering(),
+                    new ServerConfig.Activity(true,0,2,60,196,4096,4,20,600),old.prediction()));
+            var event=new TickEvent.ServerTickEvent(TickEvent.Phase.START,()->true,level.getServer());activity.tick(event);
+            player.setYRot(-90);player.setXRot(0);
+            Vec3 target=player.getEyePosition().add(96,0,0);
+            for(int x=player.chunkPosition().x-3;x<=(int)Math.floor(target.x/16)+3;x++)
+                for(int z=player.chunkPosition().z-3;z<=player.chunkPosition().z+3;z++)level.getChunk(x,z);
+            player.setYRot(-90);player.setYHeadRot(-90);player.setXRot(0);target=player.getEyePosition().add(96,0,0);
+            activity.consider(player,target);
+            h.assertTrue(activity.status().regions()==1,"Fast-aim initial admission: "+activity.status());
+            var admitted=activity.status().admitted();
+            ScopeAim.receive(player,new tacz.aos.network.ScopeAimPayload(level.dimension().location(),player.getEyePosition(),player.getViewVector(1),96));
+            h.assertTrue(ScopeAim.target(player)!=null,"Fast-aim sample rejected");
+            for(int i=0;i<100;i++){player.setYRot(i%2==0?-89:-91);player.setYHeadRot(player.getYRot());activity.tick(event);}
+            h.assertTrue(activity.status().regions()==1 && activity.status().admitted()==admitted,
+                    "Aim stability/cooldown discarded existing ownership or admitted replacement tickets: "+activity.status()+" / aim="+ScopeAim.target(player)+" / "+tacz.aos.compat.tacz.TaczBridge.evaluate(player));
+        } finally {ScopeAim.remove(player.getUUID());activity.releaseAll();register(player,false);LocalBallisticsGameTests.setSettings(old);}
+        h.succeed();
+    }
     @GameTest(setupTicks=20, template="ballistics",batch="scope_retention",timeoutTicks=300)
     public static void sharedRegionBudgetAndIndependentFlightLease(GameTestHelper h) {
         var level=h.getLevel();var old=ServerConfig.current();var activity=ScopeActivity.INSTANCE;

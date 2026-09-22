@@ -51,11 +51,13 @@ public final class ScopeOcclusion {
         int[] budget={Math.min(remaining,cfg.cellsPerPlayer())};int initial=budget[0];
         var reader=new Resident(player.serverLevel(),budget);
         var eye=player.getEyePosition();
-        // Renew moving observations before they leave their verified volume, then use fair age order.
+        // Give urgent observations one refresh of priority, never an absolute priority tier that can
+        // permanently starve newly visible entities when existing ones keep approaching their margins.
         var schedule=new ArrayList<Entity>(targets);
-        schedule.sort(Comparator.<Entity>comparingInt(e->{var c=cache.get(e.getId());
-                    return c!=null && (!c.usable(e,eye) || !c.covers(e.getBoundingBox().inflate(.75)))?0:1;})
-                .thenComparingLong(e->attempts.getOrDefault(e.getId(),Long.MIN_VALUE))
+        schedule.sort(Comparator.<Entity>comparingLong(e->{var c=cache.get(e.getId());
+                    boolean urgent=c==null || !c.usable(e,eye) || !c.covers(e.getBoundingBox().inflate(.75));
+                    return attempts.getOrDefault(e.getId(),Long.MIN_VALUE/2)
+                            -(urgent?ServerConfig.current().scopeRendering().intervalTicks():0);})
                 .thenComparingInt(Entity::getId));
         if(cfg.enabled())for(var target:schedule) {
             if(budget[0]<=0)break;
@@ -63,6 +65,13 @@ public final class ScopeOcclusion {
             var coverage=motionCoverage(target);
             var geometry=collectGeometry(reader,eye,coverage,cfg.radius(),ScopeOcclusionPayload.MAX_PER_TARGET,
                     ScopeOcclusionPayload.MAX_TEXTURED_PER_TARGET);
+            if(!geometry.complete) {
+                // Dense cover can exceed the packet cap for the optional walking margin. Retry the actual
+                // silhouette before hiding the entity; already-read cells are shared and no extra budget is granted.
+                coverage=target.getBoundingBox().inflate(.35);
+                geometry=collectGeometry(reader,eye,coverage,cfg.radius(),ScopeOcclusionPayload.MAX_PER_TARGET,
+                        ScopeOcclusionPayload.MAX_TEXTURED_PER_TARGET);
+            }
             var origin=target.blockPosition();
             if(geometry.complete) {
                 var data=new ScopeOcclusionPayload.Target(target.getId(),target.getUUID(),origin,
@@ -107,16 +116,19 @@ public final class ScopeOcclusion {
         var center=entity.getCenter();var forward=eye.subtract(center).normalize();
         var end=center.add(forward.scale(Math.min(radius,eye.distanceTo(center))));
         // Thin local corridor encloses the target silhouette and nearby cover, with a motion margin.
-        double pad=Math.min(4,Math.max(entity.getXsize(),Math.max(entity.getYsize(),entity.getZsize()))*.5+.75);
-        var area=new AABB(center,end).inflate(pad);
+        var area=entity.minmax(entity.move(end.subtract(center))).inflate(.75);
         var boxes=new ArrayList<OccluderBox>();var plants=new ArrayList<Plant>();
         var bounds=entity.inflate(.5);
+        // The enclosing axis-aligned box grows dramatically for diagonal/elevated views. Only cells
+        // intersecting the perspective cone can affect this entity, so don't read its unrelated corners.
+        var sides=ShadowClipper.shadow(new OccluderBox(bounds.minX-eye.x,bounds.minY-eye.y,bounds.minZ-eye.z,
+                bounds.maxX-eye.x,bounds.maxY-eye.y,bounds.maxZ-eye.z)).stream().filter(p->p.w()==0).toList();
         outer:for(int y=(int)Math.floor(area.minY);y<=Math.floor(area.maxY);y++)
             for(int z=(int)Math.floor(area.minZ);z<=Math.floor(area.maxZ);z++) {
                 int run=Integer.MIN_VALUE;int xmax=(int)Math.floor(area.maxX);
                 for(int x=(int)Math.floor(area.minX);x<=xmax+1;x++) {
                     boolean full=false;
-                    if(x<=xmax) {
+                    if(x<=xmax && mayOcclude(sides,eye,x,y,z)) {
                         var pos=new BlockPos(x,y,z);var state=getter.getBlockState(pos);
                         if(getter.exhausted) {
                             if(run!=Integer.MIN_VALUE)boxes.add(new OccluderBox(run,y,z,x,y+1,z+1));
@@ -143,6 +155,14 @@ public final class ScopeOcclusion {
                 .toList();
         boolean complete=!getter.incomplete && selectedBoxes.size()<=limit && selectedPlants.size()<=plantLimit;
         return new Geometry(selectedBoxes.stream().limit(limit).toList(),selectedPlants.stream().limit(plantLimit).toList(),complete);
+    }
+    private static boolean mayOcclude(List<ShadowClipper.Plane> sides,Vec3 eye,int x,int y,int z) {
+        // Include common model offsets and shapes protruding into adjacent cells (fences, vegetation).
+        for(var p:sides) {
+            double px=(p.x()>=0?x+2:x-1)-eye.x,py=(p.y()>=0?y+2:y-1)-eye.y,pz=(p.z()>=0?z+2:z-1)-eye.z;
+            if(p.x()*px+p.y()*py+p.z()*pz < -1e-7)return false;
+        }
+        return true;
     }
     private static ArrayList<OccluderBox> merge(List<OccluderBox> source,int axis) {
         var groups=new HashMap<List<Double>,List<OccluderBox>>();

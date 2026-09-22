@@ -23,6 +23,13 @@ public final class ImpactPrediction {
     public static Result predict(BallisticPreview shot, SegmentTrace.Source terrain, List<AABB> entities,
                                  double maxDistance, int maxTicks, int maxCells, int maxEntityChecks,
                                  long deadlineNanos) {
+        return predict(shot,terrain,entities,maxDistance,maxTicks,maxCells,maxEntityChecks,deadlineNanos,(a,b)->{});
+    }
+
+    /** Reports only the integrated path up to its first collision, never the unvisited remainder. */
+    public static Result predict(BallisticPreview shot, SegmentTrace.Source terrain, List<AABB> entities,
+                                 double maxDistance, int maxTicks, int maxCells, int maxEntityChecks,
+                                 long deadlineNanos, java.util.function.BiConsumer<Vec3,Vec3> traveledSegment) {
         var source = new BoundedSource(terrain, maxCells, deadlineNanos);
         Vec3 point = shot.start(), velocity = shot.velocity();
         double traveled = 0;
@@ -52,6 +59,7 @@ public final class ImpactPrediction {
                     nearest = hit.get().distanceToSqr(point); entityHit = hit.get();
                 }
             }
+            traveledSegment.accept(point,entityHit!=null?entityHit:safeEnd);
             if (entityHit != null) return new Result(End.ENTITY, entityHit, tick + 1, source.cells.size());
             if (trace.end() == SegmentTrace.End.BLOCK)
                 return new Result(End.BLOCK, point.add(movement.scale(trace.fraction()))

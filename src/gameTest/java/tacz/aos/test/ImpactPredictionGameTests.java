@@ -39,6 +39,27 @@ public final class ImpactPredictionGameTests {
         return ImpactPrediction.predict(shot, source, entities, 1024, 600, 65536, 8192, deadline());
     }
 
+    @GameTest(setupTicks=20, template="empty", batch="prediction")
+    public static void retentionVisitsAirSegmentsButNeverPastImpactOrRange(GameTestHelper h) {
+        var shot=new BallisticPreview(new Vec3(.5,80,.5),new Vec3(40,0,0),0,0,100);
+        var crossed=new AABB(16,0,0,32,256,16);
+        var beyond=new AABB(64,0,0,80,256,16);
+        var touched=new java.util.HashSet<AABB>();
+        java.util.function.BiConsumer<Vec3,Vec3> visit=(a,b)->{
+            for(var box:List.of(crossed,beyond))if(box.contains(a)||box.clip(a,b).isPresent())touched.add(box);
+        };
+        var result=ImpactPrediction.predict(shot,(x,y,z)->CollisionCell.AIR,List.of(),50,100,8192,8192,deadline(),visit);
+        h.assertTrue(result.end()==ImpactPrediction.End.RANGE && touched.contains(crossed) && !touched.contains(beyond),
+                "Air traversal failed to retain the crossed core or retained past maximum range");
+        touched.clear();
+        result=ImpactPrediction.predict(shot,(x,y,z)->x==12?CollisionCell.FULL:CollisionCell.AIR,List.of(),100,100,8192,8192,deadline(),visit);
+        h.assertTrue(result.end()==ImpactPrediction.End.BLOCK && touched.isEmpty(),"Retention continued through an actual target wall");
+        touched.clear();
+        result=ImpactPrediction.predict(shot,(x,y,z)->CollisionCell.AIR,List.of(new AABB(12,79,0,13,82,1)),100,100,8192,8192,deadline(),visit);
+        h.assertTrue(result.end()==ImpactPrediction.End.ENTITY && touched.isEmpty(),"Retention continued after hitting an entity");
+        h.succeed();
+    }
+
     @GameTest(setupTicks = 20, template = "ballistics", batch = "prediction")
     public static void bundledSnipersMatchNativeAndFollowCache(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
