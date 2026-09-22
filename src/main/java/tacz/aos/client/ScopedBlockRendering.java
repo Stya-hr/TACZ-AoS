@@ -64,7 +64,7 @@ public final class ScopedBlockRendering {
         return best;
     }
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES)return;
+        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES || ShaderCompat.shadowPass())return;
         draws=0;var mc=Minecraft.getInstance();
         if(!ScopedRendering.active() || mc.level!=level || level==null || mc.player==null)return;
         float fogStart=RenderSystem.getShaderFogStart(),fogEnd=RenderSystem.getShaderFogEnd();

@@ -83,7 +83,7 @@ Replace `your_pack:*` with real installed IDs. A scope may optionally specify it
 | **Curios** | Collection belt support in an existing functional `belt` slot. No extra slots are added; cosmetic slots do not activate it. Supports 5.14.1–5.x. |
 | **ParCool / Crawl on Demand** | Their crawling states enable prone accuracy and idle-sway suppression for allowed guns. |
 
-Iris/Sodium-specific integration has been removed from this Forge branch; Oculus shader compatibility is not claimed.
+Optional [Oculus](https://modrinth.com/mod/oculus) **1.8.0** support restores shader-aware ranging, distant entities/targets, and smoke trails on Forge 1.20.1. Install it only on clients; without it, AoS uses the normal renderer. For distant LOD terrain, the shader pack must also support the recommended NeoVoxy fork. Tested with **Complementary Unbound r5.8.1** and the NeoVoxy/Embeddium versions above; other shader packs are not guaranteed. Smoke has no separate glowing bullet-head dot under shaders.
 
 Use builds for Minecraft 1.20.1 Forge and install each optional mod's own dependencies. Other TACZ gun packs using standard gun/projectile APIs can be added through configuration; custom projectiles or renderers may require integration. Existing chunk-loader and player chunk tickets are respected.
 

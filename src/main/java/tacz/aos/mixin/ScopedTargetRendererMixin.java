@@ -13,6 +13,6 @@ import tacz.aos.config.ServerConfig;
 public abstract class ScopedTargetRendererMixin {
     @Inject(method="getViewDistance",at=@At("RETURN"),cancellable=true,remap=true)
     private void tacz_aos$distance(CallbackInfoReturnable<Integer> result){
-        if(ScopedRendering.active())result.setReturnValue(Math.max(result.getReturnValue(),ServerConfig.current().maxDistance()));
+        if(ScopedRendering.active() && !tacz.aos.client.ShaderCompat.shadowPass())result.setReturnValue(Math.max(result.getReturnValue(),ServerConfig.current().maxDistance()));
     }
 }

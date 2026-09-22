@@ -7,7 +7,7 @@ This branch targets Minecraft **1.20.1**, **Forge 47.3.0**, and **Java 17**. The
 - Required: official [Timeless and Classics Zero](https://modrinth.com/mod/timeless-and-classics-zero) **1.1.8-hotfix**.
 - Optional: the supplied **NeoVoxy 0.3.3 Forge 1.20.1 client** jar, with **stable Embeddium 0.3.31**. The `0.3.31-beta.53` build does not satisfy that Voxy jar's dependency range.
 - Optional integrations retain Forge versions of Curios, Lightman's Currency, Collectors Album, Champions Unofficial, Touhou Little Maid, ParCool, and Crawl on Demand. See [dependency details](../libs/README.md).
-- NeoForge, Iris, and Sodium integration code is excluded from this build. Reference copies live in `archive/neoforge-1.21.1-rendering/`. Oculus/shader compatibility is not claimed.
+- Original NeoForge integration code is excluded from this build. Reference copies live in `archive/neoforge-1.21.1-rendering/`; selected shader integration has been ported to the optional Oculus 1.8.0 Forge API.
 
 The default sniper whitelist was checked against the pinned official TACZ gun pack:
 
@@ -34,7 +34,7 @@ The following passed on the Forge development runtime:
 - A real client with the supplied Voxy and stable Embeddium: **2-chunk vanilla view distance**, target approximately **880 blocks away**, actual exploration/save/rejoin, Voxy depth picking, distant entity tracking and AI, both TACZ targets and their recovery animations, occlusion, and damage after unscoping.
 - A supplemental real-client test of ParCool and Crawl on Demand: prone idle sway suppression and restoration on exit.
 
-The release jar was inspected for Java 17 class versions, Forge metadata, remapped mixin references, 1.20.1 resource paths, and absence of active NeoForge/shader compatibility classes. Only MixinExtras is bundled; optional mods and test classes are not bundled. The release jar has not separately been tested in a normal launcher installation.
+The release jar was inspected for Java 17 class versions, Forge metadata, remapped mixin references, 1.20.1 resource paths, and absence of active NeoForge classes. Only MixinExtras is bundled; optional mods and test classes are not bundled. The release jar has not separately been tested in a normal launcher installation.
 
 ## Reproduction
 
@@ -70,3 +70,21 @@ Update **both server and clients** together (`forge-4` network protocol), becaus
 Reticle acquisition still requires generated-path validation, aim stability, request throttling, and per-player/global budgets. Those admission limits no longer block renewal of an already-owned region. A valid reticle report inside an owned core renews its existing lease even during fast aim movement, without starting new tickets or metadata reads.
 
 Ballistic prediction renews all owned cores intersected by its integrated path, including air segments with no final impact. Previously it renewed only the final collision's region, which allowed holdover or off-axis aim to unload the observed animal after the grace period. Traversal stops at the first actual collision or configured flight/range limit; it never admits additional regions. Unscoping still expires the existing configurable grace (60 ticks by default), and accepted in-flight shots retain independent bounded leases. Shared tickets remain reference-counted.
+
+## Oculus integration
+
+Oculus 1.8.0 is optional and client-only. The nested bridge isolates all Oculus/Iris classes from installations without Oculus. Shadow passes skip terrain-depth capture, aim reports, remote entity/target draws, and the extended far plane. Visible terrain is still picked from the supplied Voxy pipeline's own framebuffer and projection, before hand rendering/post-processing; native terrain picking is unchanged.
+
+With a shader pack active, smoke uses Oculus's translucent particle program and a small periodic alpha texture instead of the custom vanilla smoke shader. This provides the shader pack's render targets, lighting and blending. The separate bright bullet-head discs remain disabled under shaders. Without a pack (or Oculus), normal smoke rendering remains active. Occlusion stays on the restored polygon-clipping implementation; this integration does not reintroduce the reverted cache or solid depth pass.
+
+To run the focused shader scenario, put a NeoVoxy-compatible shader pack in `build/client-forge-shader-test/shaderpacks/` and select it in that client's `config/oculus.properties`, then run:
+
+```text
+gradlew runClientShaderTest -Penable_voxy_runtime=true -Penable_oculus_runtime=true
+```
+
+This scenario requires an active shader pack and checks 880-block targeting with a two-chunk view, save/rejoin, entity AI, both TACZ targets and their hit/recovery animation, smoke fragments, and damage after unscoping. The independent occlusion stress scenario is not part of this focused shader test.
+
+For an existing development checkout, a previously cached TACZ remap generated without Oculus can retain an unmapped inherited `FullyBufferedMultiBufferSource` method. If a development run reports `NoSuchMethodError: ...m_109911_`, remove only the remapped TACZ jar under the project's `.gradle/loom-cache/remapped_mods/` and rerun with Oculus available. Recreating that mapping resolves the development-only failure; no TACZ runtime patch is bundled.
+
+Validated with Oculus 1.8.0, Embeddium 0.3.31, the supplied NeoVoxy 0.3.3 Forge client jar, and Complementary Unbound r5.8.1: the focused shader scenario passed at 880 blocks with a two-chunk native view, including real save/rejoin and firing after unscoping. GPU queries recorded 936 entity, 198 target, and 417 smoke samples. Scope HUD and smoke screenshots were inspected. Baseline build, 119 unit tests and 77 server GameTests passed without Oculus. The regular client scenario also passed with neither Oculus nor Voxy installed, including scope HUD, native AI, smoke/expiry and observer feedback. These results cover this combination, not every shader pack or Voxy fork.

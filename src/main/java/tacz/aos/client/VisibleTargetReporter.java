@@ -36,7 +36,7 @@ public final class VisibleTargetReporter {
     public static double lastDistance=-1;
     private VisibleTargetReporter(){}
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
+        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_LEVEL || ShaderCompat.shadowPass()) return;
         var mc=Minecraft.getInstance();
         if(level!=mc.level) {reset();level=mc.level;}
         if(level==null || mc.player==null || !mc.options.getCameraType().isFirstPerson()
@@ -105,6 +105,7 @@ public final class VisibleTargetReporter {
     public static void captureTerrain(int framebuffer, int width, int height, Matrix4f mvp,
                                       Vec3 camera, boolean zeroToOne, float clear) {
         var mc=Minecraft.getInstance();
+        if (ShaderCompat.shadowPass()) return;
         if(level!=mc.level) {reset();level=mc.level;}
         if(level==null || mc.player==null || !mc.options.getCameraType().isFirstPerson()
                 || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()) return;

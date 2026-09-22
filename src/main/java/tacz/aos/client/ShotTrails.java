@@ -56,6 +56,7 @@ public final class ShotTrails extends net.minecraft.client.renderer.RenderStateS
     private static MultiBufferSource.BufferSource buffers;
     private static int lastPieces;
     private static double lastFarthest;
+    private static boolean shaderDraw;
 
     public static void shaders(RegisterShadersEvent event) throws IOException {
         event.registerShader(new ShaderInstance(event.getResourceProvider(),
@@ -103,11 +104,13 @@ public final class ShotTrails extends net.minecraft.client.renderer.RenderStateS
     }
 
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES || ShaderCompat.shadowPass()) return;
         lastPieces = 0; lastFarthest = 0;
         var mc = Minecraft.getInstance();
         if (!hasTrails() || mc.player == null || smokeShader == null) return;
-        RenderType smokeType = SMOKE_TYPE;
+        shaderDraw = ShaderCompat.active();
+        if (shaderDraw) ShaderTrailMaterials.prepare();
+        RenderType smokeType = shaderDraw ? ShaderTrailMaterials.SMOKE_TYPE : SMOKE_TYPE;
         if (buffers == null) { bytes = new BufferBuilder(262144); buffers = MultiBufferSource.immediate(bytes); }
         double now = tick + event.getPartialTick();
         var camera = event.getCamera();
@@ -153,6 +156,8 @@ public final class ShotTrails extends net.minecraft.client.renderer.RenderStateS
             }
         }
         buffers.endBatch(smokeType);
+        // Match the previous Iris presentation: smoke only, without a luminous bullet-head disc.
+        if (shaderDraw) return;
         vertices = buffers.getBuffer(TYPE);
         Vec3 right = vector(new Vector3f(1, 0, 0).rotate(camera.rotation()));
         Vec3 up = vector(new Vector3f(0, 1, 0).rotate(camera.rotation()));
@@ -205,7 +210,9 @@ public final class ShotTrails extends net.minecraft.client.renderer.RenderStateS
     }
     private static void smokeVertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float u, float v, float alpha) {
         out.vertex(matrix, (float) p.x, (float) p.y, (float) p.z)
-                .uv(u, v).color(0.88f, 0.89f, 0.90f, alpha).endVertex();
+                .uv(shaderDraw ? u * .125f : u, shaderDraw ? (v + 1) * .5f : v).color(0.88f, 0.89f, 0.90f, alpha);
+        if (shaderDraw) out.uv2(net.minecraft.client.renderer.LightTexture.FULL_BRIGHT);
+        out.endVertex();
     }
     private static void smokeBand(VertexConsumer out, Matrix4f matrix, Vec3 a, Vec3 b, Vec3 side,
                                   double width0, double width1, float u0, float u1, float alpha0, float alpha1) {

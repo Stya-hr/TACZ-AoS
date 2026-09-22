@@ -83,7 +83,7 @@ maxDistance = 1024
 | **Curios** | 收集腰带可放入已有的 `belt` 功能槽，不新增槽位；外观槽不生效。支持 5.14.1–5.x。 |
 | **ParCool / Crawl on Demand** | 识别其匍匐状态，为白名单枪械启用零散布与待机晃动抑制。 |
 
-本 Forge 分支已移除 Iris／Sodium 专用兼容，不承诺 Oculus 光影兼容。
+可选安装 [Oculus](https://modrinth.com/mod/oculus) **1.8.0**，支持 Forge 1.20.1 光影下的测距、远处实体／标靶及弹道烟线。仅客户端需要安装；不安装时仍使用普通渲染。需要显示远处 LOD 地形时，光影包本身也必须支持上述 NeoVoxy 分支。已测试 **Complementary Unbound r5.8.1** 与上述 NeoVoxy／Embeddium 组合，不保证所有光影包兼容。光影下不绘制单独的发光弹头圆点。
 
 请选择适用于 Minecraft 1.20.1 Forge 的版本，并安装各可选模组自身的前置。使用标准枪械与弹丸接口的其他 TACZ 枪包可通过配置扩展；自定义弹丸或渲染器可能需要额外适配。本模组会保留其他玩家和区块加载器已有的加载请求。
 

@@ -42,6 +42,12 @@ loom {
             property 'tacz_aos.longRangeTest', 'true'
             programArgs '--width', '960', '--height', '540'
         }
+        clientShaderTest {
+            client(); source sourceSets.gameTest; runDir 'build/client-forge-shader-test'
+            property 'tacz_aos.longRangeTest', 'true'
+            property 'tacz_aos.shaderCompatibilityTest', 'true'
+            programArgs '--width', '960', '--height', '540'
+        }
         gameTestServer {
             environment 'gameTestServer'; forgeTemplate 'gameTestServer'; name 'Game Test'; source sourceSets.gameTest
             runDir 'build/gametest-forge'
@@ -58,6 +64,7 @@ dependencies {
     modImplementation("maven.modrinth:timeless-and-classics-zero:${tacz_version}") { transitive = false }
     taczBundledApi("maven.modrinth:timeless-and-classics-zero:${tacz_version}") { transitive = false }
     modCompileOnly files("libs/${voxy_jar}")
+    modCompileOnly("maven.modrinth:oculus:${oculus_version}") { transitive = false }
     modCompileOnly("maven.modrinth:curios:${curios_version}") { transitive = false }
     modCompileOnly("maven.modrinth:lightmans-currency:${lightmans_currency_version}") { transitive = false }
     modCompileOnly("maven.modrinth:collectors-album:${collectors_album_version}") { transitive = false }
@@ -75,6 +82,14 @@ dependencies {
         forgeRuntimeLibrary files(zipTree(file("libs/${voxy_jar}")).matching {
             include 'META-INF/jars/*.jar'; exclude 'META-INF/jars/mixinextras-*.jar'
         })
+    }
+    if (providers.gradleProperty('enable_oculus_runtime').orElse('false').get().toBoolean()) {
+        modRuntimeOnly("maven.modrinth:oculus:${oculus_version}") { transitive = false }
+        // Loom strips the mod's jar-in-jar metadata in development runs.
+        forgeRuntimeLibrary 'org.anarres:jcpp:1.4.14'
+    }
+    if (providers.gradleProperty('enable_voxy_runtime').get().toBoolean()
+            || providers.gradleProperty('enable_oculus_runtime').orElse('false').get().toBoolean()) {
         modRuntimeOnly("maven.modrinth:embeddium:${embeddium_version}") { transitive = false }
     }
     if (providers.gradleProperty('enable_maid_compat_runtime').orElse('false').get().toBoolean()) {
@@ -160,6 +175,7 @@ tasks.named('runGameTestServer').configure {
 publishing { publications { mavenJava(MavenPublication) { artifact tasks.remapJar } } }
 
 ['runClientScopeTest': ['client-forge-scope-test', 'scope-result.txt'],
+ 'runClientShaderTest': ['client-forge-shader-test', 'result.txt'],
  'runClientLongRangeTest': ['client-forge-long-range-test', 'result.txt']].each { taskName, result ->
     tasks.named(taskName).configure {
         doFirst { delete layout.buildDirectory.file("${result[0]}/${result[1]}") }

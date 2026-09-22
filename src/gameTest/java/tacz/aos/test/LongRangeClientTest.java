@@ -34,6 +34,9 @@ import java.util.*;
 @EventBusSubscriber(modid = TaczArtOfSniping.MOD_ID, value = Dist.CLIENT)
 public final class LongRangeClientTest {
     private static final boolean ENABLED = Boolean.getBoolean("tacz_aos.longRangeTest");
+    // Shader integration exercises depth picking, remote entities/targets, damage and smoke.
+    // The separate occlusion stress suite targets the renderer that was deliberately rolled back.
+    private static final boolean SHADER_TEST = Boolean.getBoolean("tacz_aos.shaderCompatibilityTest");
     private static final TicketType<ChunkPos> EXPLORE = TicketType.create("long_range_fixture", Comparator.comparingLong(ChunkPos::toLong));
     private static final List<ChunkPos> visited = new ArrayList<>();
     private static volatile int stage, animalId = -1;
@@ -63,8 +66,8 @@ public final class LongRangeClientTest {
     private static boolean vegetationDepthChecked;
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void beforeDraw(net.minecraftforge.client.event.RenderLevelStageEvent event) {
-        if (!ENABLED) return;
-        if(!vegetationDepthChecked && Minecraft.getInstance().level!=null) {
+        if (!ENABLED || tacz.aos.client.ShaderCompat.shadowPass()) return;
+        if(!SHADER_TEST && !vegetationDepthChecked && Minecraft.getInstance().level!=null) {
             vegetationDepthChecked=true;
             try { VegetationDepthClientTest.run(); }
             catch(Throwable error) { failure="Vegetation depth test failed: "+error; }
@@ -81,7 +84,7 @@ public final class LongRangeClientTest {
     }
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
     public static void afterDraw(net.minecraftforge.client.event.RenderLevelStageEvent event) {
-        if (!ENABLED || query == 0) return;
+        if (!ENABLED || tacz.aos.client.ShaderCompat.shadowPass() || query == 0) return;
         org.lwjgl.opengl.GL15C.glEndQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED);
         int samples = org.lwjgl.opengl.GL15C.glGetQueryObjecti(query, org.lwjgl.opengl.GL15C.GL_QUERY_RESULT);
         org.lwjgl.opengl.GL15C.glDeleteQueries(query); query = 0;
@@ -156,16 +159,28 @@ public final class LongRangeClientTest {
         }
         if (mc.level == null || mc.player == null) return;
 
+        // Automated clients can run without OS focus; TACZ otherwise cancels synthetic aim each tick.
+        if (SHADER_TEST && mc.screen == null && mc.getOverlay() == null) {
+            mc.setWindowActive(true);
+            mc.mouseHandler.grabMouse();
+        }
+
+        if (SHADER_TEST && !tacz.aos.client.ShaderCompat.active()) {
+            finish(false,"Oculus/shader pack is not active; this is not a shader compatibility pass"); return;
+        }
+
         if (stage>=3 && frames%40==0) TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT visual active={}, targets={}, entity={}, draws={}, eligibility={}, pos={}",ScopedRendering.active(),ScopedRendering.targetCount(),mc.level.getEntity(animalId),draws,
                 tacz.aos.client.TaczClientBridge.evaluateForDisplay(mc.player),mc.player.position());
         mc.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.HIDDEN);
         if (++frames > 2400) { finish(false,"Client timed out, stage="+stage); return; }
         float aimYaw=coverPhase==6 || coverPhase==7 ? -89.4f : coverPhase==10 && (frames/8)%2==0 ? -89.4f : -90;
         mc.player.setYRot(aimYaw); mc.player.setYHeadRot(aimYaw); mc.player.setXRot(0);
-        com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(stage >= 3 && (!shotStarted));
-        IGunOperator.fromLivingEntity(mc.player).aim(stage >= 3 && (!shotStarted));
+        boolean aim = stage >= 3 && (!shotStarted || SHADER_TEST && shotFrames < 8);
+        com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(aim);
+        IGunOperator.fromLivingEntity(mc.player).aim(aim);
         if (shotStarted) {
             shotFrames++;
+            if (SHADER_TEST && shotFrames == 6) Screenshot.grab(mc.gameDirectory,"oculus-trail.png",mc.getMainRenderTarget(),ignored -> {});
         }
         if(stage>=3 && !net.minecraftforge.fml.ModList.get().isLoaded("voxy") && ticks-stageTick>60) {
             if(ScopedRendering.targetCount()!=0 || tacz.aos.client.VisibleTargetReporter.lastDistance>=0)
@@ -180,6 +195,10 @@ public final class LongRangeClientTest {
                 finish(false,"Trail continued rendering after confirmed remote impact"); return;
             }
 
+            if (SHADER_TEST && (entitySamples<=0 || trailSamples<=0 || blockSamples<=0)) {
+                finish(false,"Oculus drew no fragments: entities="+entitySamples+", smoke="+trailSamples+", targets="+blockSamples);return;
+            }
+            TaczArtOfSniping.LOGGER.info("SHADER_GPU samples: entities={}, smoke={}, targets={}",entitySamples,trailSamples,blockSamples);
             finish(true,"Actual world save/rejoin, cold generation index, Voxy depth, real animal AI/render, both TACZ targets with hit/recovery animation, and remote damage after unscoping verified");return;
         }
         if (stage>=3 && !shotStarted) {
@@ -213,6 +232,7 @@ public final class LongRangeClientTest {
                     mc.createWorldOpenFlows().loadLevel(new net.minecraft.client.gui.screens.TitleScreen(), worldName);
                     return;
                 }
+                if (!SHADER_TEST) {
                 if(!occlusionFinished) {occlusionRequested=true;return;}
                 if(aimVisibleFrames<20 || aimDropouts!=0) {
                     finish(false,"Aim return caused invisible frames: "+aimDropouts+" / "+aimVisibleFrames);return;
@@ -221,6 +241,7 @@ public final class LongRangeClientTest {
                     finish(false,"Moving cover: visibleFrames="+movingVisibleFrames+", hiddenFrames="+movingHiddenFrames+", dropouts="+movingDropouts+", leaks="+movingLeaks+", travel="+(movingMaxZ-movingMinZ));return;
                 }
                 if(!logCoverSeen || !offAxisLogCoverSeen || !offAxisRestored || !partialCoverSeen || !fullCoverSeen || !removedCoverSeen || coverBaselinePixels<=0 || coverPartialPixels<=0 || coverPartialPixels>=coverBaselinePixels || coverFullPixels!=0 || coverRestoredPixels<=0) {finish(false,"Remote cover failed: logs="+logCoverSeen+"/"+offAxisLogCoverSeen+"/"+offAxisRestored+", partial="+partialCoverSeen+", full="+fullCoverSeen+", removed="+removedCoverSeen+", GPU="+coverBaselinePixels+"/"+coverPartialPixels+"/"+coverFullPixels+"/"+coverRestoredPixels);return;}
+                }
                 if(!readyToFire) TaczArtOfSniping.LOGGER.info("RENDER_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
                 if(!readyToFire) Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
                 readyToFire = true;
@@ -258,6 +279,8 @@ public final class LongRangeClientTest {
                 for (int x=875;x<=910;x++) for (int z=0;z<16;z++) level.setBlock(new BlockPos(x,79,z),Blocks.STONE.defaultBlockState(),2);
                 for (int y=60;y<=84;y++) for (int z=0;z<16;z++) level.setBlock(new BlockPos(896,y,z),Blocks.STONE.defaultBlockState(),2);
                 original = EntityType.COW.create(level); original.setPos(888,80,8); original.setPersistenceRequired();
+                // Keep the fixture on its small platform until the restored-animal AI test starts.
+                original.setNoAi(true);
                 uuid=original.getUUID(); level.addFreshEntity(original);
                 TaczTargetGameTests.place(level,BLOCK_TARGET);
                 var cart=new com.tacz.guns.entity.TargetMinecart(level,890,80,10);cart.setNoGravity(true);
@@ -294,6 +317,7 @@ public final class LongRangeClientTest {
                 if (restored instanceof Cow cow && ScopeActivity.INSTANCE.active(cow) && level.isPositionEntityTicking(cow.blockPosition())) {
                     if (cow==original) throw new AssertionError("Animal was never deserialized");
                     animalId=cow.getId();
+                    if (initialX==0) cow.setNoAi(false);
                     if (initialX==0 && cow.onGround()) {cow.setNoAi(false);if(cow.getNavigation().moveTo(892,80,8,1))initialX=cow.getX();}
                     movement |= initialX!=0 && Math.abs(cow.getX()-initialX)>.1;
                     // Keep the AI witness out of the separate live-fire target lanes after movement is proved.
