@@ -9,6 +9,7 @@
     "KineticLaunchMixin",
     "KineticWindMixin",
     "ChunkMapAccessor",
+    "OcclusionRevisionMixin",
     "TrackedEntityAccessor",
     "TrackedEntityMixin",
     "ScopedMobActivityMixin",

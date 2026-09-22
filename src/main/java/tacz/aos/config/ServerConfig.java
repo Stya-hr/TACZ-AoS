@@ -99,7 +99,7 @@ public final class ServerConfig {
         HUMIDITY = new HumidityConfig(builder);
         builder.comment("Remote occlusion: leaves cover whole cells; known simple shapes preserve openings; complex models cover whole cells.",
                 "Vegetation uses client model texture alpha; glass remains transparent. No client terrain chunks are installed.",
-                "Refresh follows scopeRendering.intervalTicks. Budget exhaustion leaves unchecked geometry visible.").push("occlusion");
+                "Refresh follows scopeRendering.intervalTicks. New remote entities wait for complete server geometry; still-valid masks are reused when the read budget is exhausted. Client clipping has its own frame budget.").push("occlusion");
         OCCLUSION_ENABLED=builder.define("enabled",true);
         OCCLUSION_RADIUS=builder.comment("Maximum length of the local sight corridor in front of each observed entity.").defineInRange("radius",24,4,32);
         OCCLUSION_CELLS=builder.defineInRange("maxCellsPerPlayer",8192,256,65536);

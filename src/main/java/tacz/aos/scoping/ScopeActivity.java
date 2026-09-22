@@ -253,6 +253,26 @@ public final class ScopeActivity {
                 (k.x+k.radius+1)*16,k.level.getMaxBuildHeight(),(k.z+k.radius+1)*16);
     }
 
+    /** A displayable remote body must fit wholly in this observer's collision cores.
+     * Readiness checks never acquire terrain; dependency halos alone cannot authorize display.
+     */
+    public boolean observable(ServerPlayer player, AABB body) {
+        var level=player.serverLevel();
+        boolean covered=false;
+        for(var region:regions.values()) {
+            if(region.key.level!=level || !region.owners.containsKey(player.getUUID()))continue;
+            var core=bounds(region.key);
+            if(body.minX>=core.minX && body.maxX<core.maxX && body.minY>=core.minY && body.maxY<core.maxY
+                    && body.minZ>=core.minZ && body.maxZ<core.maxZ && ready(region.key)) {covered=true;break;}
+        }
+        if(!covered)return false;
+        int x0=net.minecraft.util.Mth.floor(body.minX)>>4,x1=net.minecraft.util.Mth.floor(body.maxX)>>4;
+        int z0=net.minecraft.util.Mth.floor(body.minZ)>>4,z1=net.minecraft.util.Mth.floor(body.maxZ)>>4;
+        for(int x=x0-1;x<=x1+1;x++)for(int z=z0-1;z<=z1+1;z++)
+            if(level.getChunkSource().getChunkNow(x,z)==null)return false;
+        return true;
+    }
+
     public boolean active(Entity entity) {
         var settings = ServerConfig.current();
         return settings.available() && settings.activity().enabled() && settings.scopeRendering().enabled()

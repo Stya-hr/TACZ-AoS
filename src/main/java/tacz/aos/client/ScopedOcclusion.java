@@ -12,7 +12,6 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -37,10 +36,13 @@ public final class ScopedOcclusion {
     public static int inputPolygons(){return inputPolygons;}
     public static int outputPolygons(){return outputPolygons;}
     private ScopedOcclusion(){}
-    public static void setup(FMLClientSetupEvent event){event.enqueueWork(()->ScopeNetworking.setOcclusionReceiver(ScopedOcclusion::receive));}
-    private static void receive(ScopeOcclusionPayload payload) {
+    static void install(ScopeOcclusionPayload payload) {
         var mc=Minecraft.getInstance();if(mc.level==null || !mc.level.dimension().location().equals(payload.dimension()))return;
         level=mc.level;received=level.getGameTime();targets.clear();for(var target:payload.targets())targets.put(target.id(),target);
+    }
+    public static boolean ready(Entity entity) {
+        var mask=targets.get(entity.getId());
+        return level==entity.level() && mask!=null && mask.uuid().equals(entity.getUUID());
     }
     public static void beginFrame() {
         stats.clear();inputPolygons=outputPolygons=0;budget=new ShadowClipper.Budget(ServerConfig.occlusion().planeTestsPerFrame());

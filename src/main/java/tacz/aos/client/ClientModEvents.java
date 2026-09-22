@@ -12,7 +12,6 @@ import java.io.IOException;
 public final class ClientModEvents {
     @SubscribeEvent public static void setup(FMLClientSetupEvent event) {
         ScopedBlockRendering.setup(event);
-        ScopedOcclusion.setup(event);
         ScopedRendering.setup(event);
         ScopeRangeHud.setup(event);
         ShotTrails.setup(event);

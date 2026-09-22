@@ -106,7 +106,7 @@ public final class ObserverFeedbackGameTests {
         return new Viewer(player, packets);
     }
 
-    @GameTest(setupTicks = 20, template = "ballistics", batch = "observer_feedback")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "missingScopeEntityRepairIsAuthorizedBoundedAndUsesNativePairing")
     public static void missingScopeEntityRepairIsAuthorizedBoundedAndUsesNativePairing(GameTestHelper h) {
         var viewer = viewer(h, new Vec3(4,5,4), false);
         new LocalBallisticsGameTests.Fixture(h, viewer.player);
@@ -114,38 +114,40 @@ public final class ObserverFeedbackGameTests {
         var cow = h.spawn(net.minecraft.world.entity.EntityType.COW, new Vec3(12,5,4));
         var other = h.spawn(net.minecraft.world.entity.EntityType.COW, new Vec3(13,5,4));
         var dimension = h.getLevel().dimension().location();
-        try {
-            subscriptions.replace(viewer.player, List.of(cow));
-            var tracker = tacz.aos.scoping.ScopeSubscriptions.tracker(h.getLevel(), cow.getId());
-            h.assertTrue(tracker.tacz_aos$seenBy().contains(viewer.player.connection), "Fixture did not start native observation");
-            int observers = tracker.tacz_aos$seenBy().size();
-            int chunks = h.getLevel().getChunkSource().getLoadedChunksCount();
-            viewer.packets.clear();
-            var requested = new tacz.aos.network.ScopeEntityRepairPayload.Target(cow.getId(), cow.getUUID());
-            var request = new tacz.aos.network.ScopeEntityRepairPayload(dimension, List.of(
-                    requested, requested,
-                    new tacz.aos.network.ScopeEntityRepairPayload.Target(other.getId(), other.getUUID()),
-                    new tacz.aos.network.ScopeEntityRepairPayload.Target(cow.getId(), UUID.randomUUID())));
-            subscriptions.repair(viewer.player, request);
-            h.assertTrue(viewer.packets.size() == 1 && viewer.packets.get(0) instanceof net.minecraft.network.protocol.game.ClientboundBundlePacket,
-                    "Repair duplicated or disclosed an unauthorized target");
-            var bundle = (net.minecraft.network.protocol.game.ClientboundBundlePacket) viewer.packets.get(0);
-            int spawns = 0;
-            for (var packet : bundle.subPackets()) if (packet instanceof net.minecraft.network.protocol.game.ClientboundAddEntityPacket spawn) {
-                h.assertTrue(spawn.getId() == cow.getId() && spawn.getUUID().equals(cow.getUUID()), "Repair spawned the wrong identity");
-                spawns++;
+        ObservationFixture.ready(h, viewer.player, cow.position(), () -> {
+            try {
+                subscriptions.replace(viewer.player, List.of(cow));
+                var tracker = tacz.aos.scoping.ScopeSubscriptions.tracker(h.getLevel(), cow.getId());
+                h.assertTrue(tracker.tacz_aos$seenBy().contains(viewer.player.connection), "Fixture did not start native observation");
+                int observers = tracker.tacz_aos$seenBy().size();
+                int chunks = h.getLevel().getChunkSource().getLoadedChunksCount();
+                viewer.packets.clear();
+                var requested = new tacz.aos.network.ScopeEntityRepairPayload.Target(cow.getId(), cow.getUUID());
+                var request = new tacz.aos.network.ScopeEntityRepairPayload(dimension, List.of(
+                        requested, requested,
+                        new tacz.aos.network.ScopeEntityRepairPayload.Target(other.getId(), other.getUUID()),
+                        new tacz.aos.network.ScopeEntityRepairPayload.Target(cow.getId(), UUID.randomUUID())));
+                subscriptions.repair(viewer.player, request);
+                h.assertTrue(viewer.packets.size() == 1 && viewer.packets.get(0) instanceof net.minecraft.network.protocol.game.ClientboundBundlePacket,
+                        "Repair duplicated or disclosed an unauthorized target");
+                var bundle = (net.minecraft.network.protocol.game.ClientboundBundlePacket) viewer.packets.get(0);
+                int spawns = 0;
+                for (var packet : bundle.subPackets()) if (packet instanceof net.minecraft.network.protocol.game.ClientboundAddEntityPacket spawn) {
+                    h.assertTrue(spawn.getId() == cow.getId() && spawn.getUUID().equals(cow.getUUID()), "Repair spawned the wrong identity");
+                    spawns++;
+                }
+                h.assertTrue(spawns == 1, "Missing native spawn packet");
+                subscriptions.repair(viewer.player, request);
+                h.assertTrue(viewer.packets.size() == 1, "Repair rate limit was bypassed");
+                h.assertTrue(tracker.tacz_aos$seenBy().size() == observers, "Repair changed observation ownership");
+                h.assertTrue(h.getLevel().getChunkSource().getLoadedChunksCount() == chunks, "Repair loaded chunks");
+            } finally {
+                subscriptions.replace(viewer.player, List.of());
+                h.getLevel().players().remove(viewer.player);
+                cow.discard(); other.discard();
             }
-            h.assertTrue(spawns == 1, "Missing native spawn packet");
-            subscriptions.repair(viewer.player, request);
-            h.assertTrue(viewer.packets.size() == 1, "Repair rate limit was bypassed");
-            h.assertTrue(tracker.tacz_aos$seenBy().size() == observers, "Repair changed observation ownership");
-            h.assertTrue(h.getLevel().getChunkSource().getLoadedChunksCount() == chunks, "Repair loaded chunks");
-        } finally {
-            subscriptions.replace(viewer.player, List.of());
-            h.getLevel().players().remove(viewer.player);
-            cow.discard(); other.discard();
-        }
-        h.succeed();
+            h.succeed();
+        });
     }
 
     @GameTest(setupTicks = 20, template = "ballistics", batch = "observer_feedback")

@@ -150,7 +150,7 @@ public final class ScopeRetentionGameTests {
         }
         h.succeed();
     }
-    @SuppressWarnings("unchecked") private static void register(net.minecraft.server.level.ServerPlayer p,boolean add) {
+    @SuppressWarnings("unchecked") static void register(net.minecraft.server.level.ServerPlayer p,boolean add) {
         try {
             var list=p.server.getPlayerList();var pf=net.minecraft.server.players.PlayerList.class.getDeclaredField("players");
             var uf=net.minecraft.server.players.PlayerList.class.getDeclaredField("playersByUUID");pf.setAccessible(true);uf.setAccessible(true);

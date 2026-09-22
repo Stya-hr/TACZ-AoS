@@ -53,6 +53,7 @@ public final class ScopedRendering {
         var minecraft = Minecraft.getInstance();
         if (minecraft.level == null || !minecraft.level.dimension().location().equals(payload.dimension())) return;
         if (level != minecraft.level) { targets.clear(); missing.clear(); nextRepair=0; level = minecraft.level; }
+        ScopedOcclusion.install(payload.occlusion());
         var next = new HashMap<Integer, Pose>();
         for (var target : payload.targets()) {
             Entity entity = level.getEntity(target.id());
@@ -76,7 +77,7 @@ public final class ScopedRendering {
     }
     public static boolean suppressExtra(Entity entity) {
         var pose = targets.get(entity.getId());
-        return !active && pose != null && pose.target.extra() && pose.target.uuid().equals(entity.getUUID());
+        return (!active || !ScopedOcclusion.ready(entity)) && pose != null && pose.target.extra() && pose.target.uuid().equals(entity.getUUID());
     }
 
     @SubscribeEvent public static void tick(TickEvent.ClientTickEvent event) {
@@ -156,7 +157,7 @@ public final class ScopedRendering {
             ScopedOcclusion.renderVegetation(event.getPoseStack(),eye);
             for (var pose : targets.values()) {
                 Entity entity = level.getEntity(pose.target.id());
-                if (entity == null || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved()
+                if (entity == null || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved() || !ScopedOcclusion.ready(entity)
                         || entity.isInvisibleTo(minecraft.player) || !event.getFrustum().isVisible(entity.getBoundingBox())) continue;
                 // The server already bounded the observation. Let the actual projection clip at the screen edge,
                 // rather than hiding an authorized entity inside the lens with a second, narrower aim cone.

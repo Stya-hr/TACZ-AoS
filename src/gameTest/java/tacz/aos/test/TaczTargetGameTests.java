@@ -51,7 +51,7 @@ public final class TaczTargetGameTests {
     }
     @GameTest(setupTicks=20, template="ballistics",batch="target_minecart",timeoutTicks=30)
     public static void minecartUsesNativeHitAndRecovery(GameTestHelper h) {
-        var f=new LocalBallisticsGameTests.Fixture(h);var pos=h.absoluteVec(new Vec3(20,5,4.5));
+        var f=new LocalBallisticsGameTests.Fixture(h);var pos=h.absoluteVec(new Vec3(12,5,4.5));
         // Isolate native hit/recovery from parallel structure preparation; initialize compensated position.
         var cart=new TargetMinecart(h.getLevel(),pos.x,pos.y,pos.z);cart.setNoGravity(true);cart.setOldPosAndRot();h.getLevel().addFreshEntity(cart);
         var shot=f.bullet(new Vec3(4,6,4.5),new Vec3(24,0,0));
