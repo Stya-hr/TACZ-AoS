@@ -44,7 +44,8 @@ public final class LongRangeClientTest {
     private static int coverTick,baselineBoxes=-1;
     private static boolean coverBaselineCaptured;
     private static int coverBaselinePixels,coverPartialPixels,coverFullPixels=-1,coverRestoredPixels;
-    private static boolean partialCoverSeen,fullCoverSeen,removedCoverSeen;
+    private static boolean partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored;
+    private static com.mojang.blaze3d.platform.NativeImage beforeEntities;
     private static volatile boolean readyToFire, hitConfirmed;
     private static com.tacz.guns.entity.EntityKineticBullet shotBullet;
     private static Cow shotTarget;
@@ -70,6 +71,8 @@ public final class LongRangeClientTest {
                 && stage != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
                 && stage != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
         queryKind = stage == net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES ? 1 : stage == net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES ? 3 : 2;
+        if(queryKind==1 && occlusionRequested && !occlusionFinished)
+            beforeEntities=Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
         query = org.lwjgl.opengl.GL15C.glGenQueries();
         org.lwjgl.opengl.GL15C.glBeginQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED, query);
     }
@@ -80,13 +83,25 @@ public final class LongRangeClientTest {
         int samples = org.lwjgl.opengl.GL15C.glGetQueryObjecti(query, org.lwjgl.opengl.GL15C.GL_QUERY_RESULT);
         org.lwjgl.opengl.GL15C.glDeleteQueries(query); query = 0;
         if (queryKind == 1 && animalId >= 0) entitySamples = Math.max(entitySamples, samples);
-        if(queryKind==1 && occlusionRequested && !occlusionFinished) {
-            var stats=tacz.aos.client.ScopedOcclusion.stats(animalId);
-            if(coverPhase==1)coverBaselinePixels=Math.max(coverBaselinePixels,samples);
-            if(coverPhase==2 && stats.output()>0 && stats.clipped()>0 && tacz.aos.client.ScopedOcclusion.boxCount(animalId)>baselineBoxes)
-                coverPartialPixels=Math.max(coverPartialPixels,samples);
-            if(coverPhase==3 && stats.input()>0 && stats.output()==0)coverFullPixels=samples;
-            if(coverPhase==4 && tacz.aos.client.ScopedOcclusion.boxCount(animalId)==baselineBoxes)coverRestoredPixels=Math.max(coverRestoredPixels,samples);
+        if(beforeEntities!=null) {
+            // Depth-only cover contributes to GL_SAMPLES_PASSED but never to visible entity pixels.
+            // Compare actual color output, so drawing an invisible cover wall cannot make this test pass.
+            try(var before=beforeEntities;var after=Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget())) {
+                samples=0;
+                for(int y=0;y<after.getHeight();y++)for(int x=0;x<after.getWidth();x++)
+                    if(before.getPixelRGBA(x,y)!=after.getPixelRGBA(x,y))samples++;
+            }
+            beforeEntities=null;
+            if(ticks-coverTick>=12 && ScopedRendering.drewExtra(animalId)) {
+                int boxes=tacz.aos.client.ScopedOcclusion.boxCount(animalId);
+                if(coverPhase==1){coverBaselinePixels=Math.max(coverBaselinePixels,samples);baselineBoxes=boxes;}
+                if(coverPhase==2 && boxes>baselineBoxes && samples>0 && samples<coverBaselinePixels){coverPartialPixels=Math.max(coverPartialPixels,samples);partialCoverSeen=true;}
+                if(coverPhase==3 && boxes>baselineBoxes && samples==0){coverFullPixels=0;fullCoverSeen=true;}
+                if(coverPhase==4 && boxes==baselineBoxes && samples>0){coverRestoredPixels=Math.max(coverRestoredPixels,samples);removedCoverSeen=true;}
+                if(coverPhase==5 && boxes>baselineBoxes && samples==0)logCoverSeen=true;
+                if(coverPhase==6 && boxes>baselineBoxes && samples==0)offAxisLogCoverSeen=true;
+                if(coverPhase==7 && boxes==baselineBoxes && samples>0)offAxisRestored=true;
+            }
         }
         if (queryKind == 3 && stage >= 3) blockSamples = Math.max(blockSamples, samples);
         if (queryKind == 2 && shotStarted) trailSamples = Math.max(trailSamples, samples);
@@ -131,31 +146,12 @@ public final class LongRangeClientTest {
                 tacz.aos.client.TaczClientBridge.evaluateForDisplay(mc.player),mc.player.position());
         mc.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.HIDDEN);
         if (++frames > 2400) { finish(false,"Client timed out, stage="+stage); return; }
-        mc.player.setYRot(-90); mc.player.setYHeadRot(-90); mc.player.setXRot(0);
+        float aimYaw=coverPhase==6 || coverPhase==7 ? -89.4f : -90;
+        mc.player.setYRot(aimYaw); mc.player.setYHeadRot(aimYaw); mc.player.setXRot(0);
         com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(stage >= 3 && (!shotStarted));
         IGunOperator.fromLivingEntity(mc.player).aim(stage >= 3 && (!shotStarted));
         if (shotStarted) {
             shotFrames++;
-        }
-        if(occlusionRequested && !occlusionFinished) {
-            var stats=tacz.aos.client.ScopedOcclusion.stats(animalId);
-            if(coverPhase==1 && ScopedRendering.drewExtra(animalId)) {
-                baselineBoxes=tacz.aos.client.ScopedOcclusion.boxCount(animalId);
-                if(!coverBaselineCaptured){Screenshot.grab(mc.gameDirectory,"occlusion-before-wall.png",mc.getMainRenderTarget(),ignored->{});coverBaselineCaptured=true;}
-            }
-            if(coverPhase==2 && stats.input()>0 && stats.output()>0 && stats.clipped()>0) {
-                if(!partialCoverSeen)Screenshot.grab(mc.gameDirectory,"occlusion-half-wall.png",mc.getMainRenderTarget(),ignored->{});
-                partialCoverSeen=true;
-            }
-            if(coverPhase==3 && stats.input()>0 && stats.output()==0) {
-                if(!fullCoverSeen)Screenshot.grab(mc.gameDirectory,"occlusion-full-wall.png",mc.getMainRenderTarget(),ignored->{});
-                fullCoverSeen=true;
-            }
-            if(coverPhase==4 && baselineBoxes>=0 && tacz.aos.client.ScopedOcclusion.boxCount(animalId)==baselineBoxes && ScopedRendering.drewExtra(animalId)
-                    && (stats.input()==0 || stats.output()>0)) {
-                if(!removedCoverSeen)Screenshot.grab(mc.gameDirectory,"occlusion-removed-wall.png",mc.getMainRenderTarget(),ignored->{});
-                removedCoverSeen=true;
-            }
         }
         if(stage>=3 && !net.minecraftforge.fml.ModList.get().isLoaded("voxy") && ticks-stageTick>60) {
             if(ScopedRendering.targetCount()!=0 || tacz.aos.client.VisibleTargetReporter.lastDistance>=0)
@@ -204,7 +200,7 @@ public final class LongRangeClientTest {
                     return;
                 }
                 if(!occlusionFinished) {occlusionRequested=true;return;}
-                if(!partialCoverSeen || !fullCoverSeen || !removedCoverSeen || coverBaselinePixels<=0 || coverPartialPixels<=0 || coverPartialPixels>=coverBaselinePixels || coverFullPixels!=0 || coverRestoredPixels<=0) {finish(false,"Remote cover failed: partial="+partialCoverSeen+", full="+fullCoverSeen+", removed="+removedCoverSeen+", GPU="+coverBaselinePixels+"/"+coverPartialPixels+"/"+coverFullPixels+"/"+coverRestoredPixels);return;}
+                if(!logCoverSeen || !offAxisLogCoverSeen || !offAxisRestored || !partialCoverSeen || !fullCoverSeen || !removedCoverSeen || coverBaselinePixels<=0 || coverPartialPixels<=0 || coverPartialPixels>=coverBaselinePixels || coverFullPixels!=0 || coverRestoredPixels<=0) {finish(false,"Remote cover failed: logs="+logCoverSeen+"/"+offAxisLogCoverSeen+"/"+offAxisRestored+", partial="+partialCoverSeen+", full="+fullCoverSeen+", removed="+removedCoverSeen+", GPU="+coverBaselinePixels+"/"+coverPartialPixels+"/"+coverFullPixels+"/"+coverRestoredPixels);return;}
                 if(!readyToFire) TaczArtOfSniping.LOGGER.info("RENDER_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
                 if(!readyToFire) Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
                 readyToFire = true;
@@ -288,8 +284,8 @@ public final class LongRangeClientTest {
                         for(int y=80;y<=82;y++)for(int z=5;z<=11;z++)
                             level.setBlockAndUpdate(new BlockPos(884,y,z),coverPhase==2 && y==80 ? Blocks.STONE.defaultBlockState()
                                     : coverPhase==3 ? Blocks.OAK_LEAVES.defaultBlockState().setValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT,true)
-                                    : coverPhase==4 ? Blocks.GLASS.defaultBlockState() : Blocks.AIR.defaultBlockState());
-                        if(coverPhase>=5){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT stonePartial={}, leavesHidden={}, glassVisible={}, GPU={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);}
+                                    : coverPhase==4 ? Blocks.GLASS.defaultBlockState() : coverPhase==5 || coverPhase==6 ? Blocks.OAK_LOG.defaultBlockState() : Blocks.AIR.defaultBlockState());
+                        if(coverPhase>=8){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT stonePartial={}, leavesHidden={}, glassVisible={}, logsHidden={}, offAxisLogsHidden={}, offAxisRestored={}, pixels={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);}
                     }
                 }
                 if (level.getChunkSource().getChunkNow(30,0)!=null) throw new AssertionError("Scoping loaded the flight corridor");

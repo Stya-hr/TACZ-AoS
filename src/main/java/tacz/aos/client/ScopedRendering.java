@@ -153,7 +153,7 @@ public final class ScopedRendering {
             // Dedicated buffers prevent our fog range from changing already queued vanilla entity draws.
             RenderSystem.setShaderFogStart(ServerConfig.current().maxDistance());
             RenderSystem.setShaderFogEnd(ServerConfig.current().maxDistance() + 64);
-            ScopedOcclusion.renderVegetation(event.getPoseStack(),eye);
+            ScopedOcclusion.renderDepth(event.getPoseStack(),eye);
             for (var pose : targets.values()) {
                 Entity entity = level.getEntity(pose.target.id());
                 if (entity == null || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved()
@@ -167,11 +167,9 @@ public final class ScopedRendering {
                 double x = Mth.lerp(partial, entity.xOld, entity.getX()) - eye.x;
                 double y = Mth.lerp(partial, entity.yOld, entity.getY()) - eye.y;
                 double z = Mth.lerp(partial, entity.zOld, entity.getZ()) - eye.z;
-                var clipped=ScopedOcclusion.forEntity(entity,eye,event.getPoseStack().last().pose(),buffers);
-                try {
-                    dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
-                            event.getPoseStack(), clipped==null?buffers:clipped, pose.target.light());
-                } finally {if(clipped!=null)clipped.close();}
+                if (!ScopedOcclusion.ready(entity)) continue;
+                dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
+                        event.getPoseStack(), buffers, pose.target.light());
                 extraDrawn.add(entity.getId());
             }
             buffers.endBatch();

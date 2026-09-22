@@ -166,6 +166,64 @@ public final class OcclusionGameTests {
         h.succeed();
     }
 
+    @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
+    public static void unknownOrTruncatedCoverNeverMeansVerifiedClear(GameTestHelper h) {
+        var missing=new AABB(13000000,80,13000000,13000001,82,13000001);
+        int loaded=h.getLevel().getChunkSource().getLoadedChunksCount();
+        var unknown=ScopeOcclusion.collectGeometry(h.getLevel(),new Vec3(12999980,82,13000000),missing,24,new int[]{8192},32,64);
+        h.assertTrue(!unknown.complete(),"Missing real chunks were advertised as a clear sightline");
+        var eye=h.absoluteVec(new Vec3(4,6,8.5));
+        var target=new AABB(h.absoluteVec(new Vec3(14,5,8)),h.absoluteVec(new Vec3(15,7,9)));
+        h.setBlock(new BlockPos(10,5,8),Blocks.OAK_LOG);
+        var truncated=ScopeOcclusion.collectGeometry(h.getLevel(),eye,target,12,new int[]{8192},0,64);
+        h.assertTrue(!truncated.complete(),"Network shape cap silently discarded the log wall");
+        h.assertTrue(h.getLevel().getChunkSource().getLoadedChunksCount()==loaded,"Occlusion loaded an unknown chunk");
+        h.succeed();
+    }
+
+    @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
+    public static void retainedLogCoverSurvivesAimReorderingAndGlobalBudgetPressure(GameTestHelper h) {
+        var level=h.getLevel();
+        for(int x=2;x<=18;x++)for(int y=4;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);
+        var packets=new ArrayList<ScopeOcclusionPayload>();
+        var player=new net.minecraftforge.common.util.FakePlayer(level,new com.mojang.authlib.GameProfile(UUID.randomUUID(),"cover-reader"));
+        player.connection=new net.minecraft.server.network.ServerGamePacketListenerImpl(level.getServer(),
+                new net.minecraft.network.Connection(net.minecraft.network.protocol.PacketFlow.SERVERBOUND) {
+                    @Override public void send(net.minecraft.network.protocol.Packet<?> packet) {
+                        if(packet instanceof net.minecraft.network.protocol.game.ClientboundCustomPayloadPacket p
+                                && TestPackets.decode(p) instanceof ScopeOcclusionPayload cover)packets.add(cover);
+                    }
+                },player);
+        player.setPos(h.absoluteVec(new Vec3(4,5,8.5)));
+        player.setLastSectionPos(net.minecraft.core.SectionPos.of(player)); // Server watch radius is not client terrain proof.
+        var cow=net.minecraft.world.entity.EntityType.COW.create(level);cow.setPos(h.absoluteVec(new Vec3(14,5,8.5)));
+        var unseen=net.minecraft.world.entity.EntityType.COW.create(level);unseen.setPos(h.absoluteVec(new Vec3(15,5,9)));
+        h.setBlock(new BlockPos(10,5,8),Blocks.OAK_LOG);h.setBlock(new BlockPos(10,6,8),Blocks.OAK_LOG);
+        ScopeOcclusion.clear();ScopeOcclusion.beginTick(100,Set.of(player.getUUID()));
+        ScopeOcclusion.update(player,List.of(cow));
+        var first=packets.get(packets.size()-1).targets().get(0);
+        h.assertTrue(first.complete() && !first.boxes().isEmpty(),"Real log cover was skipped based on native tracking radius");
+        // Exhaust the global budget using unrelated unknown observations; the old geometry must remain valid.
+        var pressure=new net.minecraftforge.common.util.FakePlayer(level,new com.mojang.authlib.GameProfile(UUID.randomUUID(),"cover-pressure"));
+        var distractions=new ArrayList<net.minecraft.world.entity.Entity>();
+        for(int i=0;i<32;i++) {
+            var e=net.minecraft.world.entity.EntityType.COW.create(level);e.setPos(13000000+i*128,80,13000000);
+            e.setBoundingBox(e.getBoundingBox().inflate(6));distractions.add(e);
+        }
+        ScopeOcclusion.beginTick(101,Set.of(player.getUUID(),pressure.getUUID()));
+        for(int i=0;i<4;i++)ScopeOcclusion.update(pressure,distractions);
+        player.setYRot(90);ScopeOcclusion.update(player,List.of(unseen,cow));
+        var next=packets.get(packets.size()-1).targets();
+        h.assertTrue(next.stream().anyMatch(t->t.id()==cow.getId() && t.complete() && t.boxes().equals(first.boxes())),
+                "Aim order/budget pressure cleared a still valid log mask");
+        h.assertTrue(next.stream().anyMatch(t->t.id()==unseen.getId() && !t.complete()),"Unchecked new entity became visible without cover");
+        h.setBlock(new BlockPos(10,5,8),Blocks.AIR);h.setBlock(new BlockPos(10,6,8),Blocks.AIR);
+        ScopeOcclusion.beginTick(102,Set.of(player.getUUID()));ScopeOcclusion.update(player,List.of(cow));
+        var clear=packets.get(packets.size()-1).targets().get(0);
+        h.assertTrue(clear.complete() && clear.boxes().isEmpty(),"Removing actual cover failed to publish a verified clear corridor");
+        ScopeOcclusion.clear();h.succeed();
+    }
+
     @GameTest(setupTicks=20, template="empty",batch="occlusion")
     public static void occlusionPacketRoundTripAndAllocationBounds(GameTestHelper h) {
         var payload=new ScopeOcclusionPayload(h.getLevel().dimension().location(),List.of(new ScopeOcclusionPayload.Target(42,UUID.randomUUID(),new BlockPos(900,80,8),
