@@ -52,3 +52,13 @@ gradlew runClientScopeTest -Penable_prone_compat_runtime=true -Pprone_sway_test_
 ```
 
 Client tests create isolated test worlds under `build/` and close automatically. Server GameTests reset only their dedicated `build/gametest-forge/world` directory before each run. Run baseline and optional-integration GameTests separately: third-party mods can legitimately add drops to baseline fixtures.
+
+## Remote occlusion correction
+
+Leaves use opaque whole-cell cover. Known geometric block families (slabs, stairs, doors, trapdoors, fences, walls, etc.) retain their simple shapes; other complex or unknown models use conservative whole-cell cover, including protruding geometry. Glass remains transparent.
+
+Grass, crops, and similar vegetation now send bounded block states and positions instead of being excluded from occlusion. The client renders their baked models into depth only, using the current resource pack's texture alpha and the plant's growth state. Texture holes remain visible; this does not install terrain chunks or draw replacement terrain colors. This additional channel is capped at 64 plants per target and 256 per player update, deduplicated for rendering. Existing local scan and solid-geometry budgets remain in effect; the entire flight corridor is not scanned.
+
+Budget exhaustion no longer drops the last already-scanned wall span or restores geometry hidden by previously processed occluders. Unchecked cover can still be omitted when configured budgets are exhausted.
+
+The occlusion packet format changed, so update **both server and clients** together (`forge-2` network protocol). The real Voxy client test includes GPU checks for grass and young/mature wheat texture alpha, invisible color writes, partial stone cover, full leaf cover, and transparent glass.

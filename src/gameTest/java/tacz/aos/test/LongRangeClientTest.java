@@ -56,9 +56,15 @@ public final class LongRangeClientTest {
     private static volatile boolean shotStarted;
     private static int ticks, stageTick, frames, draws;
     private static int entitySamples, trailSamples, query, queryKind, shotFrames, impactFrames;
+    private static boolean vegetationDepthChecked;
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void beforeDraw(net.minecraftforge.client.event.RenderLevelStageEvent event) {
         if (!ENABLED) return;
+        if(!vegetationDepthChecked && Minecraft.getInstance().level!=null) {
+            vegetationDepthChecked=true;
+            try { VegetationDepthClientTest.run(); }
+            catch(Throwable error) { failure="Vegetation depth test failed: "+error; }
+        }
         var stage = event.getStage();
         if (stage != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES
                 && stage != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
@@ -121,7 +127,8 @@ public final class LongRangeClientTest {
         }
         if (mc.level == null || mc.player == null) return;
 
-        if (stage>=3 && frames%40==0) TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT visual active={}, targets={}, entity={}, draws={}",ScopedRendering.active(),ScopedRendering.targetCount(),mc.level.getEntity(animalId),draws);
+        if (stage>=3 && frames%40==0) TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT visual active={}, targets={}, entity={}, draws={}, eligibility={}, pos={}",ScopedRendering.active(),ScopedRendering.targetCount(),mc.level.getEntity(animalId),draws,
+                tacz.aos.client.TaczClientBridge.evaluateForDisplay(mc.player),mc.player.position());
         mc.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.HIDDEN);
         if (++frames > 2400) { finish(false,"Client timed out, stage="+stage); return; }
         mc.player.setYRot(-90); mc.player.setYHeadRot(-90); mc.player.setXRot(0);

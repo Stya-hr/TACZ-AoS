@@ -26,17 +26,28 @@ public final class OcclusionShapes {
                 || block instanceof StainedGlassBlock || block instanceof StainedGlassPaneBlock) return List.of();
         // Leaf texture holes must not reveal entities, including leaves supplied by other mods.
         if (block instanceof LeavesBlock || state.is(BlockTags.LEAVES)) return FULL_BLOCK;
-        // Selection boxes of soft vegetation are not opaque surfaces. Inheritance/tags also cover mod crops.
-        if (block instanceof BushBlock || block instanceof GrowingPlantBlock || block instanceof VineBlock || block instanceof MultifaceBlock
-                || block instanceof SugarCaneBlock || block instanceof CocoaBlock
-                || block instanceof HangingRootsBlock || block instanceof SporeBlossomBlock
-                || state.is(BlockTags.CROPS) || state.is(BlockTags.FLOWERS) || state.is(BlockTags.SAPLINGS)
-                || block instanceof HalfTransparentBlock || block instanceof BaseFireBlock
+        // Vegetation is sent separately: the client uses its baked model and texture alpha.
+        if (textured(state) || block instanceof HalfTransparentBlock || block instanceof BaseFireBlock
                 || block instanceof LiquidBlock && state.getFluidState().is(FluidTags.WATER)
                 || block == Blocks.LIGHT || block == Blocks.STRUCTURE_VOID || block == Blocks.BARRIER) return List.of();
-        // canOcclude=false also describes opaque doors, fences and block-entity models: do not drop them.
-        // Unrecognized mod materials conservatively participate instead of guessing transparency from noOcclusion.
-        return parts(state.getShape(level, pos));
+        var shape = state.getShape(level, pos);
+        // A complex baked model can have a deceptively simple selection box (campfires, machinery, etc.).
+        // Only known geometric block families can expose the openings in that box.
+        if (block instanceof SlabBlock || block instanceof StairBlock || block instanceof DoorBlock
+                || block instanceof TrapDoorBlock || block instanceof FenceBlock || block instanceof FenceGateBlock
+                || block instanceof WallBlock || block instanceof IronBarsBlock || block instanceof SnowLayerBlock
+                || block instanceof CarpetBlock || block instanceof DirtPathBlock || block instanceof FarmBlock)
+            return parts(shape);
+        return shape.isEmpty() ? FULL_BLOCK : List.of(FULL.minmax(shape.bounds()));
+    }
+
+    public static boolean textured(BlockState state) {
+        var block = state.getBlock();
+        if (block instanceof LeavesBlock || state.is(BlockTags.LEAVES)) return false;
+        return block instanceof BushBlock || block instanceof GrowingPlantBlock || block instanceof VineBlock || block instanceof MultifaceBlock
+                || block instanceof SugarCaneBlock || block instanceof CocoaBlock
+                || block instanceof HangingRootsBlock || block instanceof SporeBlossomBlock
+                || state.is(BlockTags.CROPS) || state.is(BlockTags.FLOWERS) || state.is(BlockTags.SAPLINGS);
     }
 
     public static List<AABB> parts(VoxelShape shape) {

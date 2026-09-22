@@ -153,6 +153,7 @@ public final class ScopedRendering {
             // Dedicated buffers prevent our fog range from changing already queued vanilla entity draws.
             RenderSystem.setShaderFogStart(ServerConfig.current().maxDistance());
             RenderSystem.setShaderFogEnd(ServerConfig.current().maxDistance() + 64);
+            ScopedOcclusion.renderVegetation(event.getPoseStack(),eye);
             for (var pose : targets.values()) {
                 Entity entity = level.getEntity(pose.target.id());
                 if (entity == null || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved()

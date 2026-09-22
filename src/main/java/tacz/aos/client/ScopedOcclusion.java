@@ -33,6 +33,7 @@ public final class ScopedOcclusion {
     private static final Map<Integer,Stats> stats=new HashMap<>();
     public static Stats stats(int id){return stats.getOrDefault(id,new Stats(0,0,0));}
     public static int boxCount(int id){var t=targets.get(id);return t==null?0:t.boxes().size();}
+    public static int texturedCount(int id){var t=targets.get(id);return t==null?0:t.textured().size();}
     public static int inputPolygons(){return inputPolygons;}
     public static int outputPolygons(){return outputPolygons;}
     private ScopedOcclusion(){}
@@ -44,6 +45,9 @@ public final class ScopedOcclusion {
     public static void beginFrame() {
         stats.clear();inputPolygons=outputPolygons=0;budget=new ShadowClipper.Budget(ServerConfig.occlusion().planeTestsPerFrame());
         var mc=Minecraft.getInstance();if(level!=mc.level || level==null || level.getGameTime()-received>40){targets.clear();level=mc.level;}
+    }
+    public static void renderVegetation(com.mojang.blaze3d.vertex.PoseStack pose, Vec3 eye) {
+        if(ServerConfig.occlusion().enabled()) VegetationOcclusion.render(targets.values(),pose,eye);
     }
     public static ClippedSource forEntity(Entity entity,Vec3 camera,Matrix4f pose,MultiBufferSource source) {
         var t=targets.get(entity.getId());

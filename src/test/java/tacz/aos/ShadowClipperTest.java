@@ -32,6 +32,16 @@ class ShadowClipperTest {
         assertEquals(1,area(ShadowClipper.clip(panel(10),walls,new ShadowClipper.Budget(10000))),1e-6);
         assertEquals(4,area(ShadowClipper.clip(panel(10),walls,new ShadowClipper.Budget(0))),1e-6);
     }
+    @Test void exhaustedLaterShadowDoesNotResurrectAlreadyHiddenGeometry() {
+        var first=ShadowClipper.shadow(new OccluderBox(-2,-2,4,0,2,5));
+        var second=ShadowClipper.shadow(new OccluderBox(-1,-2,4,2,0,5));
+        var probe=new ShadowClipper.Budget(10000);
+        var initial=ShadowClipper.clip(panel(10),List.of(first),probe);
+        int used=10000-probe.remaining();
+        var result=ShadowClipper.clip(panel(10),List.of(first,second),new ShadowClipper.Budget(used));
+        assertEquals(2,area(initial),1e-6);
+        assertEquals(area(initial),area(result),1e-6,"A later budget limit restored the hidden half of the model");
+    }
     @Test void shadowHalfspacesAgreeWithIndependentRayBoxIntersection() {
         var r=new Random(51);
         for(int i=0;i<10000;i++) {

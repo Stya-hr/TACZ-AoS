@@ -39,7 +39,7 @@ public final class OcclusionGameTests {
         h.assertTrue(h.getLevel().getChunkSource().getLoadedChunksCount()==loaded,"Occlusion requested a missing chunk");h.succeed();
     }
     @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
-    public static void vegetationAndTransparentMaterialsDoNotOccludeButSolidCoverAndLeavesDo(GameTestHelper h) {
+    public static void vegetationUsesTextureChannelWhileSolidCoverAndLeavesUseBoxes(GameTestHelper h) {
         for(int x=2;x<=18;x++)for(int y=4;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);
         var eye=h.absoluteVec(new Vec3(4,6,8.5));
         var target=new AABB(h.absoluteVec(new Vec3(14,5,8)),h.absoluteVec(new Vec3(15,7,9)));
@@ -64,12 +64,35 @@ public final class OcclusionGameTests {
                 Blocks.ICE,Blocks.SLIME_BLOCK,Blocks.HONEY_BLOCK)) {
             // Test the state directly too: unsupported plants must not pass merely by breaking into air.
             h.assertTrue(OcclusionShapes.boxes(clear.defaultBlockState(),h.getLevel(),h.absolutePos(pos)).isEmpty(),
-                    "Transparent material/vegetation became cover: "+clear);
+                    "Transparent material/vegetation became a solid selection-box wall: "+clear);
             h.setBlock(pos,clear);
             h.assertTrue(ScopeOcclusion.collect(h.getLevel(),eye,target,12,new int[]{8192},32).isEmpty(),"Excluded material was sent as cover: "+clear);
         }
         h.setBlock(pos,Blocks.AIR);
         h.assertTrue(ScopeOcclusion.collect(h.getLevel(),eye,target,12,new int[]{8192},32).isEmpty(),"Air became an occluder");
+        h.succeed();
+    }
+
+    @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
+    public static void cropGrowthAndRemovalRefreshTexturedCoverWithoutLoadingChunks(GameTestHelper h) {
+        for(int x=2;x<=18;x++)for(int y=4;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);
+        var eye=h.absoluteVec(new Vec3(4,6,8.5));
+        var target=new AABB(h.absoluteVec(new Vec3(14,5,8)),h.absoluteVec(new Vec3(15,7,9)));
+        var pos=new BlockPos(10,5,8);var absolute=h.absolutePos(pos);
+        h.setBlock(pos.below(),Blocks.FARMLAND);
+        int loaded=h.getLevel().getChunkSource().getLoadedChunksCount();
+        for(int age:List.of(0,7)) {
+            h.setBlock(pos,Blocks.WHEAT.defaultBlockState().setValue(CropBlock.AGE,age));
+            var geometry=ScopeOcclusion.collectGeometry(h.getLevel(),eye,target,12,new int[]{8192},32,64);
+            h.assertTrue(geometry.plants().stream().anyMatch(p->p.pos().equals(absolute) && p.state().getValue(CropBlock.AGE)==age),
+                    "Crop state/growth stage did not reach the textured channel");
+            h.assertTrue(geometry.boxes().stream().noneMatch(b->b.minY()>=absolute.getY()),"Crop selection box blocked its transparent pixels");
+        }
+        h.setBlock(pos,Blocks.AIR);
+        h.assertTrue(ScopeOcclusion.collectGeometry(h.getLevel(),eye,target,12,new int[]{8192},32,64).plants().isEmpty(),"Removed crop retained cover");
+        h.assertTrue(!OcclusionShapes.textured(Blocks.OAK_LEAVES.defaultBlockState()),"Leaves were treated as alpha-cutout vegetation");
+        h.assertTrue(OcclusionShapes.textured(Blocks.GRASS.defaultBlockState()),"Grass was excluded");
+        h.assertTrue(h.getLevel().getChunkSource().getLoadedChunksCount()==loaded,"Plant occlusion loaded chunks");
         h.succeed();
     }
 
@@ -119,6 +142,8 @@ public final class OcclusionGameTests {
                         && contains(complex,.5,1.2,.5),"Complex model left cell holes or lost protruding geometry");
         var unknown=OcclusionShapes.parts(net.minecraft.world.phys.shapes.Shapes.empty());
         h.assertTrue(unknown.size()==1 && contains(unknown,.5,.5,.5),"Unknown empty model failed open");
+        var campfire=OcclusionShapes.boxes(Blocks.CAMPFIRE.defaultBlockState(),h.getLevel(),h.absolutePos(BlockPos.ZERO));
+        h.assertTrue(contains(campfire,.5,.9,.5),"Complex campfire model was mistaken for its short selection box");
         h.succeed();
     }
 
@@ -126,10 +151,26 @@ public final class OcclusionGameTests {
         return boxes.stream().anyMatch(b->b.contains(x,y,z));
     }
 
+    @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
+    public static void scanBudgetPreservesLastCompletedWallSpan(GameTestHelper h) {
+        for(int x=2;x<=18;x++)for(int y=4;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);
+        var eye=h.absoluteVec(new Vec3(4,6,8.5));
+        var target=new AABB(h.absoluteVec(new Vec3(14,5,8)),h.absoluteVec(new Vec3(15,7,9)));
+        for(int x=8;x<=10;x++)h.setBlock(new BlockPos(x,5,8),Blocks.OAK_LEAVES);
+        // This corridor has 15 X cells and 5 Z rows per Y layer. Stop just after X=10 in the leaf row.
+        int[] budget={7*15+9};
+        var boxes=ScopeOcclusion.collect(h.getLevel(),eye,target,12,budget,32);
+        var p=h.absolutePos(new BlockPos(8,5,8));
+        h.assertTrue(budget[0]==0 && boxes.stream().anyMatch(b->b.minX()==p.getX() && b.maxX()==p.getX()+3
+                && b.minY()==p.getY() && b.minZ()==p.getZ()),"Budget exhaustion discarded already scanned leaf cells");
+        h.succeed();
+    }
+
     @GameTest(setupTicks=20, template="empty",batch="occlusion")
     public static void occlusionPacketRoundTripAndAllocationBounds(GameTestHelper h) {
         var payload=new ScopeOcclusionPayload(h.getLevel().dimension().location(),List.of(new ScopeOcclusionPayload.Target(42,UUID.randomUUID(),new BlockPos(900,80,8),
-                List.of(new OccluderBox(-3,0,-1,-2,1,.5)))));
+                List.of(new OccluderBox(-3,0,-1,-2,1,.5)),List.of(new ScopeOcclusionPayload.Textured(new BlockPos(-2,0,0),
+                        Blocks.WHEAT.defaultBlockState().setValue(CropBlock.AGE,7))))));
         var b=new FriendlyByteBuf(Unpooled.buffer());
         try {
             ScopeOcclusionPayload.STREAM_CODEC.encode(b,payload);
@@ -140,6 +181,9 @@ public final class OcclusionGameTests {
             b.clear();b.writeResourceLocation(payload.dimension());b.writeVarInt(1);b.writeVarInt(1);b.writeUUID(UUID.randomUUID());b.writeBlockPos(BlockPos.ZERO);b.writeVarInt(33);
             bad=false;try{ScopeOcclusionPayload.STREAM_CODEC.decode(b);}catch(IllegalArgumentException e){bad=true;}
             h.assertTrue(bad,"Unbounded shape allocation accepted");
+            b.clear();b.writeResourceLocation(payload.dimension());b.writeVarInt(1);b.writeVarInt(1);b.writeUUID(UUID.randomUUID());b.writeBlockPos(BlockPos.ZERO);b.writeVarInt(0);b.writeVarInt(65);
+            bad=false;try{ScopeOcclusionPayload.STREAM_CODEC.decode(b);}catch(IllegalArgumentException e){bad=true;}
+            h.assertTrue(bad,"Unbounded textured allocation accepted");
         } finally {b.release();}
         h.succeed();
     }

@@ -47,7 +47,7 @@ public final class ShadowClipper {
         }
         return List.copyOf(planes);
     }
-    /** Fail visible when the work/fragment cap is reached; never hide an entire partly visible model as a shortcut. */
+    /** On exhaustion preserve completed shadows; only unchecked cover fails visible. */
     public static List<List<Vertex>> clip(List<Vertex> polygon,List<List<Plane>> shadows,Budget budget) {
         List<List<Vertex>> visible=List.of(polygon);
         for(var shadow:shadows) {
@@ -57,7 +57,7 @@ public final class ShadowClipper {
                 // Most primitives are entirely outside a shadow, or fully hidden, without any new vertices.
                 boolean outside=false,inside=true;
                 for(var plane:shadow) {
-                    if(!budget.take(input.size()))return List.of(polygon);
+                    if(!budget.take(input.size()))return visible;
                     double min=Double.POSITIVE_INFINITY,max=Double.NEGATIVE_INFINITY;
                     for(var v:input){double d=plane.at(v);min=Math.min(min,d);max=Math.max(max,d);}
                     if(max<-EPS){outside=true;break;}
@@ -66,7 +66,7 @@ public final class ShadowClipper {
                 if(outside){next.add(input);continue;}if(inside)continue;
                 var remainder=input;
                 for(var plane:shadow) {
-                    if(!budget.take(remainder.size()))return List.of(polygon);
+                    if(!budget.take(remainder.size()))return visible;
                     var in=new ArrayList<Vertex>();var out=new ArrayList<Vertex>();
                     for(int i=0;i<remainder.size();i++) {
                         var a=remainder.get(i);var b=remainder.get((i+1)%remainder.size());
@@ -78,7 +78,7 @@ public final class ShadowClipper {
                     if(in.size()<3)break;
                     remainder=in;
                 }
-                if(next.size()>32)return List.of(polygon);
+                if(next.size()>32)return visible;
             }
             visible=next;if(visible.isEmpty())break;
         }

@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 /** Client installation supplies the receiver; this class never links client-only Minecraft classes. */
 public final class ScopeNetworking {
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
-            new ResourceLocation("tacz_aos", "main"), () -> "forge-1", "forge-1"::equals, "forge-1"::equals);
+            new ResourceLocation("tacz_aos", "main"), () -> "forge-2", "forge-2"::equals, "forge-2"::equals);
     private static Consumer<ScopeOcclusionPayload> occlusionReceiver = ignored -> {};
     public static void setOcclusionReceiver(Consumer<ScopeOcclusionPayload> handler){occlusionReceiver=handler;}
     private static Consumer<ScopeTargetsPayload> receiver = ignored -> {};

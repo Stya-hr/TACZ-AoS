@@ -97,7 +97,8 @@ public final class ServerConfig {
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
         HUMIDITY = new HumidityConfig(builder);
-        builder.comment("Remote entity occlusion by nearby solid shapes/leaves; vegetation and glass are excluded, complex shapes use conservative cover.",
+        builder.comment("Remote occlusion: leaves cover whole cells; known simple shapes preserve openings; complex models cover whole cells.",
+                "Vegetation uses client model texture alpha; glass remains transparent. No client terrain chunks are installed.",
                 "Refresh follows scopeRendering.intervalTicks. Budget exhaustion leaves unchecked geometry visible.").push("occlusion");
         OCCLUSION_ENABLED=builder.define("enabled",true);
         OCCLUSION_RADIUS=builder.comment("Maximum length of the local sight corridor in front of each observed entity.").defineInRange("radius",24,4,32);

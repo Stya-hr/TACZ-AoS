@@ -18,6 +18,8 @@ import tacz.aos.occlusion.*;
 public final class ScopeOcclusion {
     private static final AABB FULL_BLOCK=new AABB(0,0,0,1,1,1);
     private record Sent(ScopeOcclusionPayload payload,long tick) {}
+    public record Plant(BlockPos pos, BlockState state) {}
+    public record Geometry(List<OccluderBox> boxes, List<Plant> plants) {}
     private static final Map<UUID,Sent> sent=new HashMap<>();
     private static int remaining;
     private static long tick;
@@ -28,17 +30,19 @@ public final class ScopeOcclusion {
     public static void clear(){sent.clear();remaining=0;}
     public static void update(ServerPlayer player,List<? extends Entity> targets) {
         var cfg=ServerConfig.occlusion();var entries=new ArrayList<ScopeOcclusionPayload.Target>();
-        int[] budget={Math.min(remaining,cfg.cellsPerPlayer())};int initial=budget[0],boxes=0;
+        int[] budget={Math.min(remaining,cfg.cellsPerPlayer())};int initial=budget[0],boxes=0,plants=0;
         if(cfg.enabled())for(var target:targets) {
             if(budget[0]<=0 || boxes>=cfg.boxesPerPlayer())break;
             // Native terrain already supplies exact occlusion here; do not duplicate its work.
             if(tacz.aos.scoping.NativeChunkTracking.isTracked((tacz.aos.mixin.ChunkMapAccessor)(Object)player.serverLevel().getChunkSource().chunkMap, player,target.chunkPosition().x,target.chunkPosition().z))continue;
-            var geometry=collect(player.serverLevel(),player.getEyePosition(),target.getBoundingBox(),cfg.radius(),budget,
-                    Math.min(ScopeOcclusionPayload.MAX_PER_TARGET,cfg.boxesPerPlayer()-boxes));
+            var geometry=collectGeometry(player.serverLevel(),player.getEyePosition(),target.getBoundingBox(),cfg.radius(),budget,
+                    Math.min(ScopeOcclusionPayload.MAX_PER_TARGET,cfg.boxesPerPlayer()-boxes),
+                    Math.min(ScopeOcclusionPayload.MAX_TEXTURED_PER_TARGET,ScopeOcclusionPayload.MAX_TEXTURED-plants));
             var origin=target.blockPosition();
-            if(!geometry.isEmpty())entries.add(new ScopeOcclusionPayload.Target(target.getId(),target.getUUID(),origin,
-                    geometry.stream().map(b->b.move(-origin.getX(),-origin.getY(),-origin.getZ())).toList()));
-            boxes+=geometry.size();
+            if(!geometry.boxes.isEmpty() || !geometry.plants.isEmpty())entries.add(new ScopeOcclusionPayload.Target(target.getId(),target.getUUID(),origin,
+                    geometry.boxes.stream().map(b->b.move(-origin.getX(),-origin.getY(),-origin.getZ())).toList(),
+                    geometry.plants.stream().map(p->new ScopeOcclusionPayload.Textured(p.pos.subtract(origin),p.state)).toList()));
+            boxes+=geometry.boxes.size();plants+=geometry.plants.size();
         }
         remaining-=initial-budget[0];
         var payload=new ScopeOcclusionPayload(player.level().dimension().location(),entries);var previous=sent.get(player.getUUID());
@@ -47,20 +51,32 @@ public final class ScopeOcclusion {
         }
     }
     public static List<OccluderBox> collect(ServerLevel level,Vec3 eye,AABB entity,int radius,int[] budget,int limit) {
+        return collectGeometry(level,eye,entity,radius,budget,limit,0).boxes;
+    }
+    public static Geometry collectGeometry(ServerLevel level,Vec3 eye,AABB entity,int radius,int[] budget,int limit,int plantLimit) {
         var center=entity.getCenter();var forward=eye.subtract(center).normalize();
         var end=center.add(forward.scale(Math.min(radius,eye.distanceTo(center))));
         // Thin local corridor encloses the target silhouette and nearby cover, with a motion margin.
         double pad=Math.min(4,Math.max(entity.getXsize(),Math.max(entity.getYsize(),entity.getZsize()))*.5+.75);
         var area=new AABB(center,end).inflate(pad);
-        var getter=new Resident(level);var boxes=new ArrayList<OccluderBox>();
+        var getter=new Resident(level);var boxes=new ArrayList<OccluderBox>();var plants=new ArrayList<Plant>();
+        var bounds=entity.inflate(.2);
         outer:for(int y=(int)Math.floor(area.minY);y<=Math.floor(area.maxY);y++)
             for(int z=(int)Math.floor(area.minZ);z<=Math.floor(area.maxZ);z++) {
                 int run=Integer.MIN_VALUE;int xmax=(int)Math.floor(area.maxX);
                 for(int x=(int)Math.floor(area.minX);x<=xmax+1;x++) {
                     boolean full=false;
                     if(x<=xmax) {
-                        if(budget[0]--<=0){budget[0]=0;break outer;}
+                        if(budget[0]--<=0){
+                            budget[0]=0;
+                            // Preserve the completed cells in this row even when the next cell cannot be scanned.
+                            if(run!=Integer.MIN_VALUE)boxes.add(new OccluderBox(run,y,z,x,y+1,z+1));
+                            break outer;
+                        }
                         var pos=new BlockPos(x,y,z);var state=getter.getBlockState(pos);
+                        if(plantLimit>0 && OcclusionShapes.textured(state)
+                                && intersectsShadow(new OccluderBox(x-.5,y-.5,z-.5,x+1.5,y+1.5,z+1.5),eye,bounds))
+                            plants.add(new Plant(pos,state));
                         var parts=OcclusionShapes.boxes(state,getter,pos);
                         if(parts.size()==1 && parts.get(0).equals(FULL_BLOCK))full=true;
                         else for(var a:parts)boxes.add(new OccluderBox(a.minX+x,a.minY+y,a.minZ+z,a.maxX+x,a.maxY+y,a.maxZ+z));
@@ -72,10 +88,12 @@ public final class ScopeOcclusion {
             }
         // Merge identical adjacent row spans vertically and along Z, before enforcing the network cap.
         boxes=merge(boxes,1);boxes=merge(boxes,2);
-        var bounds=entity.inflate(.2);
-        return boxes.stream().filter(b->intersectsShadow(b,eye,bounds))
+        var selectedBoxes=boxes.stream().filter(b->intersectsShadow(b,eye,bounds))
                 .sorted(Comparator.comparingDouble(b->new AABB(b.minX(),b.minY(),b.minZ(),b.maxX(),b.maxY(),b.maxZ()).distanceToSqr(center)))
                 .limit(limit).toList();
+        var selectedPlants=plants.stream().sorted(Comparator.comparingDouble(p->Vec3.atCenterOf(p.pos).distanceToSqr(center)))
+                .limit(plantLimit).toList();
+        return new Geometry(selectedBoxes,selectedPlants);
     }
     private static ArrayList<OccluderBox> merge(List<OccluderBox> source,int axis) {
         var groups=new HashMap<List<Double>,List<OccluderBox>>();
