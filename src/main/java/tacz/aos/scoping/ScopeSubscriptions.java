@@ -9,12 +9,12 @@ import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.level.LevelEvent;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.level.LevelEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.event.TickEvent;
+import tacz.aos.network.PacketDelivery;
 import tacz.aos.compat.tacz.TaczBridge;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.mixin.ChunkMapAccessor;
@@ -32,11 +32,12 @@ public final class ScopeSubscriptions {
     private long tick;
     private ScopeSubscriptions() {}
 
-    @SubscribeEvent public void tick(ServerTickEvent.Post event) {
+    @SubscribeEvent public void tick(TickEvent.ServerTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
         tick++;
         repairAttempts.values().removeIf(when -> tick-when > 100);
         ScopeRangefinder.beginTick();
-        var players = new ArrayList<>(event.getServer().getPlayerList().getPlayers());
+        var players = new ArrayList<>(net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayers());
         ScopeOcclusion.beginTick(tick,players.stream().map(ServerPlayer::getUUID).collect(java.util.stream.Collectors.toSet()));
         // Rotate priority between refresh rounds so the global activity query cap does not always favor the same players.
         if (!players.isEmpty()) Collections.rotate(players, (int) (tick / ServerConfig.current().scopeRendering().intervalTicks() % players.size()));
@@ -160,7 +161,7 @@ public final class ScopeSubscriptions {
             poses.add(new ScopeTargetsPayload.Target(target.getId(), target.getUUID(), target.getX(), target.getY(), target.getZ(),
                     target.getYRot(), target.getXRot(), target.getYHeadRot(), (target instanceof LivingEntity living ? living.yBodyRot : target.getYRot()), light, !normallyTracked(player, target, tracker)));
         }
-        PacketDistributor.sendToPlayer(player, new ScopeTargetsPayload(level.dimension().location(),
+        PacketDelivery.sendToPlayer(player, new ScopeTargetsPayload(level.dimension().location(),
                 ServerConfig.current().scopeRendering().intervalTicks(), poses));
     }
 
@@ -180,23 +181,23 @@ public final class ScopeSubscriptions {
             if (tracker==null) continue;
             if (!tracker.tacz_aos$seenBy().contains(player.connection)) { tracker.tacz_aos$updatePlayer(player); continue; }
             // Resend the native spawn/metadata/equipment bundle; do not duplicate StartTracking callbacks.
-            var packets=new ArrayList<net.minecraft.network.protocol.Packet<? super net.minecraft.network.protocol.game.ClientGamePacketListener>>();
+            var packets=new ArrayList<net.minecraft.network.protocol.Packet<net.minecraft.network.protocol.game.ClientGamePacketListener>>();
             tracker.tacz_aos$serverEntity().sendPairingData(player,
-                    new net.neoforged.neoforge.network.bundle.PacketAndPayloadAcceptor<>(packets::add));
+                    packets::add);
             player.connection.send(new net.minecraft.network.protocol.game.ClientboundBundlePacket(packets));
         }
     }
 
     private static boolean normallyTracked(ServerPlayer player, Entity entity, TrackedEntityAccessor tracker) {
-        var map = (ChunkMapAccessor) player.serverLevel().getChunkSource().chunkMap;
+        var map = (ChunkMapAccessor)(Object) player.serverLevel().getChunkSource().chunkMap;
         Vec3 offset = entity.position().subtract(player.position());
-        double range = Math.min(tracker.tacz_aos$effectiveRange(), map.tacz_aos$viewDistance(player) * 16);
+        double range = Math.min(tracker.tacz_aos$effectiveRange(), tacz.aos.scoping.NativeChunkTracking.viewDistance(map, player) * 16);
         return offset.x * offset.x + offset.z * offset.z <= range * range
-                && map.tacz_aos$isChunkTracked(player, entity.chunkPosition().x, entity.chunkPosition().z);
+                && entity.broadcastToPlayer(player);
     }
 
     public static TrackedEntityAccessor tracker(ServerLevel level, int id) {
-        return (TrackedEntityAccessor) ((ChunkMapAccessor) level.getChunkSource().chunkMap).tacz_aos$trackers().get(id);
+        return (TrackedEntityAccessor) ((ChunkMapAccessor)(Object) level.getChunkSource().chunkMap).tacz_aos$trackers().get(id);
     }
     public int count(ServerPlayer player) { var lease = leases.get(player.getUUID()); return lease == null ? 0 : lease.targets.size(); }
     @SubscribeEvent public void logout(PlayerEvent.PlayerLoggedOutEvent event) { leases.remove(event.getEntity().getUUID()); repairAttempts.remove(event.getEntity().getUUID()); }

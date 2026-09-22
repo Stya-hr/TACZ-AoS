@@ -13,8 +13,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.ModifyArgs;
-import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import tacz.aos.client.ScopeRangeHud;
 
 /** Observe the center of the very circle TACZ draws. No changes to stencil, vertices or rendering state. */
@@ -26,7 +26,7 @@ public abstract class ScopeRangeLensMixin {
     @Unique private ScopeRangeHud.LensVertices tacz_aos$vertices;
 
     @Redirect(method = "renderTempPart", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;getBuffer(Lnet/minecraft/client/renderer/RenderType;)Lcom/mojang/blaze3d/vertex/VertexConsumer;"))
+            target = "Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;getBuffer(Lnet/minecraft/client/renderer/RenderType;)Lcom/mojang/blaze3d/vertex/VertexConsumer;", remap = true))
     private com.mojang.blaze3d.vertex.VertexConsumer tacz_aos$observeMesh(net.minecraft.client.renderer.MultiBufferSource.BufferSource buffers,
             RenderType requested, PoseStack stack, ItemDisplayContext context, RenderType type, int light, int overlay,
             java.util.List<com.tacz.guns.client.model.bedrock.BedrockPart> path) {
@@ -41,7 +41,7 @@ public abstract class ScopeRangeLensMixin {
         if (mc.player == null || !context.firstPerson() || !opticalMesh
                 || !tacz.aos.client.TaczClientBridge.usesOpticalView(mc.player)) return original;
         float progress = IClientPlayerGunOperator.fromLocalPlayer(mc.player)
-                .getClientAimingProgress(mc.getTimer().getGameTimeDeltaPartialTick(false));
+                .getClientAimingProgress(mc.getFrameTime());
         if (progress < .98f) return original;
         return tacz_aos$vertices = new ScopeRangeHud.LensVertices(original);
     }
@@ -52,16 +52,21 @@ public abstract class ScopeRangeLensMixin {
         if (tacz_aos$vertices != null) { tacz_aos$vertices.finish(); tacz_aos$vertices = null; }
     }
 
-    @ModifyArgs(method = "renderOcularAndDivision", at = @At(value = "INVOKE",
-            target = "Lcom/mojang/blaze3d/vertex/BufferBuilder;addVertex(Lcom/mojang/blaze3d/vertex/PoseStack$Pose;FFF)Lcom/mojang/blaze3d/vertex/VertexConsumer;",
-            ordinal = 0))
-    private void tacz_aos$captureLens(Args args, PoseStack stack, ItemDisplayContext context, RenderType type,
+    @WrapOperation(method = "renderOcularAndDivision", at = @At(value = "INVOKE",
+            target = "Lcom/mojang/blaze3d/vertex/BufferBuilder;vertex(DDD)Lcom/mojang/blaze3d/vertex/VertexConsumer;",
+            ordinal = 0, remap = true))
+    private com.mojang.blaze3d.vertex.VertexConsumer tacz_aos$captureLens(
+                                    com.mojang.blaze3d.vertex.BufferBuilder buffer, double x, double y, double z,
+                                    Operation<com.mojang.blaze3d.vertex.VertexConsumer> original,
+                                    PoseStack stack, ItemDisplayContext context, RenderType type,
                                     int light, int overlay, boolean sightsOnly) {
         var mc = Minecraft.getInstance();
-        if (mc.player == null || !context.firstPerson()) return;
+        if (mc.player == null || !context.firstPerson()) return original.call(buffer, x, y, z);
         float progress = IClientPlayerGunOperator.fromLocalPlayer(mc.player)
-                .getClientAimingProgress(mc.getTimer().getGameTimeDeltaPartialTick(false));
-        if (progress < .98f) return;
-        ScopeRangeHud.capture(args.get(0), args.get(1), args.get(2), args.get(3), 80f * scopeViewRadiusModifier * progress);
+                .getClientAimingProgress(mc.getFrameTime());
+        if (progress < .98f) return original.call(buffer, x, y, z);
+        // Forge TACZ draws this mask directly in view space, without the weapon PoseStack.
+        ScopeRangeHud.capture(new PoseStack().last(), (float)x, (float)y, (float)z, 80f * scopeViewRadiusModifier * progress);
+        return original.call(buffer, x, y, z);
     }
 }

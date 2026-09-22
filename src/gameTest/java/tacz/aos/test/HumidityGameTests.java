@@ -7,8 +7,8 @@ import com.tacz.guns.entity.EntityKineticBullet;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.compat.tacz.*;
 import tacz.aos.config.ServerConfig;
@@ -26,7 +26,7 @@ public final class HumidityGameTests {
         return new HumiditySettings(true, false, 0, 4000, 0, 5, 99, 50, d.densityCoefficient(),
                 d.distribution(), List.of(new HumiditySettings.Phase(0, 24000, rh)), weather, weather, weather);
     }
-    @GameTest(template = "ballistics", batch = "humidity")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "humidity")
     public static void actualAndPredictedTrajectoriesUseSameMoistureAndFixedGravity(GameTestHelper helper) throws Exception {
         var oldH = ServerConfig.humidity(); var oldW = ServerConfig.wind();
         var h = ServerConfig.class.getDeclaredField("humidity"); h.setAccessible(true);

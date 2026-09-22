@@ -4,8 +4,7 @@ import com.tacz.guns.entity.EntityKineticBullet;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.event.EventHooks;
-import net.neoforged.neoforge.network.PacketDistributor;
+import tacz.aos.network.PacketDelivery;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.compat.tacz.TaczBridge.ShotContext;
 import tacz.aos.config.ServerConfig;
@@ -73,7 +72,7 @@ public final class LocalBallistics {
         if (active.size() + pending.size() >= limits.maxActiveBullets()) return Admission.CAPACITY;
         pending.add(new Flight(bullet, context, limits));
         tacz.aos.trails.DelayedGunshots.INSTANCE.accepted(level, context.shooterId(),
-                net.minecraft.resources.ResourceLocation.parse(context.eligibilityAtFire().gunId()));
+                new net.minecraft.resources.ResourceLocation(context.eligibilityAtFire().gunId()));
         accepted++;
         return Admission.ACCEPTED;
     }
@@ -104,7 +103,7 @@ public final class LocalBallistics {
                 }
             }
         }
-        visuals.forEach((viewer, segments) -> PacketDistributor.sendToPlayer(viewer.player(),
+        visuals.forEach((viewer, segments) -> PacketDelivery.sendToPlayer(viewer.player(),
                 new ShotTrailsPayload(level.dimension().location(), viewer.localOnly(), segments)));
     }
 
@@ -122,17 +121,17 @@ public final class LocalBallistics {
         } catch (IllegalArgumentException ignored) { return; }
         var shooter = level.getServer().getPlayerList().getPlayer(flight.context.shooterId());
         if (shooter != null && shooter.serverLevel() == level) append(batches, new Viewer(shooter, false), List.of(segment));
-        var map = (tacz.aos.mixin.ChunkMapAccessor) level.getChunkSource().chunkMap;
+        var map = (tacz.aos.mixin.ChunkMapAccessor)(Object) level.getChunkSource().chunkMap;
         for (var observer : level.players()) {
             if (observer.getUUID().equals(flight.context.shooterId()) || !observer.isAlive() || observer.isSpectator()) continue;
             // Cheap rejection before visiting chunk columns; tracking membership never requests chunks.
-            double radius = (map.tacz_aos$viewDistance(observer) + 2) * 16.0;
+            double radius = (tacz.aos.scoping.NativeChunkTracking.viewDistance(map, observer) + 2) * 16.0;
             if (observer.getX() < Math.min(a.x,b.x)-radius || observer.getX() > Math.max(a.x,b.x)+radius
                     || observer.getZ() < Math.min(a.z,b.z)-radius || observer.getZ() > Math.max(a.z,b.z)+radius) continue;
             var viewer = new Viewer(observer, true);
             if (!batches.containsKey(viewer) || batches.get(viewer).size() < ShotTrailsPayload.MAX_SEGMENTS) {
                 append(batches, viewer, tacz.aos.trails.TrailAudience.clip(segment,
-                        (x,z) -> map.tacz_aos$isChunkTracked(observer, x, z)));
+                        (x,z) -> tacz.aos.scoping.NativeChunkTracking.isTracked(map, observer, x, z)));
             }
             if (flight.heardBy.contains(observer.getUUID())) continue;
             // A direct hit has its own TACZ feedback. Use the real, collision-truncated segment only.
@@ -141,9 +140,9 @@ public final class LocalBallistics {
             }
             var ear = observer.getEyePosition();
             var pass = tacz.aos.trails.TrailAudience.nearMiss(segment, ear.x, ear.y, ear.z);
-            if (pass != null && map.tacz_aos$isChunkTracked(observer, (int)Math.floor(pass.x()/16), (int)Math.floor(pass.z()/16))) {
+            if (pass != null && tacz.aos.scoping.NativeChunkTracking.isTracked(map, observer, (int)Math.floor(pass.x()/16), (int)Math.floor(pass.z()/16))) {
                 flight.heardBy.add(observer.getUUID());
-                PacketDistributor.sendToPlayer(observer, new tacz.aos.network.NearMissPayload(
+                PacketDelivery.sendToPlayer(observer, new tacz.aos.network.NearMissPayload(
                         level.dimension().location(), pass.x(), pass.y(), pass.z(), pass.volume()));
             }
         }
@@ -175,10 +174,9 @@ public final class LocalBallistics {
             return stop(bullet, "owner_unavailable");
         }
         if (flight.ticks++ >= flight.limits.maxFlightTicks()) return stop(bullet, "timeout");
-        // Mirror ServerLevel.tickNonPassenger, including NeoForge tick cancellation.
+        // Mirror ServerLevel.tickNonPassenger, using the Forge 1.20.1 entity lifecycle.
         bullet.setOldPosAndRot();
         bullet.tickCount++;
-        if (EventHooks.fireEntityTickPre(bullet).isCanceled()) return null;
         if (bullet.isRemoved()) return "removed_by_tick_event";
         if (!plainKinetic(bullet)) return stop(bullet, "unsupported_ammunition_changed");
         flight.visualStart = bullet.position();
@@ -186,7 +184,6 @@ public final class LocalBallistics {
         var step = ScopedDeathMessages.duringShot(bullet, () -> TargetBallistics.tick(level, bullet,
                 flight.limits.maxDistance()-flight.traveled, new TargetCollisionSource(level,flight.lease.bounds())));
         flight.visualEnd=bullet.position();
-        EventHooks.fireEntityTickPost(bullet);
         flight.traveled+=step.distance();
         if ("RANGE_LIMIT".equals(step.termination())) rangeLimited++;
         if (step.termination() != null) return step.termination();

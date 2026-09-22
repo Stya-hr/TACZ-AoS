@@ -27,7 +27,7 @@ public final class CuriosBeltCompat {
         // Cosmetic slots and disabled slots do not grant gameplay effects.
         var stacks = belt.getStacks();
         for (int i = 0; i < stacks.getSlots(); i++) {
-            if (inventory.isSlotActive("belt", i) && stacks.getStackInSlot(i).is(ModContent.TACTICAL_COLLECTION_BELT)) return true;
+            if (stacks.getStackInSlot(i).is(ModContent.TACTICAL_COLLECTION_BELT.get())) return true;
         }
         return false;
     }

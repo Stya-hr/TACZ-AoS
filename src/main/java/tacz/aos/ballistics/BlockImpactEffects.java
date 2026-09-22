@@ -47,9 +47,9 @@ public final class BlockImpactEffects {
         var p = hit.getLocation(); var block = hit.getBlockPos();
         var option = new BulletHoleOption(hit.getDirection(), block, bullet.getAmmoId().toString(),
                 bullet.getGunId().toString(), bullet.getGunDisplayId().toString());
-        var map = (ChunkMapAccessor) level.getChunkSource().chunkMap;
+        var map = (ChunkMapAccessor)(Object) level.getChunkSource().chunkMap;
         for (var player : level.players()) {
-            if (player.distanceToSqr(p) <= 32 * 32 && map.tacz_aos$isChunkTracked(player, block.getX() >> 4, block.getZ() >> 4))
+            if (player.distanceToSqr(p) <= 32 * 32 && tacz.aos.scoping.NativeChunkTracking.isTracked(map, player, block.getX() >> 4, block.getZ() >> 4))
                 level.sendParticles(player, option, false, p.x, p.y, p.z, 1, 0, 0, 0, 0);
         }
     }

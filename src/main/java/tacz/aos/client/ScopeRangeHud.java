@@ -5,12 +5,12 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.client.event.RenderGuiEvent;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import tacz.aos.TaczArtOfSniping;
@@ -39,7 +39,7 @@ public final class ScopeRangeHud {
     private static final int[][] BARS = {{1,0,6,1},{6,1,7,6},{6,7,7,12},{1,12,6,13},{0,7,1,12},{0,1,1,6},{1,6,6,7}};
     private ScopeRangeHud() {}
 
-    @SubscribeEvent public static void setup(FMLClientSetupEvent event) {
+    public static void setup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> ScopeNetworking.setRangeReceiver(value -> {
             var mc = Minecraft.getInstance();
             if (mc.level == null || mc.player == null || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()
@@ -50,7 +50,8 @@ public final class ScopeRangeHud {
     @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
         sample = null; sampleLevel = null; lensTime = 0;
     }
-    @SubscribeEvent public static void tick(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
+    @SubscribeEvent public static void tick(net.minecraftforge.event.TickEvent.ClientTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
         var player = Minecraft.getInstance().player;
         if (player == null || !TaczClientBridge.evaluateForDisplay(player).eligible()) {
             sample = null; sampleLevel = null; lensTime = 0; maskTime = 0;
@@ -95,7 +96,7 @@ public final class ScopeRangeHud {
         if (mc.player == null || !mc.options.getCameraType().isFirstPerson()
                 || !TaczClientBridge.usesOpticalView(mc.player)) return;
         var matrix = new Matrix4f(RenderSystem.getProjectionMatrix()).mul(RenderSystem.getModelViewMatrix()).mul(pose.pose());
-        Vector4f center = matrix.transform(new Vector4f(x, y, z, 1));
+        Vector4f center = matrix.transform(new Vector4f((float)x, (float)y, (float)z, 1));
         Vector4f right = matrix.transform(new Vector4f(x + modelRadius, y, z, 1));
         Vector4f top = matrix.transform(new Vector4f(x, y + modelRadius, z, 1));
         if (center.w <= 0 || right.w <= 0 || top.w <= 0) return;
@@ -113,10 +114,10 @@ public final class ScopeRangeHud {
         private double minX = Double.POSITIVE_INFINITY, minY = minX, maxX = -minX, maxY = -minX;
         private int vertices;
         public LensVertices(VertexConsumer delegate) { this.delegate = delegate; }
-        public VertexConsumer addVertex(float x, float y, float z) {
-            delegate.addVertex(x, y, z);
+        public VertexConsumer vertex(double x, double y, double z) {
+            delegate.vertex(x, y, z);
             if (++vertices <= 2048) {
-                var p = projection.transform(new Vector4f(x, y, z, 1));
+                var p = projection.transform(new Vector4f((float)x, (float)y, (float)z, 1));
                 if (p.w > 0) {
                     var window = Minecraft.getInstance().getWindow();
                     double sx = (p.x / p.w + 1) * window.getGuiScaledWidth() / 2;
@@ -127,11 +128,14 @@ public final class ScopeRangeHud {
             }
             return this;
         }
-        public VertexConsumer setColor(int r, int g, int b, int a) { delegate.setColor(r,g,b,a); return this; }
-        public VertexConsumer setUv(float u, float v) { delegate.setUv(u,v); return this; }
-        public VertexConsumer setUv1(int u, int v) { delegate.setUv1(u,v); return this; }
-        public VertexConsumer setUv2(int u, int v) { delegate.setUv2(u,v); return this; }
-        public VertexConsumer setNormal(float x, float y, float z) { delegate.setNormal(x,y,z); return this; }
+        public VertexConsumer color(int r, int g, int b, int a) { delegate.color(r,g,b,a); return this; }
+        public VertexConsumer uv(float u, float v) { delegate.uv(u,v); return this; }
+        public VertexConsumer overlayCoords(int u, int v) { delegate.overlayCoords(u,v); return this; }
+        public VertexConsumer uv2(int u, int v) { delegate.uv2(u,v); return this; }
+        public VertexConsumer normal(float x, float y, float z) { delegate.normal(x,y,z); return this; }
+        public void endVertex() { delegate.endVertex(); }
+        public void defaultColor(int r,int g,int b,int a) { delegate.defaultColor(r,g,b,a); }
+        public void unsetDefaultColor() { delegate.unsetDefaultColor(); }
         public void finish() {
             if (vertices < 3 || vertices > 2048 || !Double.isFinite(minX + minY + maxX + maxY)) return;
             cx = (minX + maxX) / 2; cy = (minY + maxY) / 2;
@@ -172,7 +176,7 @@ public final class ScopeRangeHud {
             shownHumidityTenths = humidityTenths;
             shownHumidity = humidityTenths < 0 ? "---" : String.format(Locale.ROOT, "%.1f", humidityTenths / 10.0);
         }
-        double height = Math.clamp(r * .048, 4.5, 6.5);
+        double height = net.minecraft.util.Mth.clamp(r * .048, 4.5, 6.5);
         double units = number.length() * 8 + 4 + mc.font.width("blocks");
         if (showWind) units = Math.max(units, shownWind.length() * 8 + 4 + mc.font.width("block/s") + 18);
         if (showHumidity) units = Math.max(units, shownHumidity.length() * 8 + 4 + mc.font.width("% RH"));

@@ -9,8 +9,8 @@ import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.ballistics.TargetCollisionSource;
 import tacz.aos.ballistics.SegmentTrace;
@@ -25,7 +25,7 @@ import java.util.List;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class RangefinderCollisionGameTests {
-    @GameTest(template = "ballistics", batch = "rangefinder_collision")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "rangefinder_collision")
     public static void nearbyInstrumentDoesNotChangeThePlayersRangeRay(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var player = fixture.player;
@@ -65,7 +65,7 @@ public final class RangefinderCollisionGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "rangefinder_collision")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "rangefinder_collision")
     public static void allInstrumentStatesHaveExactStaticGeometry(GameTestHelper helper) {
         var block = ModContent.RANGEFINDER.get();
         var level = helper.getLevel();

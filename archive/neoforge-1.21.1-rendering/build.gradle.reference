@@ -1,0 +1,277 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.143'
+    id 'idea'
+}
+
+version = mod_version
+group = mod_group_id
+base { archivesName = "${mod_id}-neoforge-${minecraft_version}" }
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+tasks.named('wrapper', Wrapper).configure {
+    distributionType = Wrapper.DistributionType.BIN
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
+    }
+}
+
+sourceSets.main.resources {
+    srcDir 'src/generated/resources'
+    exclude '**/*.bbmodel', '**/.cache/**'
+}
+
+// Kept out of the published JAR; included only in development runs.
+sourceSets {
+    gameTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+configurations.gameTestImplementation.extendsFrom configurations.implementation
+tasks.named('processGameTestResources', ProcessResources).configure {
+    from('src/gameTest/resources/data/tacz_aos/structure/ballistics.nbt') {
+        into 'data/tacz_aos_lootcompat/structure'
+    }
+}
+
+neoForge {
+    version = project.neo_version
+    addModdingDependenciesTo sourceSets.gameTest
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+    runs {
+        client { client() }
+        demoServer {
+            server()
+            gameDirectory = file('build/pvp-demo/server')
+            systemProperty 'tacz_aos.demo', 'server'
+            programArgument '--nogui'
+        }
+        demoShooter {
+            client()
+            gameDirectory = file('build/pvp-demo/shooter')
+            systemProperty 'tacz_aos.demo', 'shooter'
+            programArguments.addAll '--username', 'AoS_Shooter', '--width', '960', '--height', '540', '--mixin.config', 'tacz_aos.recording.mixins.json'
+        }
+        demoTarget {
+            client()
+            gameDirectory = file('build/pvp-demo/target')
+            systemProperty 'tacz_aos.demo', 'target'
+            programArguments.addAll '--username', 'AoS_Target', '--width', '960', '--height', '540', '--mixin.config', 'tacz_aos.recording.mixins.json'
+        }
+        clientScopeTest {
+            client()
+            gameDirectory = file('build/client-scope-test')
+            systemProperty 'tacz_aos.clientScopeTest', 'true'
+            systemProperty 'tacz_aos.proneSwayOnly', providers.gradleProperty('prone_sway_test_only').orElse('false').get()
+            systemProperty 'tacz_aos.environmentHudOnly', providers.gradleProperty('environment_hud_test_only').orElse('false').get()
+            programArguments.addAll '--width', '960', '--height', '540'
+        }
+        clientLongRangeTest {
+            client()
+            gameDirectory = file('build/client-long-range-test')
+            systemProperty 'tacz_aos.longRangeTest', 'true'
+            programArguments.addAll '--width', '960', '--height', '540'
+        }
+        server {
+            server()
+            programArgument '--nogui'
+        }
+        gameTestServer {
+            type = 'gameTestServer'
+            gameDirectory = file('build/gametest')
+        }
+        data {
+            data()
+            programArguments.addAll '--mod', project.mod_id, '--all', '--output',
+                    file('src/generated/resources/').getAbsolutePath(), '--existing',
+                    file('src/main/resources/').getAbsolutePath()
+        }
+        configureEach {
+            systemProperty 'neoforge.enabledGameTestNamespaces', providers.gradleProperty('gametest_namespaces').orElse(project.mod_id).get()
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.DEBUG
+        }
+    }
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+            sourceSet(sourceSets.gameTest)
+        }
+    }
+}
+
+// Development-only runtime dependencies are not published to consumers.
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+    taczBundledApi { transitive = false }
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'com.google.code.gson:gson:2.11.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    implementation "maven.modrinth:tacz-1.21.1:${tacz_version}"
+    taczBundledApi "maven.modrinth:tacz-1.21.1:${tacz_version}"
+    compileOnly files("libs/${voxy_jar}")
+    compileOnly files('libs/iris-neoforge-1.8.14-beta.1+mc1.21.1.jar')
+    compileOnly files('libs/curios-neoforge-9.5.1+1.21.1.jar')
+    // APIs for upcoming loot integrations; no runtime or transitive mod dependencies.
+    compileOnly("maven.modrinth:lightmans-currency:${lightmans_currency_version}") { transitive = false }
+    compileOnly("maven.modrinth:collectors-album:${collectors_album_version}") { transitive = false }
+    compileOnly("maven.modrinth:champions-unofficial:${champions_unofficial_version}") { transitive = false }
+    compileOnly("maven.modrinth:touhou-little-maid:${touhou_little_maid_version}") { transitive = false }
+    gameTestCompileOnly("maven.modrinth:touhou-little-maid:${touhou_little_maid_version}") { transitive = false }
+    if (providers.gradleProperty('enable_maid_compat_runtime').orElse('false').get().toBoolean()) {
+        localRuntime("maven.modrinth:touhou-little-maid:${touhou_little_maid_version}") { transitive = false }
+    }
+    // Explicitly opt in only when testing the real loot producers and their required libraries.
+    if (providers.gradleProperty('enable_loot_compat_runtime').orElse('false').get().toBoolean()) {
+        localRuntime("maven.modrinth:lightmans-currency:${lightmans_currency_version}") { transitive = false }
+        localRuntime("maven.modrinth:collectors-album:${collectors_album_version}") { transitive = false }
+        localRuntime("maven.modrinth:champions-unofficial:${champions_unofficial_version}") { transitive = false }
+        localRuntime('maven.modrinth:configuration:6Mztfq1u') { transitive = false }
+        localRuntime('maven.modrinth:architectury-api:1IiqEQGl') { transitive = false }
+    }
+    gameTestCompileOnly files('libs/curios-neoforge-9.5.1+1.21.1.jar')
+    if (providers.gradleProperty('curios_test_jar').isPresent()) {
+        def curiosJar = file("libs/${providers.gradleProperty('curios_test_jar').get()}")
+        if (!curiosJar.isFile()) throw new GradleException("Missing Curios test JAR: ${curiosJar}")
+        localRuntime files(curiosJar)
+    }
+    // Optional integration uses cached reflection; selecting a local JAR is only for compatibility tests.
+    if (providers.gradleProperty('parcool_test_jar').isPresent()) {
+        def parcoolJar = file("libs/${providers.gradleProperty('parcool_test_jar').get()}")
+        if (!parcoolJar.isFile()) throw new GradleException("Missing ParCool test JAR: ${parcoolJar}")
+        localRuntime files(parcoolJar)
+        if (providers.gradleProperty('parcool_test_curios_jar').isPresent()) {
+            def curiosJar = file("libs/${providers.gradleProperty('parcool_test_curios_jar').get()}")
+            if (!curiosJar.isFile()) throw new GradleException("Missing Curios test JAR: ${curiosJar}")
+            localRuntime files(curiosJar)
+        }
+    }
+    if (providers.gradleProperty('crawlondemand_test_jar').isPresent()) {
+        def crawlJar = file("libs/${providers.gradleProperty('crawlondemand_test_jar').get()}")
+        if (!crawlJar.isFile()) throw new GradleException("Missing Crawl on Demand test JAR: ${crawlJar}")
+        localRuntime files(crawlJar)
+    }
+    // NeoVoxy also requires Sodium on the client; see libs/README.md.
+    if (providers.gradleProperty('enable_voxy_runtime').get().toBoolean()) {
+        if (!file("libs/${voxy_jar}").isFile()) {
+            throw new GradleException("Missing libs/${voxy_jar}; see libs/README.md before enabling NeoVoxy.")
+        }
+        localRuntime files("libs/${voxy_jar}")
+    }
+}
+
+// TACZ ships its Lua API as nested jars. Compile against exactly those versions; TACZ supplies runtime classes.
+def extractTaczLuaApi = tasks.register('extractTaczLuaApi', Sync) {
+    from(zipTree(configurations.taczBundledApi.singleFile)) { include 'META-INF/jarjar/luaj-*.jar' }
+    into layout.buildDirectory.dir('tacz-lua-api')
+}
+dependencies {
+    compileOnly files(fileTree(layout.buildDirectory.dir('tacz-lua-api')) { include '**/*.jar' }).builtBy(extractTaczLuaApi)
+    gameTestCompileOnly files(fileTree(layout.buildDirectory.dir('tacz-lua-api')) { include '**/*.jar' }).builtBy(extractTaczLuaApi)
+}
+
+tasks.named('test', Test).configure { useJUnitPlatform() }
+
+tasks.named('jar', Jar).configure {
+    from('LICENSE', 'TEMPLATE_LICENSE.txt')
+}
+
+tasks.named('runClientScopeTest').configure {
+    def result = layout.projectDirectory.file('build/client-scope-test/scope-result.txt').asFile
+    doFirst {
+        result.parentFile.mkdirs()
+        result.text = 'RUNNING'
+    }
+    doLast {
+        if (result.text.trim() != 'PASS') {
+            throw new GradleException('Client scope integration did not report PASS; inspect build/client-scope-test/logs/latest.log')
+        }
+    }
+}
+
+var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    var replaceProperties = [
+            minecraft_version_range: minecraft_version_range,
+            neo_version: neo_version,
+            loader_version_range: loader_version_range,
+            mod_id: mod_id,
+            mod_name: mod_name,
+            mod_license: mod_license,
+            mod_version: mod_version,
+            tacz_version_range: tacz_version_range,
+            voxy_version_range: voxy_version_range,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into 'build/generated/sources/modMetadata'
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) { from components.java }
+    }
+    repositories {
+        maven { url = layout.projectDirectory.dir('repo').asFile.toURI() }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+
+
+tasks.named('runClientLongRangeTest').configure {
+    def result = layout.projectDirectory.file('build/client-long-range-test/result.txt').asFile
+    doFirst {
+        result.parentFile.mkdirs(); result.text = 'RUNNING'
+
+    }
+    doLast {
+        if (result.text.trim() != 'PASS') throw new GradleException('Long range client test did not pass; inspect build/client-long-range-test/logs/latest.log')
+    }
+}
+
+// Stage optional client loaders from mods/ so their nested libraries are discovered by NeoForge.
+// Only these generated filenames are removed when a test is run without the corresponding loader.
+['runClientScopeTest': 'build/client-scope-test',
+ 'runClientLongRangeTest': 'build/client-long-range-test'].each { taskName, directory ->
+    tasks.named(taskName).configure {
+        def withIris = providers.gradleProperty('enable_iris_runtime').orElse('false').get().toBoolean()
+        def withVoxy = providers.gradleProperty('enable_voxy_runtime').get().toBoolean()
+        def runtimeDirectory = layout.projectDirectory.dir(directory).asFile
+        def sodium = layout.projectDirectory.file('libs/sodium-neoforge-0.8.13+mc1.21.1.jar').asFile
+        def iris = layout.projectDirectory.file('libs/iris-neoforge-1.8.14-beta.1+mc1.21.1.jar').asFile
+        doFirst {
+            [[sodium, withIris || withVoxy, 'tacz_aos-test-sodium.jar'],
+             [iris, withIris, 'tacz_aos-test-iris.jar']].each { entry ->
+                def target = new File(runtimeDirectory, 'mods/' + entry[2])
+                if (entry[1]) {
+                    if (!entry[0].isFile()) throw new GradleException('Missing optional runtime ' + entry[0])
+                    target.parentFile.mkdirs()
+                    java.nio.file.Files.copy(entry[0].toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                } else java.nio.file.Files.deleteIfExists(target.toPath())
+            }
+        }
+    }
+}

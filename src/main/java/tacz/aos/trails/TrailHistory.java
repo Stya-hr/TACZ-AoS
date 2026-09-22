@@ -27,7 +27,7 @@ public final class TrailHistory {
         if (segment.step() == track.step && track.samples.stream().anyMatch(s -> s.segment().equals(segment))) return;
         // Multiple clipped runs may share a tick; they stay disjoint and share the interpolation time.
         // About one tick of interpolation; never extrapolate beyond a confirmed endpoint.
-        double start = track.samples.isEmpty() ? now : Math.clamp(track.start + segment.step() - track.step, now - 1, now + 1);
+        double start = track.samples.isEmpty() ? now : net.minecraft.util.Mth.clamp(track.start + segment.step() - track.step, now - 1, now + 1);
         // A confirmed stop may finish its last interpolation, but cannot queue another future tick.
         if (segment.terminal()) start = Math.min(start, now);
         boolean stationary = segment.x0() == segment.x1() && segment.y0() == segment.y1() && segment.z0() == segment.z1();

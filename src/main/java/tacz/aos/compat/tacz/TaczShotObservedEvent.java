@@ -1,7 +1,7 @@
 package tacz.aos.compat.tacz;
 
 import com.tacz.guns.entity.EntityKineticBullet;
-import net.neoforged.bus.api.Event;
+import net.minecraftforge.eventbus.api.Event;
 
 /** Server-only observation hook. Does not consume ammunition, cancel spawning or apply damage. */
 public final class TaczShotObservedEvent extends Event {

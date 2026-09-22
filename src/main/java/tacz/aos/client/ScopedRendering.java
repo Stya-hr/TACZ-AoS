@@ -1,22 +1,22 @@
 package tacz.aos.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.client.event.RenderLevelStageEvent;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.network.ScopeNetworking;
@@ -40,10 +40,10 @@ public final class ScopedRendering {
     private static boolean active;
     private static double zoom;
     private static final Set<Integer> extraDrawn = new HashSet<>();
-    private static ByteBufferBuilder byteBuffer;
+    private static BufferBuilder byteBuffer;
     private static MultiBufferSource.BufferSource buffers;
 
-    @SubscribeEvent public static void setup(FMLClientSetupEvent event) {
+    public static void setup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
             ScopeNetworking.setClientReceiver(ScopedRendering::receive);
         });
@@ -79,7 +79,8 @@ public final class ScopedRendering {
         return !active && pose != null && pose.target.extra() && pose.target.uuid().equals(entity.getUUID());
     }
 
-    @SubscribeEvent public static void tick(ClientTickEvent.Post event) {
+    @SubscribeEvent public static void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
         tick++;
         var minecraft = Minecraft.getInstance();
         if (minecraft.level != level) { targets.clear(); missing.clear(); nextRepair=0; level = minecraft.level; }
@@ -97,7 +98,7 @@ public final class ScopedRendering {
                     || entity.isRemoved() || entity.isAlwaysTicking() || hasRealClientChunk(entity)) continue;
             // Client entities outside received chunks do not tick, so native lerpTo alone would leave them frozen.
             // Advance only visual pose/animation, never Mob.tick/baseTick/AI or world collision.
-            double alpha = Math.clamp((double) (tick - pose.received) / interval, 0, 1);
+            double alpha = net.minecraft.util.Mth.clamp((double) (tick - pose.received) / interval, 0, 1);
             entity.setOldPosAndRot();
             entity.setPos(pose.from.lerp(new Vec3(pose.target.x(), pose.target.y(), pose.target.z()), alpha));
             entity.setYRot(Mth.rotLerp((float) alpha, pose.fromYaw, pose.target.yaw()));
@@ -127,14 +128,14 @@ public final class ScopedRendering {
         }
         missing.keySet().retainAll(absent);
         if (!request.isEmpty()) {
-            net.neoforged.neoforge.network.PacketDistributor.sendToServer(new tacz.aos.network.ScopeEntityRepairPayload(level.dimension().location(),request));
+            tacz.aos.network.PacketDelivery.sendToServer(new tacz.aos.network.ScopeEntityRepairPayload(level.dimension().location(),request));
             nextRepair=tick+tacz.aos.network.ScopeEntityRepairPayload.INTERVAL_TICKS;
             for (var key:request) missing.put(key,tick);
         }
     }
 
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES || ShaderCompat.shadowPass()) return;
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES) return;
         extraDrawn.clear();
         ScopedOcclusion.beginFrame();
         if (!active || level == null) return;
@@ -145,9 +146,9 @@ public final class ScopedRendering {
         var camera = event.getCamera();
         Vec3 eye = camera.getPosition();
         var dispatcher = minecraft.getEntityRenderDispatcher();
-        float partial = event.getPartialTick().getGameTimeDeltaPartialTick(false);
+        float partial = event.getPartialTick();
         float fogStart = RenderSystem.getShaderFogStart(), fogEnd = RenderSystem.getShaderFogEnd();
-        if (buffers == null) { byteBuffer = new ByteBufferBuilder(262144); buffers = MultiBufferSource.immediate(byteBuffer); }
+        if (buffers == null) { byteBuffer = new BufferBuilder(262144); buffers = MultiBufferSource.immediate(byteBuffer); }
         try {
             // Dedicated buffers prevent our fog range from changing already queued vanilla entity draws.
             RenderSystem.setShaderFogStart(ServerConfig.current().maxDistance());
@@ -161,7 +162,7 @@ public final class ScopedRendering {
                 if (entity.getBoundingBox().getCenter().distanceToSqr(eye) > Math.pow(ServerConfig.current().maxDistance(), 2)) continue;
                 // Vanilla already drew this object if both its distance/frustum and section checks succeeded.
                 if (dispatcher.shouldRender(entity, event.getFrustum(), eye.x, eye.y, eye.z)
-                        && (level.isOutsideBuildHeight(entity.blockPosition()) || minecraft.levelRenderer.isSectionCompiled(entity.blockPosition()))) continue;
+                        && (level.isOutsideBuildHeight(entity.blockPosition()) || minecraft.levelRenderer.isChunkCompiled(entity.blockPosition()))) continue;
                 double x = Mth.lerp(partial, entity.xOld, entity.getX()) - eye.x;
                 double y = Mth.lerp(partial, entity.yOld, entity.getY()) - eye.y;
                 double z = Mth.lerp(partial, entity.zOld, entity.getZ()) - eye.z;
@@ -182,6 +183,6 @@ public final class ScopedRendering {
         ScopeViewReporter.reset();
         extraDrawn.clear();
         targets.clear(); missing.clear(); nextRepair=0; level = null; active = false;
-        if (byteBuffer != null) { byteBuffer.close(); byteBuffer = null; buffers = null; }
+        if (byteBuffer != null) {  byteBuffer = null; buffers = null; }
     }
 }

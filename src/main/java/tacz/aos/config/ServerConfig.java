@@ -1,13 +1,13 @@
 package tacz.aos.config;
 
-import net.neoforged.fml.event.config.ModConfigEvent;
-import net.neoforged.neoforge.common.ModConfigSpec;
+import net.minecraftforge.fml.event.config.ModConfigEvent;
+import net.minecraftforge.common.ForgeConfigSpec;
 import tacz.aos.TaczArtOfSniping;
 
 import java.util.List;
 
 public final class ServerConfig {
-    public static final ModConfigSpec SPEC;
+    public static final ForgeConfigSpec SPEC;
     private static final HumidityConfig HUMIDITY;
     private static volatile tacz.aos.humidity.HumiditySettings humidity = tacz.aos.humidity.HumiditySettings.DISABLED;
     public static tacz.aos.humidity.HumiditySettings humidity() { return humidity; }
@@ -15,42 +15,42 @@ public final class ServerConfig {
     public static final Occlusion DEFAULT_OCCLUSION=new Occlusion(true,24,8192,32768,256,500000);
     private static volatile Occlusion occlusion=DEFAULT_OCCLUSION;
     public static Occlusion occlusion(){return occlusion;}
-    private static final ModConfigSpec.BooleanValue OCCLUSION_ENABLED;
-    private static final ModConfigSpec.IntValue OCCLUSION_RADIUS,OCCLUSION_CELLS,OCCLUSION_GLOBAL,OCCLUSION_BOXES,OCCLUSION_PLANES;
+    private static final ForgeConfigSpec.BooleanValue OCCLUSION_ENABLED;
+    private static final ForgeConfigSpec.IntValue OCCLUSION_RADIUS,OCCLUSION_CELLS,OCCLUSION_GLOBAL,OCCLUSION_BOXES,OCCLUSION_PLANES;
 
     public record DistantGunshots(boolean enabled, double speed, int minDistance, int maxDistance, double volume) {}
     private static final DistantGunshots SILENT_GUNSHOTS = new DistantGunshots(false, 343, 128, 0, .65);
     private static volatile DistantGunshots distantGunshots = SILENT_GUNSHOTS;
-    private static final ModConfigSpec.BooleanValue DISTANT_SOUND;
-    private static final ModConfigSpec.DoubleValue SOUND_SPEED, SOUND_VOLUME;
-    private static final ModConfigSpec.IntValue SOUND_MIN, SOUND_MAX;
+    private static final ForgeConfigSpec.BooleanValue DISTANT_SOUND;
+    private static final ForgeConfigSpec.DoubleValue SOUND_SPEED, SOUND_VOLUME;
+    private static final ForgeConfigSpec.IntValue SOUND_MIN, SOUND_MAX;
     public static DistantGunshots distantGunshots() { return distantGunshots; }
-    private static final ModConfigSpec.BooleanValue WIND_ENABLED, WIND_WEATHER;
-    private static final ModConfigSpec.LongValue WIND_SEED;
-    private static final ModConfigSpec.IntValue[] WIND_PERIODS = new ModConfigSpec.IntValue[3];
-    private static final ModConfigSpec.DoubleValue[] WIND_MEANS = new ModConfigSpec.DoubleValue[3], WIND_MAX = new ModConfigSpec.DoubleValue[3];
+    private static final ForgeConfigSpec.BooleanValue WIND_ENABLED, WIND_WEATHER;
+    private static final ForgeConfigSpec.LongValue WIND_SEED;
+    private static final ForgeConfigSpec.IntValue[] WIND_PERIODS = new ForgeConfigSpec.IntValue[3];
+    private static final ForgeConfigSpec.DoubleValue[] WIND_MEANS = new ForgeConfigSpec.DoubleValue[3], WIND_MAX = new ForgeConfigSpec.DoubleValue[3];
     private static volatile tacz.aos.wind.WindSettings wind = tacz.aos.wind.WindSettings.DISABLED;
-    private static final ModConfigSpec.BooleanValue GUN_OVERRIDES_ENABLED;
-    private static final ModConfigSpec.ConfigValue<List<? extends String>> GUN_OVERRIDES;
+    private static final ForgeConfigSpec.BooleanValue GUN_OVERRIDES_ENABLED;
+    private static final ForgeConfigSpec.ConfigValue<List<? extends String>> GUN_OVERRIDES;
     private static volatile java.util.Map<String, GunPhysicsOverride> gunOverrides = java.util.Map.of();
-    private static final ModConfigSpec.BooleanValue ENABLED;
-    private static final ModConfigSpec.ConfigValue<List<? extends String>> GUNS;
-    private static final ModConfigSpec.ConfigValue<List<? extends String>> SCOPES;
-    private static final ModConfigSpec.IntValue MAX_DISTANCE;
-    private static final ModConfigSpec.IntValue MAX_ENTITIES;
-    private static final ModConfigSpec.BooleanValue DIAGNOSTICS;
-    private static final ModConfigSpec.BooleanValue BALLISTICS, EXTEND_LIFETIME;
-    private static final ModConfigSpec.IntValue BALLISTICS_DISTANCE;
-    private static final ModConfigSpec.IntValue MAX_BULLETS;
-    private static final ModConfigSpec.IntValue MAX_FLIGHT_TICKS;
-    private static final ModConfigSpec.BooleanValue SCOPE_RENDERING;
-    private static final ModConfigSpec.IntValue SCOPE_INTERVAL, SCOPE_CANDIDATES, SCOPE_TRACE_CELLS;
-    private static final ModConfigSpec.BooleanValue ACTIVITY;
-    private static final ModConfigSpec.IntValue ACTIVITY_RADIUS, ACTIVITY_STABLE, ACTIVITY_RETENTION,
+    private static final ForgeConfigSpec.BooleanValue ENABLED;
+    private static final ForgeConfigSpec.ConfigValue<List<? extends String>> GUNS;
+    private static final ForgeConfigSpec.ConfigValue<List<? extends String>> SCOPES;
+    private static final ForgeConfigSpec.IntValue MAX_DISTANCE;
+    private static final ForgeConfigSpec.IntValue MAX_ENTITIES;
+    private static final ForgeConfigSpec.BooleanValue DIAGNOSTICS;
+    private static final ForgeConfigSpec.BooleanValue BALLISTICS, EXTEND_LIFETIME;
+    private static final ForgeConfigSpec.IntValue BALLISTICS_DISTANCE;
+    private static final ForgeConfigSpec.IntValue MAX_BULLETS;
+    private static final ForgeConfigSpec.IntValue MAX_FLIGHT_TICKS;
+    private static final ForgeConfigSpec.BooleanValue SCOPE_RENDERING;
+    private static final ForgeConfigSpec.IntValue SCOPE_INTERVAL, SCOPE_CANDIDATES, SCOPE_TRACE_CELLS;
+    private static final ForgeConfigSpec.BooleanValue ACTIVITY;
+    private static final ForgeConfigSpec.IntValue ACTIVITY_RADIUS, ACTIVITY_STABLE, ACTIVITY_RETENTION,
             ACTIVITY_CHUNKS, ACTIVITY_DEPENDENCIES, ACTIVITY_REGIONS, ACTIVITY_PLAYER_REGIONS, ACTIVITY_STARTS, ACTIVITY_TIMEOUT, ACTIVITY_QUERIES;
 
-    private static final ModConfigSpec.IntValue PREDICTION_INTERVAL, PREDICTION_ENTITY_CHECKS;
-    private static final ModConfigSpec.DoubleValue PREDICTION_MILLIS;
+    private static final ForgeConfigSpec.IntValue PREDICTION_INTERVAL, PREDICTION_ENTITY_CHECKS;
+    private static final ForgeConfigSpec.DoubleValue PREDICTION_MILLIS;
     public record Prediction(int intervalTicks, double maxMillisPerTick, int maxEntityChecks) {}
     public static final Prediction DEFAULT_PREDICTION = new Prediction(8, 4.0, 8192);
 
@@ -86,8 +86,8 @@ public final class ServerConfig {
             this(speed, interval, checks, concurrent, queued, indexed, 10);
         }
     }
-    private static final ModConfigSpec.DoubleValue TARGET_SPEED;
-    private static final ModConfigSpec.IntValue TARGET_INTERVAL, TARGET_NEW_REGION_INTERVAL, TARGET_CHECKS, TARGET_CONCURRENT, TARGET_QUEUE, TARGET_INDEX;
+    private static final ForgeConfigSpec.DoubleValue TARGET_SPEED;
+    private static final ForgeConfigSpec.IntValue TARGET_INTERVAL, TARGET_NEW_REGION_INTERVAL, TARGET_CHECKS, TARGET_CONCURRENT, TARGET_QUEUE, TARGET_INDEX;
     private static final Targeting DEFAULT_TARGETING = new Targeting(10,5,512,32,4096,131072);
     private static volatile Targeting targeting=DEFAULT_TARGETING;
     public static Targeting targeting() { return targeting; }
@@ -95,7 +95,7 @@ public final class ServerConfig {
     private static volatile Settings current = UNAVAILABLE;
 
     static {
-        ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
+        ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
         HUMIDITY = new HumidityConfig(builder);
         builder.comment("Remote entity occlusion by nearby solid shapes/leaves; vegetation and glass are excluded, complex shapes use conservative cover.",
                 "Refresh follows scopeRendering.intervalTicks. Budget exhaustion leaves unchecked geometry visible.").push("occlusion");
@@ -152,20 +152,21 @@ public final class ServerConfig {
                         "Speed is final muzzle speed, overriding TACZ's global speed multiplier and attachment speed changes.",
                         "Limits: speed (0,5120], friction [0,1); at most 1024 unique gun IDs.",
                         "Empty entries disables all overrides. Invalid entries reject the entire override list.")
-                .defineListAllowEmpty("entries", GunPhysicsOverride.DEFAULTS, () -> "", value -> value instanceof String);
+                .defineListAllowEmpty("entries", GunPhysicsOverride.DEFAULTS, value -> value instanceof String);
         builder.pop();
         builder.push("eligibility");
         ENABLED = builder.comment("Allow qualified shots to use the enabled sniping features.")
                 .define("enabled", true);
         GUNS = builder.comment("Allowed TACZ gun IDs (namespace:path). Empty means no guns are allowed.",
+                        "Defaults: official TACZ Forge 1.20.1 snipers AWP, M95, M107, M700, Kar98 and Springfield 1873.",
                         "Also grants zero spread while TACZ or optional ParCool crawling, without needing a scope, ADS or rangefinder.",
                         "Prone zero spread follows eligibility.enabled; standing and non-player shots retain native spread.")
-                .defineListAllowEmpty("guns", EligibilityPolicy.DEFAULT_GUNS, () -> "", value -> value instanceof String);
+                .defineListAllowEmpty("guns", EligibilityPolicy.DEFAULT_GUNS, value -> value instanceof String);
         SCOPES = builder.comment("Scope ID whitelist. Every aiming magnification is allowed within 3 blocks of a placed rangefinder.",
                         "Entries: scope_id or scope_id|ordered zoom levels (optional server fallback projection metadata).",
                         "Legacy scope_id|ordered zoom levels|allowed zooms entries remain readable; the last field is ignored.",
                         "Client rendering uses the actual gun-pack zoom/view data. Empty means no scopes are allowed.")
-                .defineListAllowEmpty("scopeRules", EligibilityPolicy.DEFAULT_SCOPES, () -> "", value -> value instanceof String);
+                .defineListAllowEmpty("scopeRules", EligibilityPolicy.DEFAULT_SCOPES, value -> value instanceof String);
         builder.pop();
         builder.comment("Shared limits. Entity budget applies per scoped player.")
                 .push("limits");

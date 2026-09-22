@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "tacz.aos.test.demo.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "RecordingAudioMixin",
+    "RecordingInputMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "refmap": "tacz_aos.refmap.json"
+}

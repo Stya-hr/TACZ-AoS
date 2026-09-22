@@ -16,7 +16,7 @@ public final class TaczClientBridge {
     public static boolean usesOpticalView(Player player) {
         var decision = evaluateForDisplay(player);
         if (!decision.eligible()) return false;
-        var index = TimelessAPI.getClientAttachmentIndex(ResourceLocation.parse(decision.scopeId())).orElse(null);
+        var index = TimelessAPI.getClientAttachmentIndex(new ResourceLocation(decision.scopeId())).orElse(null);
         return index != null && index.isScope() && index.getViews() != null && decision.slot() < index.getViews().length
                 && index.getViews()[decision.slot()] == 2;
     }
@@ -24,7 +24,7 @@ public final class TaczClientBridge {
     public static Decision evaluateForDisplay(Player player) {
         Decision decision = TaczBridge.evaluate(player);
         if (!decision.eligible()) return decision;
-        var index = TimelessAPI.getClientAttachmentIndex(ResourceLocation.parse(decision.scopeId())).orElse(null);
+        var index = TimelessAPI.getClientAttachmentIndex(new ResourceLocation(decision.scopeId())).orElse(null);
         if (index == null || index.getZoom() == null || index.getZoom().length == 0) {
             return decision.withReason(Reason.CLIENT_LAYOUT_MISMATCH);
         }

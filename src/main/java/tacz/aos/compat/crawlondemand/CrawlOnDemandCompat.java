@@ -2,7 +2,7 @@ package tacz.aos.compat.crawlondemand;
 
 import java.lang.reflect.Method;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.fml.ModList;
+import net.minecraftforge.fml.ModList;
 import tacz.aos.TaczArtOfSniping;
 
 /** Reads the mod's local/server action flag, not the swimming pose it uses for rendering. */
@@ -30,7 +30,7 @@ public final class CrawlOnDemandCompat {
     private static Method resolve() {
         if (!ModList.get().isLoaded("crawlondemand")) return null;
         try {
-            return Class.forName("me.talilon.minecraft.crawlondemand.platform.CrawlStateManager")
+            return Class.forName("me.thecraftycoder.minecraft.crawlondemand.platform.CrawlStateManager")
                     .getMethod("isCrawling", Player.class);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             disable(e);

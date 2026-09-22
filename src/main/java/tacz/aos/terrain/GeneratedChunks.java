@@ -5,10 +5,10 @@ import net.minecraft.nbt.visitors.*;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.level.*;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.level.*;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.config.ServerConfig;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -57,7 +57,8 @@ public final class GeneratedChunks {
         if(event.getChunk() instanceof LevelChunk chunk && chunk.getLevel() instanceof ServerLevel level && level.getServer().isSameThread())
             put(new Key(level,chunk.getPos().x,chunk.getPos().z),State.FULL);
     }
-    @SubscribeEvent public void tick(ServerTickEvent.Pre event) {
+    @SubscribeEvent public void tick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.START) return;
         tick++;
         starts.removeIf(t->tick-t>=20);
         for(var it=requests.entrySet().iterator();it.hasNext();) {

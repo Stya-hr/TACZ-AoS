@@ -4,7 +4,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.network.PacketDistributor;
+import tacz.aos.network.PacketDelivery;
 
 import tacz.aos.ballistics.SegmentTrace;
 import tacz.aos.compat.tacz.BallisticPreview;
@@ -39,7 +39,7 @@ public final class ScopeRangefinder {
         nanos += System.nanoTime() - started;
         var wind = tacz.aos.wind.WindField.current(player.serverLevel());
         var humidity = tacz.aos.humidity.HumidityField.current(player.serverLevel());
-        PacketDistributor.sendToPlayer(player, new RangePayload(player.serverLevel().dimension().location(), eye, direction, distance,
+        PacketDelivery.sendToPlayer(player, new RangePayload(player.serverLevel().dimension().location(), eye, direction, distance,
                 ServerConfig.wind().enabled(), (float) wind.x(), (float) wind.z(), humidity.enabled(), (float) humidity.percent()));
     }
 

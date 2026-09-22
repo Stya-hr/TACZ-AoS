@@ -9,11 +9,11 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import tacz.aos.TaczArtOfSniping;
@@ -21,7 +21,7 @@ import tacz.aos.config.ServerConfig;
 import tacz.aos.network.*;
 import tacz.aos.occlusion.ShadowClipper;
 
-/** Clips only extra entity polygons. Existing textures, native/Iris materials, and world depth remain intact. */
+/** Clips only extra entity polygons. Existing textures, native materials, and world depth remain intact. */
 @EventBusSubscriber(modid=TaczArtOfSniping.MOD_ID,value=Dist.CLIENT)
 public final class ScopedOcclusion {
     private static ClientLevel level;
@@ -36,7 +36,7 @@ public final class ScopedOcclusion {
     public static int inputPolygons(){return inputPolygons;}
     public static int outputPolygons(){return outputPolygons;}
     private ScopedOcclusion(){}
-    @SubscribeEvent public static void setup(FMLClientSetupEvent event){event.enqueueWork(()->ScopeNetworking.setOcclusionReceiver(ScopedOcclusion::receive));}
+    public static void setup(FMLClientSetupEvent event){event.enqueueWork(()->ScopeNetworking.setOcclusionReceiver(ScopedOcclusion::receive));}
     private static void receive(ScopeOcclusionPayload payload) {
         var mc=Minecraft.getInstance();if(mc.level==null || !mc.level.dimension().location().equals(payload.dimension()))return;
         level=mc.level;received=level.getGameTime();targets.clear();for(var target:payload.targets())targets.put(target.id(),target);
@@ -80,17 +80,21 @@ public final class ScopedOcclusion {
             private final int size;
             private final List<ShadowClipper.Vertex> vertices=new ArrayList<>(4);
             private float[] attr;
+            private int red=255,green=255,blue=255,alpha=255;
             Consumer(RenderType type){this.type=type;size=type.mode()==VertexFormat.Mode.QUADS?4:3;}
-            public VertexConsumer addVertex(float x,float y,float z) {
+            public VertexConsumer vertex(double x,double y,double z) {
                 if(vertices.size()==size)flush();
-                attr=new float[]{255,255,255,255,0,0,0,0,0,0,0,1,0};
+                attr=new float[]{red,green,blue,alpha,0,0,0,0,0,0,0,1,0};
                 vertices.add(new ShadowClipper.Vertex(x,y,z,attr));return this;
             }
-            public VertexConsumer setColor(int r,int g,int b,int a){attr[0]=r;attr[1]=g;attr[2]=b;attr[3]=a;return this;}
-            public VertexConsumer setUv(float u,float v){attr[4]=u;attr[5]=v;return this;}
-            public VertexConsumer setUv1(int u,int v){attr[6]=u;attr[7]=v;return this;}
-            public VertexConsumer setUv2(int u,int v){attr[8]=u;attr[9]=v;return this;}
-            public VertexConsumer setNormal(float x,float y,float z){attr[10]=x;attr[11]=y;attr[12]=z;return this;}
+            public VertexConsumer color(int r,int g,int b,int a){attr[0]=r;attr[1]=g;attr[2]=b;attr[3]=a;return this;}
+            public VertexConsumer uv(float u,float v){attr[4]=u;attr[5]=v;return this;}
+            public VertexConsumer overlayCoords(int u,int v){attr[6]=u;attr[7]=v;return this;}
+            public VertexConsumer uv2(int u,int v){attr[8]=u;attr[9]=v;return this;}
+            public VertexConsumer normal(float x,float y,float z){attr[10]=x;attr[11]=y;attr[12]=z;return this;}
+            public void endVertex() { if (vertices.size() == size) flush(); }
+            public void defaultColor(int r,int g,int b,int a) {red=r;green=g;blue=b;alpha=a;}
+            public void unsetDefaultColor() {red=green=blue=alpha=255;}
             void flush() {
                 if(vertices.size()!=size){vertices.clear();return;}
                 inputPolygons++;inputCount++;
@@ -101,7 +105,7 @@ public final class ScopedOcclusion {
                     for(var polygon:output) {
                         if(size==4 && polygon.size()==4){for(var v:polygon)emit(sink,v);outputPolygons++;outputCount++;}
                         else for(int i=1;i+1<polygon.size();i++) {
-                            emit(sink,polygon.getFirst());emit(sink,polygon.get(i));emit(sink,polygon.get(i+1));
+                            emit(sink,polygon.get(0));emit(sink,polygon.get(i));emit(sink,polygon.get(i+1));
                             if(size==4)emit(sink,polygon.get(i+1));outputPolygons++;outputCount++;
                         }
                     }
@@ -110,8 +114,8 @@ public final class ScopedOcclusion {
             }
             private void emit(VertexConsumer sink,ShadowClipper.Vertex v) {
                 var a=v.attributes();
-                sink.addVertex((float)v.x(),(float)v.y(),(float)v.z()).setColor(Math.round(a[0]),Math.round(a[1]),Math.round(a[2]),Math.round(a[3]))
-                    .setUv(a[4],a[5]).setUv1(Math.round(a[6]),Math.round(a[7])).setUv2(Math.round(a[8]),Math.round(a[9])).setNormal(a[10],a[11],a[12]);
+                sink.vertex((float)v.x(),(float)v.y(),(float)v.z()).color(Math.round(a[0]),Math.round(a[1]),Math.round(a[2]),Math.round(a[3]))
+                    .uv(a[4],a[5]).overlayCoords(Math.round(a[6]),Math.round(a[7])).uv2(Math.round(a[8]),Math.round(a[9])).normal(a[10],a[11],a[12]).endVertex();
             }
         }
     }

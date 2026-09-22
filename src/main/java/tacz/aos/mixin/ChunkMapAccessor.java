@@ -10,6 +10,5 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 @Mixin(ChunkMap.class)
 public interface ChunkMapAccessor {
     @Accessor("entityMap") Int2ObjectMap<?> tacz_aos$trackers();
-    @Invoker("isChunkTracked") boolean tacz_aos$isChunkTracked(ServerPlayer player, int x, int z);
-    @Invoker("getPlayerViewDistance") int tacz_aos$viewDistance(ServerPlayer player);
+    @Accessor("viewDistance") int tacz_aos$serverViewDistance();
 }

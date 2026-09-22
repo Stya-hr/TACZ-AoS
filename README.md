@@ -8,7 +8,7 @@ Allows players to snipe other entities from extreme distances.
 
 ## Requirements
 
-Minecraft **1.21.1**, **NeoForge 21.1.248 or newer**, Java **21**, and the [TACZ 1.21.1 port](https://modrinth.com/mod/tacz-1.21.1) (**1.1.8-hotfix-r6**, supported range: below 1.2). Install AoS and TACZ on both the client and server.
+Minecraft **1.20.1**, **Forge 47.3.0 or newer**, Java **17**, and the [official TACZ Forge 1.20.1](https://modrinth.com/mod/timeless-and-classics-zero) (**1.1.8-hotfix**, supported range: below 1.2). Install AoS and TACZ on both the client and server.
 
 ## What's included
 
@@ -58,7 +58,7 @@ For example, the crosshair may see a target while the lower, curved trajectory w
 
 ## Configuration
 
-Launch the game once to generate `config/tacz_aos-server.toml`. A world's `serverconfig/tacz_aos-server.toml`, if present, takes precedence. In multiplayer, edit the **server's** active file. Restart the world/server after changes.
+Forge stores the active settings in `<world>/serverconfig/tacz_aos-server.toml`, generated when the world first opens. In multiplayer, edit this file on the **server**. Restart the world/server after changes. The file generated under `config/` is a reference template; copy your defaults to `defaultconfigs/tacz_aos-server.toml` to apply them to newly created worlds.
 
 To support another TACZ gun pack, append its **gun ID** to `guns` and its **scope attachment ID** to `scopeRules` under `[eligibility]`. Use pack IDs such as `pack:rifle`, not the generic TACZ gun item ID. Keep the existing entries you want to use. For example:
 
@@ -79,14 +79,15 @@ Replace `your_pack:*` with real installed IDs. A scope may optionally specify it
 
 | Optional mod | Integration |
 | --- | --- |
-| [**NeoVoxy (NHblock-Johnsnow)**](https://github.com/NHblock-Johnsnow/neo-voxy) | Select distant LOD terrain; AoS supplies target-area entities. Compatibility has only been tested with this fork. Other Voxy forks are not guaranteed to work, so this fork is recommended for playing with AoS. |
-| **Iris** | Scope targeting, entity occlusion and bullet trails with shaders. Supports 1.8.x; appearance depends on the shader pack. |
-| **Curios** | Collection belt support in an existing functional `belt` slot. No extra slots are added; cosmetic slots do not activate it. Supports 9.5.1–9.x. |
+| [**NeoVoxy (NHblock-Johnsnow)**](https://github.com/NHblock-Johnsnow/neo-voxy) | Select distant LOD terrain; AoS supplies target-area entities. This branch targets the Forge 1.20.1 client edition, NeoVoxy 0.3.3, which requires Embeddium 0.3.31+. Compatibility is specific to this fork. Other Voxy forks are not guaranteed to work, so this fork is recommended for playing with AoS. |
+| **Curios** | Collection belt support in an existing functional `belt` slot. No extra slots are added; cosmetic slots do not activate it. Supports 5.14.1–5.x. |
 | **ParCool / Crawl on Demand** | Their crawling states enable prone accuracy and idle-sway suppression for allowed guns. |
 
-Use builds for Minecraft 1.21.1 NeoForge and install each optional mod's own dependencies. Other TACZ gun packs using standard gun/projectile APIs can be added through configuration; custom projectiles or renderers may require integration. Existing chunk-loader and player chunk tickets are respected.
+Iris/Sodium-specific integration has been removed from this Forge branch; Oculus shader compatibility is not claimed.
 
-**Not supported together: [Tacz Bullet Improvement](https://modrinth.com/mod/tacz-tacz-bullet-improvement).** Its published description replaces TACZ's traveling bullets with instant raycast hits, which conflicts with AoS's flight-time simulation, bullet drop, wind drift and impact prediction. Its listed releases also target Minecraft 1.20–1.20.1 Forge, rather than AoS's 1.21.1 NeoForge. Do not combine them; a future port would still need dedicated integration.
+Use builds for Minecraft 1.20.1 Forge and install each optional mod's own dependencies. Other TACZ gun packs using standard gun/projectile APIs can be added through configuration; custom projectiles or renderers may require integration. Existing chunk-loader and player chunk tickets are respected.
+
+**Not supported together: [Tacz Bullet Improvement](https://modrinth.com/mod/tacz-tacz-bullet-improvement).** Its published description replaces TACZ's traveling bullets with instant raycast hits, which conflicts with AoS's flight-time simulation, bullet drop, wind drift and impact prediction. Do not combine them; using the same Minecraft version does not resolve this conflict.
 
 ## License
 

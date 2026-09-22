@@ -3,8 +3,8 @@ package tacz.aos.test;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import tacz.aos.TaczArtOfSniping;
@@ -12,9 +12,9 @@ import tacz.aos.scoping.DepthProjection;
 
 @GameTestHolder(TaczArtOfSniping.MOD_ID) @PrefixGameTestTemplate(false)
 public final class DepthProjectionGameTests {
-    @GameTest(template="empty")
+    @GameTest(setupTicks=20, template="empty")
     public static void lodProjectionAndHardwareDepthAreIndependent(GameTestHelper h) {
-        // Voxy uses a 0..1 projection even when Iris leaves the window mapping at -1..1.
+        // Voxy uses a 0..1 projection independently of the window mapping (-1..1).
         for (boolean matrixZeroToOne : new boolean[]{false,true}) for (boolean hardwareZeroToOne : new boolean[]{false,true}) {
             var matrix = new Matrix4f().perspective((float)Math.toRadians(3), 16f/9, 8, 48000, matrixZeroToOne)
                     .rotateY((float)Math.PI/2);

@@ -61,7 +61,7 @@ public final class TargetBallistics {
         if (trace.end() != SegmentTrace.End.CLEAR) return stop(bullet, trace.end().name(), distance);
         if (rangeEnd) return stop(bullet, "RANGE_LIMIT", distance);
 
-        // Same order and float rounding as TACZ 1.1.8-hotfix-r6: move, drag, gravity, then lifetime.
+        // Same order and float rounding as official TACZ Forge 1.1.8-hotfix: move, drag, gravity, then lifetime.
         // Only target-core water affects flight; transit regions deliberately use air physics.
         var medium = source.cell(Mth.floor(start.x), Mth.floor(start.y), Mth.floor(start.z));
         float friction = fields.tacz_aos$getFriction(), gravity = fields.tacz_aos$getGravity();

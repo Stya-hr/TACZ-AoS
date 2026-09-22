@@ -9,11 +9,11 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.block.ModContent;
 
 import java.util.function.Consumer;
@@ -21,19 +21,19 @@ import java.util.function.Consumer;
 @GameTestHolder("tacz_aos_lootcompat")
 @PrefixGameTestTemplate(false)
 public final class MaidPowerPointGameTests {
-    @GameTest(template = "ballistics", batch = "maid_power")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "maid_power")
     public static void nativeAndManagedShotsKeepDelayedPowerValues(GameTestHelper h) throws Exception {
         if (ModList.get().isLoaded("touhou_little_maid")) Checks.positive(h);
         h.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "maid_power")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "maid_power")
     public static void ineligibleKillsAndMissingCollectorKeepFairyPosition(GameTestHelper h) throws Exception {
         if (ModList.get().isLoaded("touhou_little_maid")) Checks.negative(h);
         h.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "maid_power")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "maid_power")
     public static void mobLootRuleAndCanceledSpawnsRemainEffective(GameTestHelper h) throws Exception {
         if (ModList.get().isLoaded("touhou_little_maid")) Checks.canceled(h);
         h.succeed();
@@ -67,7 +67,7 @@ public final class MaidPowerPointGameTests {
                         fairy.setBaby(mode == 1);
                         // Aim through the smaller baby's body too.
                         f.bullet.setPos(f.player.position().add(0, .25, 0));
-                        f.player.setItemSlot(EquipmentSlot.LEGS, ModContent.TACTICAL_COLLECTION_BELT.toStack());
+                        f.player.setItemSlot(EquipmentSlot.LEGS, new ItemStack(ModContent.TACTICAL_COLLECTION_BELT.get()));
                         int expected = fairy.getPowerPoint();
                         h.assertTrue(expected > 0, "Fairy test configured with zero power");
                         f.shoot(mode == 1);
@@ -90,7 +90,7 @@ public final class MaidPowerPointGameTests {
                     try {
                         var fairy = (EntityFairy)f.victim;
                         int expected = fairy.getPowerPoint();
-                        if (mode != 0) f.player.setItemSlot(EquipmentSlot.LEGS, ModContent.TACTICAL_COLLECTION_BELT.toStack());
+                        if (mode != 0) f.player.setItemSlot(EquipmentSlot.LEGS, new ItemStack(ModContent.TACTICAL_COLLECTION_BELT.get()));
                         if (mode == 1) fairy.hurt(h.getLevel().damageSources().playerAttack(f.player), 100);
                         else if (mode == 2) {
                             fairy.setHealth(20); fairy.hurt(f.source(), 1); fairy.invulnerableTime = 0;
@@ -112,14 +112,14 @@ public final class MaidPowerPointGameTests {
                 try (var f = new BeltLootGameTests.Fixture(h, EntityFairy.TYPE)) {
                     Consumer<EntityJoinLevelEvent> cancel = e -> { if (e.getEntity() instanceof EntityPowerPoint) e.setCanceled(true); };
                     try {
-                        f.player.setItemSlot(EquipmentSlot.LEGS, ModContent.TACTICAL_COLLECTION_BELT.toStack());
+                        f.player.setItemSlot(EquipmentSlot.LEGS, new ItemStack(ModContent.TACTICAL_COLLECTION_BELT.get()));
                         if (mode == 0) rule.set(false, h.getLevel().getServer());
-                        else NeoForge.EVENT_BUS.addListener(cancel);
+                        else MinecraftForge.EVENT_BUS.addListener(cancel);
                         f.shoot(true); deathTicks((EntityFairy)f.victim, 20);
                         h.assertTrue(power(h, f.player.position()) == 0 && power(h, f.victim.position()) == 0, "Suppressed P points recreated");
                     } finally {
                         rule.set(previous, h.getLevel().getServer());
-                        if (mode == 1) NeoForge.EVENT_BUS.unregister(cancel);
+                        if (mode == 1) MinecraftForge.EVENT_BUS.unregister(cancel);
                         clear(h, f);
                     }
                 }

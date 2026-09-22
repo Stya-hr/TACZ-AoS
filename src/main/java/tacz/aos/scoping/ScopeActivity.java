@@ -10,11 +10,11 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.AABB;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.level.ChunkEvent;
-import net.neoforged.neoforge.event.level.LevelEvent;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.level.ChunkEvent;
+import net.minecraftforge.event.level.LevelEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.compat.tacz.TaczBridge;
 import tacz.aos.config.ServerConfig;
 
@@ -57,13 +57,14 @@ public final class ScopeActivity {
     }
     private ScopeActivity() {}
 
-    @SubscribeEvent public void tick(ServerTickEvent.Pre event) {
-        if (event.getServer().tickRateManager().runsNormally()) clock++;
-        ScopeAim.prune(event.getServer());
+    @SubscribeEvent public void tick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.START) return;
+        clock++;
+        ScopeAim.prune(net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer());
         queries = 0;
         predictionNanos = 0;
         predictions.entrySet().removeIf(e -> {
-            var player = event.getServer().getPlayerList().getPlayer(e.getKey());
+            var player = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(e.getKey());
             return player == null || player.serverLevel() != e.getValue().level || !enabled(player);
         });
         var settings = ServerConfig.current();
@@ -75,7 +76,7 @@ public final class ScopeActivity {
         for (var iterator = regions.values().iterator(); iterator.hasNext();) {
             var region = iterator.next();
             region.owners.entrySet().removeIf(e -> {
-                var player = event.getServer().getPlayerList().getPlayer(e.getKey());
+                var player = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(e.getKey());
                 var view = region.views.get(e.getKey());
                 // A still-held, unchanged reticle may finish its already-authorized load, bounded by the loading deadline.
                 if (!region.ready && player != null && enabled(player) && player.serverLevel() == region.key.level
@@ -87,7 +88,7 @@ public final class ScopeActivity {
             });
             region.views.keySet().retainAll(region.owners.keySet());
             region.flights.values().removeIf(hold -> {
-                var player = event.getServer().getPlayerList().getPlayer(hold.owner);
+                var player = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(hold.owner);
                 return hold.deadline < clock || player == null || player.serverLevel() != region.key.level;
             });
             region.ready = ready(region.key);
@@ -97,7 +98,7 @@ public final class ScopeActivity {
                 removeTickets(region.key); iterator.remove();
             }
         }
-        for(var player:event.getServer().getPlayerList().getPlayers()) {
+        for(var player:net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayers()) {
             UUID id=player.getUUID();
             if(!enabled(player)) { stability.remove(id); ScopeAim.remove(id); continue; }
             Vec3 direction=player.getViewVector(1).normalize();
@@ -107,8 +108,8 @@ public final class ScopeActivity {
             // Read the current aim only; metadata completion never schedules an obsolete target.
             if(stable && target!=null) consider(player,target);
         }
-        stability.keySet().removeIf(id->event.getServer().getPlayerList().getPlayer(id)==null);
-        throttles.keySet().removeIf(id->event.getServer().getPlayerList().getPlayer(id)==null);
+        stability.keySet().removeIf(id->net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(id)==null);
+        throttles.keySet().removeIf(id->net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(id)==null);
     }
 
     /** Called on the server's bounded subscription refresh, using server-validated visible candidates. */
@@ -189,7 +190,7 @@ public final class ScopeActivity {
         }
         if (regions.size() >= config.maxRegions() || starts.size() >= config.startsPerSecond()
                 || footprint(key, 2).size() > config.maxFullChunks()
-                || footprint(key, 2 + ChunkLevel.RADIUS_AROUND_FULL_CHUNK).size() > config.maxDependencyChunks()) {
+                || footprint(key, 2 + net.minecraft.world.level.chunk.ChunkStatus.maxDistance()).size() > config.maxDependencyChunks()) {
             budgetDenied++; return;
         }
         // Batch all halo checks, not one unknown column per refresh. Never generate a frontier.
@@ -207,7 +208,7 @@ public final class ScopeActivity {
         for (var address : square(key, key.radius)) {
             if (cores.merge(address, 1, Integer::sum) == 1) {
                 var chunk = new ChunkPos(address.x, address.z);
-                // Level 31 per core chunk, including NeoForge random ticking; no Future.join/getChunk call.
+                // Level 31 per core chunk, including Forge random ticking; no Future.join/getChunk call.
                 key.level.getChunkSource().addRegionTicket(TICKET, chunk, 2, chunk, true);
             }
         }
@@ -309,7 +310,7 @@ public final class ScopeActivity {
     }
     public Status status() {
         return new Status(regions.size(), (int) regions.values().stream().filter(r -> r.ready).count(),
-                footprint(null, 2).size(), footprint(null, 2 + ChunkLevel.RADIUS_AROUND_FULL_CHUNK).size(),
+                footprint(null, 2).size(), footprint(null, 2 + net.minecraft.world.level.chunk.ChunkStatus.maxDistance()).size(),
                 regions.values().stream().mapToInt(r -> r.flights.size()).sum(), admitted, unknown, budgetDenied, timedOut);
     }
     public void releaseAll() {

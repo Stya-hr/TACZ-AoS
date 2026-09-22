@@ -1,11 +1,19 @@
 package tacz.aos.network;
 
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.network.NetworkDirection;
+import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.simple.SimpleChannel;
+import java.util.function.BiConsumer;
 
 import java.util.function.Consumer;
 
 /** Client installation supplies the receiver; this class never links client-only Minecraft classes. */
 public final class ScopeNetworking {
+    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+            new ResourceLocation("tacz_aos", "main"), () -> "forge-1", "forge-1"::equals, "forge-1"::equals);
     private static Consumer<ScopeOcclusionPayload> occlusionReceiver = ignored -> {};
     public static void setOcclusionReceiver(Consumer<ScopeOcclusionPayload> handler){occlusionReceiver=handler;}
     private static Consumer<ScopeTargetsPayload> receiver = ignored -> {};
@@ -21,8 +29,8 @@ public final class ScopeNetworking {
     private ScopeNetworking() {}
     public static void setClientReceiver(Consumer<ScopeTargetsPayload> handler) { receiver = handler; }
     public static void setTrailReceiver(Consumer<ShotTrailsPayload> handler) { trailReceiver = handler; }
-    public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("13");
+    public static void register() {
+        var registrar = new Registrar();
         registrar.playToClient(ScopeOcclusionPayload.TYPE,ScopeOcclusionPayload.STREAM_CODEC,(payload,context)->occlusionReceiver.accept(payload));
         registrar.playToClient(DistantGunshotPayload.TYPE, DistantGunshotPayload.STREAM_CODEC,
                 (payload, context) -> distantGunshotReceiver.accept(payload));
@@ -50,5 +58,29 @@ public final class ScopeNetworking {
                     if (context.player() instanceof net.minecraft.server.level.ServerPlayer player)
                         tacz.aos.scoping.ScopeViews.INSTANCE.receive(player, payload);
                 });
+    }
+    private static final class Registrar {
+        private int nextId;
+        <T extends ModPayload> void playToClient(ModPayload.Type<T> type, PayloadCodec<FriendlyByteBuf, T> codec,
+                                                 BiConsumer<T, Context> handler) {
+            register(type, codec, handler, NetworkDirection.PLAY_TO_CLIENT);
+        }
+        <T extends ModPayload> void playToServer(ModPayload.Type<T> type, PayloadCodec<FriendlyByteBuf, T> codec,
+                                                 BiConsumer<T, Context> handler) {
+            register(type, codec, handler, NetworkDirection.PLAY_TO_SERVER);
+        }
+        private <T extends ModPayload> void register(ModPayload.Type<T> type, PayloadCodec<FriendlyByteBuf, T> codec,
+                                                     BiConsumer<T, Context> handler, NetworkDirection direction) {
+            CHANNEL.messageBuilder(type.javaType(), nextId++, direction)
+                    .encoder((message, buffer) -> codec.encode(buffer, message)).decoder(codec::decode)
+                    .consumerMainThread((message, supplier) -> {
+                        var context = supplier.get();
+                        handler.accept(message, new Context(context));
+                        context.setPacketHandled(true);
+                    }).add();
+        }
+    }
+    private record Context(NetworkEvent.Context context) {
+        net.minecraft.world.entity.player.Player player() { return context.getSender(); }
     }
 }

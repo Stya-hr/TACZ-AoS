@@ -25,7 +25,6 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 /** Static two-block instrument. Only the lower half owns loot, including when the upper half is removed. */
 public final class RangefinderBlock extends Block {
-    public static final MapCodec<RangefinderBlock> CODEC = simpleCodec(RangefinderBlock::new);
     public static final EnumProperty<DoubleBlockHalf> HALF = BlockStateProperties.DOUBLE_BLOCK_HALF;
     public static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
     private static final VoxelShape[] LOWER = shapes(false), UPPER = shapes(true);
@@ -33,16 +32,15 @@ public final class RangefinderBlock extends Block {
         super(properties);
         registerDefaultState(stateDefinition.any().setValue(HALF, DoubleBlockHalf.LOWER).setValue(FACING, Direction.NORTH));
     }
-    @Override public MapCodec<RangefinderBlock> codec() { return CODEC; }
-    @Override protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState old, boolean moved) {
+    @Override public void onPlace(BlockState state, Level level, BlockPos pos, BlockState old, boolean moved) {
         RangefinderAccess.invalidate();
         super.onPlace(state, level, pos, old, moved);
     }
-    @Override protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState next, boolean moved) {
+    @Override public void onRemove(BlockState state, Level level, BlockPos pos, BlockState next, boolean moved) {
         RangefinderAccess.invalidate();
         super.onRemove(state, level, pos, next, moved);
     }
-    @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) { builder.add(HALF, FACING); }
+    @Override public void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) { builder.add(HALF, FACING); }
     @Override public BlockState getStateForPlacement(BlockPlaceContext context) {
         var pos = context.getClickedPos();
         if (pos.getY() >= context.getLevel().getMaxBuildHeight() - 1
@@ -52,12 +50,12 @@ public final class RangefinderBlock extends Block {
     @Override public void setPlacedBy(Level level, BlockPos pos, BlockState state, LivingEntity placer, ItemStack stack) {
         level.setBlock(pos.above(), state.setValue(HALF, DoubleBlockHalf.UPPER), UPDATE_ALL);
     }
-    @Override protected boolean canSurvive(BlockState state, LevelReader level, BlockPos pos) {
+    @Override public boolean canSurvive(BlockState state, LevelReader level, BlockPos pos) {
         var below = level.getBlockState(pos.below());
         return state.getValue(HALF) == DoubleBlockHalf.LOWER ? below.isFaceSturdy(level, pos.below(), Direction.UP)
                 : below.is(this) && below.getValue(HALF) == DoubleBlockHalf.LOWER;
     }
-    @Override protected BlockState updateShape(BlockState state, Direction side, BlockState neighbor, LevelAccessor level,
+    @Override public BlockState updateShape(BlockState state, Direction side, BlockState neighbor, LevelAccessor level,
                                                BlockPos pos, BlockPos neighborPos) {
         boolean lower = state.getValue(HALF) == DoubleBlockHalf.LOWER;
         if (side == (lower ? Direction.UP : Direction.DOWN)) {
@@ -67,7 +65,7 @@ public final class RangefinderBlock extends Block {
         if (lower && side == Direction.DOWN && !canSurvive(state, level, pos)) return Blocks.AIR.defaultBlockState();
         return super.updateShape(state, side, neighbor, level, pos, neighborPos);
     }
-    @Override public BlockState playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
+    @Override public void playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
         // As with doors, creative upper-half removal must suppress the lower half's normal neighbor-update loot.
         if (!level.isClientSide && player.isCreative() && state.getValue(HALF) == DoubleBlockHalf.UPPER) {
             var below = level.getBlockState(pos.below());
@@ -76,14 +74,14 @@ public final class RangefinderBlock extends Block {
                 level.levelEvent(player, 2001, pos.below(), Block.getId(below));
             }
         }
-        return super.playerWillDestroy(level, pos, state, player);
+        super.playerWillDestroy(level, pos, state, player);
     }
-    @Override protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+    @Override public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         return (state.getValue(HALF) == DoubleBlockHalf.LOWER ? LOWER : UPPER)[state.getValue(FACING).get2DDataValue()];
     }
-    @Override protected boolean isPathfindable(BlockState state, PathComputationType type) { return false; }
-    @Override protected BlockState rotate(BlockState state, Rotation rotation) { return state.setValue(FACING, rotation.rotate(state.getValue(FACING))); }
-    @Override protected BlockState mirror(BlockState state, Mirror mirror) { return state.rotate(mirror.getRotation(state.getValue(FACING))); }
+    @Override public boolean isPathfindable(BlockState state, BlockGetter level, BlockPos pos, PathComputationType type) { return false; }
+    @Override public BlockState rotate(BlockState state, Rotation rotation) { return state.setValue(FACING, rotation.rotate(state.getValue(FACING))); }
+    @Override public BlockState mirror(BlockState state, Mirror mirror) { return state.rotate(mirror.getRotation(state.getValue(FACING))); }
 
     private static VoxelShape[] shapes(boolean upper) {
         VoxelShape shape;

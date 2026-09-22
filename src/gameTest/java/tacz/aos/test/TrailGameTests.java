@@ -4,12 +4,12 @@ import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 
 import tacz.aos.network.ShotTrailsPayload;
@@ -20,7 +20,7 @@ import java.util.List;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class TrailGameTests {
-    @GameTest(template = "ballistics", batch = "trails")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "trails")
     public static void descendingShotStopsAtGroundWhileClientSmokeFades(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         for (int x = 3; x <= 18; x++) for (int z = 3; z <= 6; z++)
@@ -56,11 +56,11 @@ public final class TrailGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "empty", batch = "trails")
+    @GameTest(setupTicks = 20, template = "empty", batch = "trails")
     public static void trailPayloadBoundsAndRoundTrip(GameTestHelper helper) {
         var payload = new ShotTrailsPayload(helper.getLevel().dimension().location(), List.of(
                 new TrailSegment(7, 25, -255.5, 81.5, 0, -240.5, 81.25, 0, 15, true)));
-        var buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), helper.getLevel().registryAccess());
+        var buf = new FriendlyByteBuf(Unpooled.buffer());
         try {
             ShotTrailsPayload.STREAM_CODEC.encode(buf, payload);
             helper.assertTrue(payload.equals(ShotTrailsPayload.STREAM_CODEC.decode(buf)), "Trail payload lost geometry or termination");
@@ -72,7 +72,7 @@ public final class TrailGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "trails")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "trails")
     public static void targetVisualEndpointStopsAtActualImpact(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         helper.setBlock(new BlockPos(10, 5, 4), Blocks.STONE);

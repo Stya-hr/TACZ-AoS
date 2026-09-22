@@ -17,12 +17,11 @@ import net.minecraft.world.entity.animal.Cow;
 import net.minecraft.world.level.*;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.bus.api.EventPriority;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.client.ScopedRendering;
 import tacz.aos.config.ServerConfig;
@@ -41,7 +40,7 @@ public final class ScopeClientSmokeTest {
     private static volatile boolean observerFeedback, observerSound, distantSound;
     private static int observerFrames, observerServerFrames;
     private static boolean observerDrawn, observerWakeAfterImpact;
-    @SubscribeEvent public static void observerSound(net.neoforged.neoforge.client.event.sound.PlaySoundSourceEvent event) {
+    @SubscribeEvent public static void observerSound(net.minecraftforge.client.event.sound.PlaySoundSourceEvent event) {
         if (ENABLED && event.getSound().getLocation().equals(tacz.aos.trails.FeedbackSounds.FLYBY.getId())) observerSound = true;
         if (ENABLED && event.getSound().getLocation().equals(tacz.aos.trails.FeedbackSounds.DISTANT_GUNSHOT.getId())) distantSound = true;
     }
@@ -63,7 +62,7 @@ public final class ScopeClientSmokeTest {
     private static int zoomFrames, zoomBaseline;
     private static boolean zoomRangeObserved;
     private static com.mojang.blaze3d.platform.NativeImage beforeTrail;
-    private static int irisQuery, proneWarmup;
+    private static int proneWarmup;
     private static int environmentStage = -1, environmentFrames, windBaseline, humidityBaseline, rangeBaseline;
     private static tacz.aos.wind.WindSettings savedWind;
     private static tacz.aos.humidity.HumiditySettings savedHumidity;
@@ -153,7 +152,7 @@ public final class ScopeClientSmokeTest {
             idle.reset();idle.run();operator.aim(false);idle.setProgressNs(1_000_000_000L);idle.update(true);
             if(idle.getProgressNs()<1_000_000_000L)throw new AssertionError("Unscoped idle was suppressed");
             operator.aim(true);
-            player.setItemInHand(InteractionHand.MAIN_HAND,GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ak47")).build(mc.level.registryAccess()));
+            player.setItemInHand(InteractionHand.MAIN_HAND,GunItemBuilder.create().setId(new ResourceLocation("tacz:ak47")).build());
             idle.setProgressNs(1_000_000_000L);idle.update(true);
             if(idle.getProgressNs()<1_000_000_000L)throw new AssertionError("Non-whitelisted gun became stable");
             player.setItemInHand(InteractionHand.MAIN_HAND,oldStack);
@@ -162,7 +161,7 @@ public final class ScopeClientSmokeTest {
             mc.options.setCameraType(oldCamera);
             cooldown.setInt(crawlController,0);operator.crawl(false);idle.setProgressNs(0);idle.update(true);
             if(idle.getProgressNs()<=0 || idle.getProgressNs()>250_000_000L)throw new AssertionError("Standing did not resume without accumulated time");
-            if(net.neoforged.fml.ModList.get().isLoaded("parcool"))verifyParCoolIdle(idle);
+            if(net.minecraftforge.fml.ModList.get().isLoaded("parcool"))verifyParCoolIdle(idle);
             verifyCrawlOnDemandIdle(idle);
             TaczArtOfSniping.LOGGER.info("PRONE_IDLE_CLIENT PASSED: 16 seconds sampled; prone stable, standing/hipfire/excluded gun restored; shoot/bolt/reload preserved");
         } finally {
@@ -176,12 +175,12 @@ public final class ScopeClientSmokeTest {
     private static void verifyCrawlOnDemandIdle(com.tacz.guns.api.client.animation.ObjectAnimationRunner idle) throws ReflectiveOperationException {
         var player = Minecraft.getInstance().player;
         var operator = com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator.fromLocalPlayer(player);
-        if (!net.neoforged.fml.ModList.get().isLoaded("crawlondemand")) {
+        if (!net.minecraftforge.fml.ModList.get().isLoaded("crawlondemand")) {
             if (tacz.aos.compat.crawlondemand.CrawlOnDemandCompat.isCrawling(player))
                 throw new AssertionError("Absent Crawl on Demand reported crawling");
             return;
         }
-        var manager = Class.forName("me.talilon.minecraft.crawlondemand.platform.CrawlStateManager");
+        var manager = Class.forName("me.thecraftycoder.minecraft.crawlondemand.platform.CrawlStateManager");
         var setter = manager.getMethod("setCrawling", net.minecraft.world.entity.player.Player.class, boolean.class);
         var oldStack = player.getMainHandItem();
         try {
@@ -196,7 +195,7 @@ public final class ScopeClientSmokeTest {
             if (idle.getProgressNs() < 1_000_000_000L) throw new AssertionError("Crawl on Demand hipfire idle frozen");
             operator.aim(true);
             player.setItemInHand(InteractionHand.MAIN_HAND, GunItemBuilder.create()
-                    .setId(ResourceLocation.parse("tacz:ak47")).build(player.level().registryAccess()));
+                    .setId(new ResourceLocation("tacz:ak47")).build());
             if (tacz.aos.client.ProneAimStability.active()) throw new AssertionError("Crawl on Demand ignored whitelist");
             player.setItemInHand(InteractionHand.MAIN_HAND, oldStack);
             setter.invoke(null, player, false); idle.setProgressNs(0); idle.update(true);
@@ -213,7 +212,7 @@ public final class ScopeClientSmokeTest {
         var player=Minecraft.getInstance().player;
         Class<?> abilityType;boolean modern;
         try {abilityType=Class.forName("com.alrex.parcool.common.Parkourability");modern=true;}
-        catch(ClassNotFoundException old){abilityType=Class.forName("com.alrex.parcool.common.attachment.common.Parkourability");modern=false;}
+        catch(ClassNotFoundException old){abilityType=Class.forName("com.alrex.parcool.common.capability.Parkourability");modern=false;}
         Object ability=abilityType.getMethod("get",net.minecraft.world.entity.player.Player.class).invoke(null,player);
         Object crawl;
         if(modern) {
@@ -222,8 +221,9 @@ public final class ScopeClientSmokeTest {
         } else crawl=abilityType.getMethod("get",Class.class).invoke(ability,Class.forName("com.alrex.parcool.common.action.impl.Crawl"));
         try {
             if(modern)crawl.getClass().getMethod("start").invoke(crawl);
-            else crawl.getClass().getMethod("start",net.minecraft.world.entity.player.Player.class,abilityType,java.nio.ByteBuffer.class)
-                    .invoke(crawl,player,ability,java.nio.ByteBuffer.allocate(0));
+            else crawl.getClass().getMethod("start",net.minecraft.world.entity.player.Player.class,abilityType,java.nio.ByteBuffer.class,Class.forName("com.alrex.parcool.common.capability.IStamina"))
+                    .invoke(crawl,player,ability,java.nio.ByteBuffer.allocate(0),Class.forName("com.alrex.parcool.common.capability.IStamina")
+                            .getMethod("get",net.minecraft.world.entity.player.Player.class).invoke(null,player));
             if(!tacz.aos.client.ProneAimStability.active())throw new AssertionError("ParCool local crawl did not stabilize ADS");
             idle.setProgressNs(3_550_000_000L);idle.update(true);
             if(idle.getProgressNs()!=0)throw new AssertionError("ParCool idle retained periodic shake");
@@ -236,30 +236,15 @@ public final class ScopeClientSmokeTest {
         TaczArtOfSniping.LOGGER.info("PARCOOL_PRONE_IDLE_CLIENT PASSED: local {} action start/stop",modern?"4.x":"3.x");
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST) public static void beforeTrailFrame(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
-        if (ENABLED && !trailStageCaptured && event.getStage() == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
+    @SubscribeEvent(priority = EventPriority.HIGHEST) public static void beforeTrailFrame(net.minecraftforge.client.event.RenderLevelStageEvent event) {
+        if (ENABLED && !trailStageCaptured && event.getStage() == net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
                 && tacz.aos.client.ShotTrails.farthestDrawn() > 140) {
-            if (tacz.aos.client.ShaderCompat.shadowPass()) return;
-            if (tacz.aos.client.ShaderCompat.active()) {
-                irisQuery = org.lwjgl.opengl.GL15C.glGenQueries();
-                org.lwjgl.opengl.GL15C.glBeginQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED,irisQuery);
-            } else beforeTrail = Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
+            beforeTrail = Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
         }
     }
 
-    @SubscribeEvent(priority = EventPriority.LOWEST) public static void trailFrame(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
-        if (ENABLED && irisQuery != 0) {
-            org.lwjgl.opengl.GL15C.glEndQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED);
-            int samples = org.lwjgl.opengl.GL15C.glGetQueryObjecti(irisQuery,org.lwjgl.opengl.GL15C.GL_QUERY_RESULT);
-            org.lwjgl.opengl.GL15C.glDeleteQueries(irisQuery); irisQuery=0;
-            if (tacz.aos.client.ShotTrails.farthestDrawn()>160) {
-                if(samples<40) throw new AssertionError("Iris smoke failed actual depth test: "+samples);
-                trailStageCaptured=true;
-                TaczArtOfSniping.LOGGER.info("IRIS_TRAIL_FRAME fragments={}",samples);
-            }
-            return;
-        }
-        if (!ENABLED || beforeTrail == null || event.getStage() != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+    @SubscribeEvent(priority = EventPriority.LOWEST) public static void trailFrame(net.minecraftforge.client.event.RenderLevelStageEvent event) {
+        if (!ENABLED || beforeTrail == null || event.getStage() != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
         try {
             if (tacz.aos.client.ShotTrails.farthestDrawn() <= 160) return;
             trailStageCaptured = true;
@@ -280,13 +265,18 @@ public final class ScopeClientSmokeTest {
         } finally { beforeTrail.close(); beforeTrail = null; }
     }
 
-    @SubscribeEvent public static void client(ClientTickEvent.Post event) {
+    @SubscribeEvent public static void client(TickEvent.ClientTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
         if (!ENABLED) return;
         var mc = Minecraft.getInstance();
         clientTicks++;
         if (clientTicks > 2400 || failed) { fail("Client scope test timed out/failed"); mc.stop(); return; }
-        if (!started && mc.isGameLoadFinished() && mc.getOverlay() == null) {
-            var configFile = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get()
+        if (!started && mc.screen instanceof net.minecraft.client.gui.screens.AccessibilityOnboardingScreen && mc.getOverlay() == null) {
+            mc.options.onboardAccessibility = false; mc.options.save();
+            mc.setScreen(new net.minecraft.client.gui.screens.TitleScreen());
+        }
+        if (!started && (mc.screen instanceof net.minecraft.client.gui.screens.TitleScreen) && mc.getOverlay() == null) {
+            var configFile = net.minecraftforge.fml.loading.FMLPaths.CONFIGDIR.get()
                     .resolve(tacz.aos.config.ConfigFileBootstrap.FILE_NAME);
             if (!java.nio.file.Files.isRegularFile(configFile)) {
                 fail("Server config was not generated before opening the first world"); mc.stop(); return;
@@ -298,7 +288,7 @@ public final class ScopeClientSmokeTest {
             mc.createWorldOpenFlows().createFreshLevel("scope-test-" + System.currentTimeMillis(),
                     new LevelSettings("Scope integration test", GameType.CREATIVE, false, Difficulty.PEACEFUL, true,
                             new GameRules(), WorldDataConfiguration.DEFAULT), new WorldOptions(12345, false, false),
-                    registry -> registry.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), mc.screen);
+                    registry -> registry.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions());
         }
         if (mc.player == null || mc.level == null || cowId < 0) return;
         if (environmentStage >= 0) {
@@ -306,15 +296,13 @@ public final class ScopeClientSmokeTest {
             catch (Throwable failure) { fail("Environment HUD check failed: " + failure); mc.stop(); }
             return;
         }
-        if (net.neoforged.fml.ModList.get().isLoaded("iris") && !tacz.aos.client.ShaderCompat.active()) {
-            fail("Iris disabled shaders; this is not a shader compatibility pass"); mc.stop(); return;
-        }
+
         if (Boolean.getBoolean("tacz_aos.proneSwayOnly")) {
             // This visual feature does not require a rangefinder or remote entity subscription.
             // In particular, ParCool 3.x can end the fixture's creative flight above the ground.
             var gun = IGun.getIGunOrNull(mc.player.getMainHandItem());
             if (mc.screen != null || gun == null || !gun.getGunId(mc.player.getMainHandItem())
-                    .equals(ResourceLocation.parse("tacz:ai_awp"))) return;
+                    .equals(new ResourceLocation("tacz:ai_awp"))) return;
             com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(true);
             com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator.fromLocalPlayer(mc.player).aim(true);
             if (++proneWarmup < 40) return;
@@ -479,9 +467,10 @@ public final class ScopeClientSmokeTest {
         }
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST) public static void server(ServerTickEvent.Post event) {
-        if (!ENABLED || event.getServer().getPlayerList().getPlayers().isEmpty()) return;
-        ServerPlayer player = event.getServer().getPlayerList().getPlayers().getFirst();
+    @SubscribeEvent(priority = EventPriority.HIGHEST) public static void server(TickEvent.ServerTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
+        if (!ENABLED || net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayers().isEmpty()) return;
+        ServerPlayer player = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayers().get(0);
         var level = player.serverLevel();
         serverTicks++;
         if (observerFeedback) {
@@ -489,21 +478,21 @@ public final class ScopeClientSmokeTest {
                 var eye = player.getEyePosition();
                 var near = new tacz.aos.trails.TrailSegment(900001,1,eye.x+12,eye.y,eye.z-10,eye.x+12,eye.y,eye.z+10,20,false);
                 var far = new tacz.aos.trails.TrailSegment(900002,1,eye.x+180,eye.y,eye.z-10,eye.x+180,eye.y,eye.z+10,20,true);
-                net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                tacz.aos.network.PacketDelivery.sendToPlayer(player,
                         new tacz.aos.network.ShotTrailsPayload(level.dimension().location(),true,java.util.List.of(near,far)));
-                net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                tacz.aos.network.PacketDelivery.sendToPlayer(player,
                         new tacz.aos.network.NearMissPayload(level.dimension().location(),eye.x+1,eye.y,eye.z+1,.8f));
             }
             if (observerServerFrames == 20) {
                 var eye = player.getEyePosition();
                 var stop = new tacz.aos.trails.TrailSegment(900001,2,eye.x+12,eye.y,eye.z+10,
                         eye.x+12,eye.y,eye.z+10,0,true);
-                net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                tacz.aos.network.PacketDelivery.sendToPlayer(player,
                         new tacz.aos.network.ShotTrailsPayload(level.dimension().location(),true,java.util.List.of(stop)));
             }
             if (observerServerFrames == 60) {
                 var eye = player.getEyePosition();
-                net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                tacz.aos.network.PacketDelivery.sendToPlayer(player,
                         new tacz.aos.network.DistantGunshotPayload(level.dimension().location(),eye.x-1000,eye.y,eye.z,.2f,1));
             }
             return;
@@ -531,14 +520,14 @@ public final class ScopeClientSmokeTest {
             return;
         }
         if (serverTicks == 30) {
-            level.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false, event.getServer());
+            level.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false, net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer());
             player.connection.teleport(8, 80, 8, -90, 0);
             player.getAbilities().flying = true; player.onUpdateAbilities();
-            var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
-                    .putAttachment(AttachmentType.SCOPE, ResourceLocation.parse("tacz:scope_mk5hd")).build(level.registryAccess());
+            var stack = GunItemBuilder.create().setId(new ResourceLocation("tacz:ai_awp"))
+                    .putAttachment(AttachmentType.SCOPE, new ResourceLocation("tacz:scope_mk5hd")).build();
             var gun = IGun.getIGunOrNull(stack);
             var tag = gun.getAttachmentTag(stack, AttachmentType.SCOPE).copy(); tag.putInt("ZoomNumber", 1);
-            gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
+            gun.getAttachmentTag(stack, AttachmentType.SCOPE).merge(tag);
             player.setItemInHand(InteractionHand.MAIN_HAND, stack);
             var original = ServerConfig.current();
             LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(true, original.policy(), 1024, 32, false, original.ballistics(), ServerConfig.DEFAULT_SCOPE_RENDERING, ServerConfig.DEFAULT_ACTIVITY, ServerConfig.DEFAULT_PREDICTION));
@@ -598,12 +587,12 @@ public final class ScopeClientSmokeTest {
                     level.getChunk(15, 0);
                 }
                 String scope = zoomStage == 2 ? "tacz:scope_lpvo_1_6" : "tacz:scope_mk5hd";
-                var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
-                        .putAttachment(AttachmentType.SCOPE, ResourceLocation.parse(scope)).build(level.registryAccess());
+                var stack = GunItemBuilder.create().setId(new ResourceLocation("tacz:ai_awp"))
+                        .putAttachment(AttachmentType.SCOPE, new ResourceLocation(scope)).build();
                 var gun = IGun.getIGunOrNull(stack);
                 var tag = gun.getAttachmentTag(stack, AttachmentType.SCOPE).copy();
                 tag.putInt("ZoomNumber", zoomStage == 1 ? 2 : zoomStage == 2 ? 1 : 0);
-                gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
+                gun.getAttachmentTag(stack, AttachmentType.SCOPE).merge(tag);
                 player.setItemInHand(InteractionHand.MAIN_HAND, stack);
                 if (zoomStage == 3) level.removeBlock(DEVICE, false);
                 appliedZoomStage = zoomStage;

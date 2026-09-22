@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import tacz.aos.client.VisibleTargetReporter;
 
-/** Optional target: neither Voxy nor Iris is linked on clients without Voxy or on servers. */
+/** Optional target: Voxy is not linked on clients without Voxy or on servers. */
 @Pseudo
 @Mixin(targets = "me.cortex.voxy.client.core.AbstractRenderPipeline", remap = false)
 public abstract class VoxyDepthMixin {

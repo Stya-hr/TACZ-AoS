@@ -14,8 +14,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import org.luaj.vm2.LuaClosure;
 import org.luaj.vm2.LuaValue;
 import org.luaj.vm2.compiler.LuaC;
@@ -39,7 +39,7 @@ public final class ImpactPredictionGameTests {
         return ImpactPrediction.predict(shot, source, entities, 1024, 600, 65536, 8192, deadline());
     }
 
-    @GameTest(template = "ballistics", batch = "prediction")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "prediction")
     public static void bundledSnipersMatchNativeAndFollowCache(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var player = fixture.player;
@@ -48,8 +48,8 @@ public final class ImpactPredictionGameTests {
         player.setDeltaMovement(new Vec3(.13, -.07, .21));
         var operator = IGunOperator.fromLivingEntity(player);
         for (String id : List.of("ai_awp", "m95", "m107", "m700", "springfield1873", "kar98")) {
-            var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:" + id)).setAmmoCount(7)
-                    .build(helper.getLevel().registryAccess());
+            var stack = GunItemBuilder.create().setId(new ResourceLocation("tacz:" + id)).setAmmoCount(7)
+                    .build();
             player.setItemInHand(InteractionHand.MAIN_HAND, stack);
             var gun = IGun.getIGunOrNull(stack);
             var index = TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow();
@@ -68,15 +68,15 @@ public final class ImpactPredictionGameTests {
                     && preview.velocity().distanceTo(bullet.getDeltaMovement()) < 1e-4, "Native launch differs: " + id + " preview=" + preview + " native=" + bullet.position() + " / " + bullet.getDeltaMovement());
             cache.setCache(GunProperties.AMMO_SPEED, cache.<Float>getCache(GunProperties.AMMO_SPEED) * .5f);
             var modified = BallisticPreview.read(player).orElseThrow();
-            helper.assertTrue(modified.velocity().subtract(player.getKnownMovement()).distanceTo(
-                    preview.velocity().subtract(player.getKnownMovement()).scale(id.equals("springfield1873") ? .5 : 1)) < 1e-4,
+            helper.assertTrue(modified.velocity().subtract(player.getDeltaMovement()).distanceTo(
+                    preview.velocity().subtract(player.getDeltaMovement()).scale(id.equals("springfield1873") ? .5 : 1)) < 1e-4,
                     "Preview ignored updated attachment property: " + id);
             helper.assertTrue(gun.getCurrentAmmoCount(stack) == 7, "Preview consumed ammunition");
         }
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "prediction")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "prediction")
     public static void holdoverHitsForegroundAndHonorsUnknown(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var actual = BallisticPreview.read(fixture.player).orElseThrow();
@@ -103,7 +103,7 @@ public final class ImpactPredictionGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "prediction")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "prediction")
     public static void budgetsRangeLifetimeAndWater(GameTestHelper helper) {
         var shot = new BallisticPreview(new Vec3(0, 10, 0), new Vec3(10, 0, 0), .15f, .015f, 18);
         SegmentTrace.Source air = (x,y,z) -> CollisionCell.AIR;
@@ -123,7 +123,7 @@ public final class ImpactPredictionGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "prediction")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "prediction")
     public static void scriptInspectionNeverExecutesCallbacks(GameTestHelper helper) throws Exception {
         for (String body : List.of("api:shootOnce(api:isShootingNeedConsumeAmmo())",
                 "api.projectileSpeedMultiplier = 2; api:shootOnce(true)", "error('must not execute')")) {
@@ -135,7 +135,7 @@ public final class ImpactPredictionGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "prediction", timeoutTicks = 200)
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "prediction", timeoutTicks = 200)
     public static void warmedPredictionCost(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var nativeShot = BallisticPreview.read(fixture.player).orElseThrow();

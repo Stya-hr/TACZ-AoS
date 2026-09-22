@@ -12,8 +12,7 @@ import tacz.aos.config.ServerConfig;
 public abstract class ScopeFarPlaneMixin {
     @Inject(method = "getDepthFar", at = @At("RETURN"), cancellable = true)
     private void tacz_aos$scopedFarPlane(CallbackInfoReturnable<Float> callback) {
-        if (!tacz.aos.client.ShaderCompat.shadowPass()
-                && (ScopedRendering.active() || tacz.aos.client.ShotTrails.hasDistantTrails()))
+        if ((ScopedRendering.active() || tacz.aos.client.ShotTrails.hasDistantTrails()))
             callback.setReturnValue(Math.max(callback.getReturnValue(), ServerConfig.current().maxDistance() + 64f));
     }
 }

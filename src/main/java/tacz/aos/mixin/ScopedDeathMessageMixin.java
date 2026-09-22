@@ -23,7 +23,7 @@ public abstract class ScopedDeathMessageMixin {
     @Inject(method = "getDeathMessage", at = @At("HEAD"), cancellable = true)
     private void tacz_aos$sniperDeath(CallbackInfoReturnable<Component> cir) {
         if (entries.isEmpty()) return;
-        var message = ScopedDeathMessages.replacement(mob, entries.getLast().source());
+        var message = ScopedDeathMessages.replacement(mob, entries.get(entries.size() - 1).source());
         if (message != null) cir.setReturnValue(message);
     }
 }

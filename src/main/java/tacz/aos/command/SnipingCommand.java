@@ -2,8 +2,8 @@ package tacz.aos.command;
 
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import tacz.aos.compat.tacz.TaczBridge;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.ballistics.ScopedBallistics;

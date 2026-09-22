@@ -4,15 +4,15 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockGetter;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.phys.*;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.ModList;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.client.event.RenderLevelStageEvent;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import tacz.aos.network.PacketDelivery;
 import org.joml.Matrix4f;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.config.ServerConfig;
@@ -36,7 +36,7 @@ public final class VisibleTargetReporter {
     public static double lastDistance=-1;
     private VisibleTargetReporter(){}
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_LEVEL || ShaderCompat.shadowPass()) return;
+        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
         var mc=Minecraft.getInstance();
         if(level!=mc.level) {reset();level=mc.level;}
         if(level==null || mc.player==null || !mc.options.getCameraType().isFirstPerson()
@@ -63,7 +63,7 @@ public final class VisibleTargetReporter {
             if(hit.isPresent() && eye.distanceTo(hit.get())<distance) {target=hit.get();distance=eye.distanceTo(target);}
         }
         lastDistance=target==null?-1:eye.distanceTo(target);
-        PacketDistributor.sendToServer(new ScopeAimPayload(level.dimension().location(),eye,direction,lastDistance));
+        PacketDelivery.sendToServer(new ScopeAimPayload(level.dimension().location(),eye,direction,lastDistance));
         sent=tick;
     }
     private static BlockHitResult nativeTarget(Vec3 eye,Vec3 direction,int range) {
@@ -105,7 +105,6 @@ public final class VisibleTargetReporter {
     public static void captureTerrain(int framebuffer, int width, int height, Matrix4f mvp,
                                       Vec3 camera, boolean zeroToOne, float clear) {
         var mc=Minecraft.getInstance();
-        if (ShaderCompat.shadowPass()) return;
         if(level!=mc.level) {reset();level=mc.level;}
         if(level==null || mc.player==null || !mc.options.getCameraType().isFirstPerson()
                 || !TaczClientBridge.evaluateForDisplay(mc.player).eligible()) return;

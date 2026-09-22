@@ -1,19 +1,19 @@
 package tacz.aos.config;
 
 import java.util.List;
-import net.neoforged.neoforge.common.ModConfigSpec;
+import net.minecraftforge.common.ForgeConfigSpec;
 import tacz.aos.humidity.HumiditySettings;
 
 /** Server config owns all humidity inputs; no temperature, pressure or biome settings. */
 final class HumidityConfig {
-    private final ModConfigSpec.BooleanValue enabled, weather;
-    private final ModConfigSpec.LongValue salt;
-    private final ModConfigSpec.IntValue period, transition;
-    private final ModConfigSpec.DoubleValue minimum, maximum, reference, coefficient;
-    private final ModConfigSpec.EnumValue<HumiditySettings.Distribution> distribution;
-    private final ModConfigSpec.ConfigValue<List<? extends String>> phases;
-    private final ModConfigSpec.DoubleValue[] bias = new ModConfigSpec.DoubleValue[3], amplitude = new ModConfigSpec.DoubleValue[3];
-    HumidityConfig(ModConfigSpec.Builder b) {
+    private final ForgeConfigSpec.BooleanValue enabled, weather;
+    private final ForgeConfigSpec.LongValue salt;
+    private final ForgeConfigSpec.IntValue period, transition;
+    private final ForgeConfigSpec.DoubleValue minimum, maximum, reference, coefficient;
+    private final ForgeConfigSpec.EnumValue<HumiditySettings.Distribution> distribution;
+    private final ForgeConfigSpec.ConfigValue<List<? extends String>> phases;
+    private final ForgeConfigSpec.DoubleValue[] bias = new ForgeConfigSpec.DoubleValue[3], amplitude = new ForgeConfigSpec.DoubleValue[3];
+    HumidityConfig(ForgeConfigSpec.Builder b) {
         b.comment("Global relative humidity (% RH), ordinary TACZ kinetic bullets only; fixed per shot, no biome queries.",
                 "HUD follows rangefinder/ADS eligibility. Disabled hides its HUD row and leaves air friction unchanged.",
                 "No effect in water or dimensions without skylight. Restart world/server after edits.").push("humidity");
@@ -34,7 +34,7 @@ final class HumidityConfig {
                 .defineInRange("densityCoefficient", .0087264, 0, .1);
         phases = b.comment("Ordered startTick|endTick|clearMeanRH, start inclusive/end exclusive; cover 0..24000 exactly.",
                         "0 is 06:00, 6000 noon, 12000 18:00, 18000 midnight. Means must be inside RH limits.")
-                .defineListAllowEmpty("phases", HumiditySettings.DEFAULT_PHASES, () -> "", value -> value instanceof String);
+                .defineListAllowEmpty("phases", HumiditySettings.DEFAULT_PHASES, value -> value instanceof String);
         String[] names = {"clear", "rain", "thunder"};
         for (int i = 0; i < 3; i++) {
             var p = HumiditySettings.DEFAULT.weather(i); b.push(names[i]);

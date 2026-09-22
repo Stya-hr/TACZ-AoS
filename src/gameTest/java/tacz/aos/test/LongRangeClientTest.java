@@ -19,11 +19,10 @@ import net.minecraft.world.level.*;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.client.ScopedRendering;
 import tacz.aos.scoping.ScopeActivity;
@@ -57,19 +56,19 @@ public final class LongRangeClientTest {
     private static volatile boolean shotStarted;
     private static int ticks, stageTick, frames, draws;
     private static int entitySamples, trailSamples, query, queryKind, shotFrames, impactFrames;
-    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGHEST)
-    public static void beforeDraw(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
-        if (!ENABLED || tacz.aos.client.ShaderCompat.shadowPass()) return;
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
+    public static void beforeDraw(net.minecraftforge.client.event.RenderLevelStageEvent event) {
+        if (!ENABLED) return;
         var stage = event.getStage();
-        if (stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES
-                && stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
-                && stage != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
-        queryKind = stage == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES ? 1 : stage == net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES ? 3 : 2;
+        if (stage != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES
+                && stage != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
+                && stage != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
+        queryKind = stage == net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES ? 1 : stage == net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES ? 3 : 2;
         query = org.lwjgl.opengl.GL15C.glGenQueries();
         org.lwjgl.opengl.GL15C.glBeginQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED, query);
     }
-    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.LOWEST)
-    public static void afterDraw(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
+    public static void afterDraw(net.minecraftforge.client.event.RenderLevelStageEvent event) {
         if (!ENABLED || query == 0) return;
         org.lwjgl.opengl.GL15C.glEndQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED);
         int samples = org.lwjgl.opengl.GL15C.glGetQueryObjecti(query, org.lwjgl.opengl.GL15C.GL_QUERY_RESULT);
@@ -87,7 +86,7 @@ public final class LongRangeClientTest {
         if (queryKind == 2 && shotStarted) trailSamples = Math.max(trailSamples, samples);
     }
     private static volatile boolean missedInitialSpawn;
-    @SubscribeEvent public static void missingSpawn(net.neoforged.neoforge.event.entity.EntityJoinLevelEvent event) {
+    @SubscribeEvent public static void missingSpawn(net.minecraftforge.event.entity.EntityJoinLevelEvent event) {
         // Reproduce an observer whose first pairing was not installed locally. Holding aim must repair it.
         if (ENABLED && stage >= 3 && event.getLevel().isClientSide() && uuid != null && event.getEntity().getUUID().equals(uuid) && !missedInitialSpawn) {
             missedInitialSpawn = true; event.setCanceled(true);
@@ -101,11 +100,16 @@ public final class LongRangeClientTest {
     private static double initialX;
     private static int clientVisitTick;
 
-    @SubscribeEvent public static void client(ClientTickEvent.Post event) {
+    @SubscribeEvent public static void client(TickEvent.ClientTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
         if (!ENABLED) return;
         var mc = Minecraft.getInstance();
         if (failure != null) { finish(false, failure); return; }
-        if (!started && mc.isGameLoadFinished() && mc.getOverlay() == null) {
+        if (!started && mc.screen instanceof net.minecraft.client.gui.screens.AccessibilityOnboardingScreen && mc.getOverlay() == null) {
+            mc.options.onboardAccessibility = false; mc.options.save();
+            mc.setScreen(new net.minecraft.client.gui.screens.TitleScreen());
+        }
+        if (!started && (mc.screen instanceof net.minecraft.client.gui.screens.TitleScreen) && mc.getOverlay() == null) {
             started = true;
             mc.options.pauseOnLostFocus = false;
             mc.options.renderDistance().set(2); mc.options.simulationDistance().set(5);
@@ -113,21 +117,18 @@ public final class LongRangeClientTest {
             mc.createWorldOpenFlows().createFreshLevel(worldName,
                     new LevelSettings("Long range regression", GameType.CREATIVE, false, Difficulty.PEACEFUL, true,
                             new GameRules(), WorldDataConfiguration.DEFAULT), new WorldOptions(12345,false,false),
-                    r -> r.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), mc.screen);
+                    r -> r.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions());
         }
         if (mc.level == null || mc.player == null) return;
-        if (stage>=3 && net.neoforged.fml.ModList.get().isLoaded("iris") && !tacz.aos.client.ShaderCompat.active()) {
-            finish(false,"Iris disabled shaders; this is not a shader compatibility pass"); return;
-        }
+
         if (stage>=3 && frames%40==0) TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT visual active={}, targets={}, entity={}, draws={}",ScopedRendering.active(),ScopedRendering.targetCount(),mc.level.getEntity(animalId),draws);
         mc.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.HIDDEN);
         if (++frames > 2400) { finish(false,"Client timed out, stage="+stage); return; }
         mc.player.setYRot(-90); mc.player.setYHeadRot(-90); mc.player.setXRot(0);
-        com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(stage >= 3 && (!shotStarted || tacz.aos.client.ShaderCompat.active() && shotFrames < 8));
-        IGunOperator.fromLivingEntity(mc.player).aim(stage >= 3 && (!shotStarted || tacz.aos.client.ShaderCompat.active() && shotFrames < 8));
+        com.tacz.guns.client.input.AimKey.AIM_KEY.setDown(stage >= 3 && (!shotStarted));
+        IGunOperator.fromLivingEntity(mc.player).aim(stage >= 3 && (!shotStarted));
         if (shotStarted) {
             shotFrames++;
-            if (shotFrames == 6 && tacz.aos.client.ShaderCompat.active()) Screenshot.grab(mc.gameDirectory,"iris-scoped-trail.png",mc.getMainRenderTarget(),ignored -> {});
         }
         if(occlusionRequested && !occlusionFinished) {
             var stats=tacz.aos.client.ScopedOcclusion.stats(animalId);
@@ -149,7 +150,7 @@ public final class LongRangeClientTest {
                 removedCoverSeen=true;
             }
         }
-        if(stage>=3 && !net.neoforged.fml.ModList.get().isLoaded("voxy") && ticks-stageTick>60) {
+        if(stage>=3 && !net.minecraftforge.fml.ModList.get().isLoaded("voxy") && ticks-stageTick>60) {
             if(ScopedRendering.targetCount()!=0 || tacz.aos.client.VisibleTargetReporter.lastDistance>=0)
                 finish(false,"No-Voxy client selected terrain beyond two-chunk view");
             else finish(true,"No-Voxy sky does not select or load remote terrain");
@@ -161,11 +162,7 @@ public final class LongRangeClientTest {
             if (tacz.aos.client.ShotTrails.hasTrails() || tacz.aos.client.ShotTrails.drawnPieces() != 0) {
                 finish(false,"Trail continued rendering after confirmed remote impact"); return;
             }
-            if (tacz.aos.client.ShaderCompat.active()) {
-                if (entitySamples <= 0 || trailSamples <= 0 || blockSamples <= 0) { finish(false, "Iris drew no fragments: entity="+entitySamples+", trail="+trailSamples+", block target="+blockSamples); return; }
-                Screenshot.grab(mc.gameDirectory,"iris-trail.png",mc.getMainRenderTarget(),ignored -> {});
-                TaczArtOfSniping.LOGGER.info("IRIS_GPU_PASS entity fragments={}, trail fragments={}",entitySamples,trailSamples);
-            }
+
             finish(true,"Actual world save/rejoin, cold generation index, Voxy depth, real animal AI/render, both TACZ targets with hit/recovery animation, and remote damage after unscoping verified");return;
         }
         if (stage>=3 && !shotStarted) {
@@ -191,17 +188,17 @@ public final class LongRangeClientTest {
                     // Exercise actual save, server shutdown, client/Voxy teardown and reopening the same world.
                     rejoined=true;
                     mc.level.disconnect();
-                    mc.disconnect(new net.minecraft.client.gui.screens.TitleScreen());
+                    mc.clearLevel(new net.minecraft.client.gui.screens.TitleScreen());
                     draws=0;animalId=cartId=-1;initialX=0;movement=false;missedInitialSpawn=false;
                     targetsReady=targetsHit=sawFallen=sawCartHit=targetsRecovered=false;
                     entitySamples=trailSamples=blockSamples=0;stageTick=ticks;
                     TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT reopening saved world {}",worldName);
-                    mc.createWorldOpenFlows().openWorld(worldName,()->failure="Failed to reopen saved fixture");
+                    mc.createWorldOpenFlows().loadLevel(new net.minecraft.client.gui.screens.TitleScreen(), worldName);
                     return;
                 }
                 if(!occlusionFinished) {occlusionRequested=true;return;}
                 if(!partialCoverSeen || !fullCoverSeen || !removedCoverSeen || coverBaselinePixels<=0 || coverPartialPixels<=0 || coverPartialPixels>=coverBaselinePixels || coverFullPixels!=0 || coverRestoredPixels<=0) {finish(false,"Remote cover failed: partial="+partialCoverSeen+", full="+fullCoverSeen+", removed="+removedCoverSeen+", GPU="+coverBaselinePixels+"/"+coverPartialPixels+"/"+coverFullPixels+"/"+coverRestoredPixels);return;}
-                if(!readyToFire) TaczArtOfSniping.LOGGER.info("IRIS_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
+                if(!readyToFire) TaczArtOfSniping.LOGGER.info("RENDER_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
                 if(!readyToFire) Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
                 readyToFire = true;
                 if (!hitConfirmed) return;
@@ -213,21 +210,22 @@ public final class LongRangeClientTest {
         }
     }
 
-    @SubscribeEvent public static void server(ServerTickEvent.Post event) {
-        if (!ENABLED || failure != null || event.getServer().getPlayerList().getPlayers().isEmpty()) return;
-        var player = event.getServer().getPlayerList().getPlayers().getFirst();
+    @SubscribeEvent public static void server(TickEvent.ServerTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
+        if (!ENABLED || failure != null || net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayers().isEmpty()) return;
+        var player = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayers().get(0);
         var level = player.serverLevel(); ticks++;
         try {
             if (ticks == 30) {
-                level.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false,event.getServer());
+                level.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false,net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer());
                 level.setDayTime(6000);
                 player.connection.teleport(8,80,8,-90,0);
                 player.getAbilities().flying = true; player.onUpdateAbilities();
-                var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
-                        .putAttachment(AttachmentType.SCOPE,ResourceLocation.parse("tacz:scope_mk5hd")).build(level.registryAccess());
+                var stack = GunItemBuilder.create().setId(new ResourceLocation("tacz:ai_awp"))
+                        .putAttachment(AttachmentType.SCOPE,new ResourceLocation("tacz:scope_mk5hd")).build();
                 var gun = IGun.getIGunOrNull(stack);
                 var tag = gun.getAttachmentTag(stack,AttachmentType.SCOPE).copy(); tag.putInt("ZoomNumber",1);
-                gun.setAttachmentTag(stack,AttachmentType.SCOPE,tag); player.setItemInHand(InteractionHand.MAIN_HAND,stack);
+                gun.getAttachmentTag(stack,AttachmentType.SCOPE).merge(tag); player.setItemInHand(InteractionHand.MAIN_HAND,stack);
                 var columns = new LinkedHashSet<ChunkPos>();
                 for (int x=0;x<=56;x++) for (int z=-1;z<=1;z++) columns.add(new ChunkPos(x,z));
                 for (int x=52;x<=60;x++) for (int z=-4;z<=4;z++) columns.add(new ChunkPos(x,z));

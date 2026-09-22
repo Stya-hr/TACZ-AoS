@@ -7,7 +7,7 @@ public final class GunshotAcoustics {
         return Math.max(1, (int) Math.ceil(distance * 20 / speed));
     }
     public static float volume(double distance, double gain) {
-        return (float) Math.clamp(gain * Math.pow(128 / Math.max(128, distance), .65)
+        return (float) net.minecraft.util.Mth.clamp(gain * Math.pow(128 / Math.max(128, distance), .65)
                 * Math.exp(-distance / 6000), 0, 1);
     }
 }

@@ -18,7 +18,7 @@
     }
   },
   "result": {
-    "id": "tacz_aos:rangefinder",
-    "count": 1
+    "count": 1,
+    "item": "tacz_aos:rangefinder"
   }
 }

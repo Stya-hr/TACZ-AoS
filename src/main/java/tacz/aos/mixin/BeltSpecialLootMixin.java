@@ -6,7 +6,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.fml.ModList;
+import net.minecraftforge.fml.ModList;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.Mixin;
@@ -15,7 +15,7 @@ import tacz.aos.loot.SpecialLootCollection;
 import tacz.aos.loot.BeltLootCollection;
 import tacz.aos.loot.PowerPointLootOwner;
 
-/** Wraps the complete death, including other mods' injected handlers and NeoForge events. */
+/** Wraps the complete death, including other mods' injected handlers and Forge events. */
 @Mixin(LivingEntity.class)
 public abstract class BeltSpecialLootMixin implements PowerPointLootOwner {
     @Shadow public boolean dead;

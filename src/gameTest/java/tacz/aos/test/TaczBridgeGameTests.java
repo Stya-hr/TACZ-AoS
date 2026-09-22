@@ -13,8 +13,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.compat.tacz.BulletParameters;
 import tacz.aos.compat.tacz.TaczBridge;
@@ -26,24 +26,24 @@ import tacz.aos.mixin.KineticBulletAccessor;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class TaczBridgeGameTests {
-    @GameTest(template = "ballistics", batch = "tacz_bridge")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "tacz_bridge")
     public static void readsServerConfigAndTaczEquipment(GameTestHelper helper) {
         helper.assertTrue(ServerConfig.current().available(), "Server config was not loaded");
         var ballistics = ServerConfig.current().ballistics();
         helper.assertTrue(ballistics.enabled() && ballistics.extendLifetime()
                         && ballistics.maxDistance() == ServerConfig.current().maxDistance(),
                 "Formal ballistic defaults must enable takeover, extend lifetime and follow global distance");
-        var player = helper.makeMockPlayer(GameType.SURVIVAL);
+        var player = helper.makeMockPlayer();
         helper.assertTrue(TaczBridge.evaluate(player).reason() == Reason.NOT_A_GUN, "Empty hand qualified");
         var stack = GunItemBuilder.create().setId(id("tacz:ai_awp"))
                 .putAttachment(AttachmentType.SCOPE, id("tacz:scope_mk5hd"))
-                .build(helper.getLevel().registryAccess());
+                .build();
         player.setItemInHand(InteractionHand.MAIN_HAND, stack);
         var gun = IGun.getIGunOrNull(stack);
         helper.assertTrue(gun != null, "Gun builder failed");
         var tag = gun.getAttachmentTag(stack, AttachmentType.SCOPE).copy();
         tag.putInt("ZoomNumber", 1);
-        gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
+        gun.getAttachmentTag(stack, AttachmentType.SCOPE).merge(tag);
         var unscoped = TaczBridge.evaluate(player);
         helper.assertTrue(unscoped.reason() == Reason.NOT_AIMING && unscoped.zoom() == 25,
                 "Server must resolve 25x but deny hipfire: " + unscoped);
@@ -59,21 +59,21 @@ public final class TaczBridgeGameTests {
         operator.aim(true);
         tag = gun.getAttachmentTag(stack, AttachmentType.SCOPE).copy();
         tag.putInt("ZoomNumber", 2);
-        gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
+        gun.getAttachmentTag(stack, AttachmentType.SCOPE).merge(tag);
         helper.assertTrue(TaczBridge.evaluate(player).eligible(), "Low power must remain eligible near a device");
         operator.aim(false);
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "tacz_bridge")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "tacz_bridge")
     public static void capturesInitializedBulletWithoutChangingIt(GameTestHelper helper) {
-        var player = helper.makeMockPlayer(GameType.SURVIVAL);
+        var player = helper.makeMockPlayer();
         player.setPos(helper.absoluteVec(new Vec3(4, 5, 4)));
         TestRangefinders.placeNear(player);
         var gunId = id("tacz:ai_awp");
         var stack = GunItemBuilder.create().setId(gunId)
                 .putAttachment(AttachmentType.SCOPE, id("tacz:scope_mk5hd"))
-                .build(helper.getLevel().registryAccess());
+                .build();
         player.setItemInHand(InteractionHand.MAIN_HAND, stack);
         var data = TimelessAPI.getCommonGunIndex(gunId).orElseThrow().getGunData();
         var operator = IGunOperator.fromLivingEntity(player);
@@ -97,7 +97,7 @@ public final class TaczBridgeGameTests {
         var gun = IGun.getIGunOrNull(stack);
         var tag = gun.getAttachmentTag(stack, AttachmentType.SCOPE).copy();
         tag.putInt("ZoomNumber", 1);
-        gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
+        gun.getAttachmentTag(stack, AttachmentType.SCOPE).merge(tag);
         operator.aim(true);
         var context = TaczBridge.inspectNewBullet(bullet).orElseThrow();
         helper.assertTrue(context.shooterId().equals(player.getUUID()) && context.eligibilityAtFire().zoom() == 25,
@@ -109,5 +109,5 @@ public final class TaczBridgeGameTests {
         helper.succeed();
     }
 
-    private static ResourceLocation id(String id) { return ResourceLocation.parse(id); }
+    private static ResourceLocation id(String id) { return new ResourceLocation(id); }
 }

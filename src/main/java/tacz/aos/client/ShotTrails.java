@@ -1,6 +1,6 @@
 package tacz.aos.client;
 
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
@@ -12,14 +12,14 @@ import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
-import net.neoforged.neoforge.client.event.RegisterShadersEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.client.event.RenderLevelStageEvent;
+import net.minecraftforge.client.event.RegisterShadersEvent;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import tacz.aos.TaczArtOfSniping;
@@ -35,7 +35,8 @@ import static net.minecraft.client.renderer.RenderStateShard.*;
 
 /** Unlit, depth-tested particle ribbons. Independent of entity/particle chunk ticking and terrain fog. */
 @EventBusSubscriber(modid = TaczArtOfSniping.MOD_ID, value = Dist.CLIENT)
-public final class ShotTrails {
+public final class ShotTrails extends net.minecraft.client.renderer.RenderStateShard {
+    private ShotTrails() { super("tacz_aos_trails", () -> {}, () -> {}); }
     private static ShaderInstance smokeShader;
     private static final RenderType SMOKE_TYPE = RenderType.create("tacz_aos_smoke_trail", DefaultVertexFormat.POSITION_TEX_COLOR,
             VertexFormat.Mode.QUADS, 65536, false, false, RenderType.CompositeState.builder()
@@ -51,19 +52,18 @@ public final class ShotTrails {
     private static final TrailHistory localHistory = new TrailHistory();
     private static ClientLevel level;
     private static long tick;
-    private static ByteBufferBuilder bytes;
+    private static BufferBuilder bytes;
     private static MultiBufferSource.BufferSource buffers;
     private static int lastPieces;
     private static double lastFarthest;
-    private static boolean shaderDraw;
 
-    @SubscribeEvent public static void shaders(RegisterShadersEvent event) throws IOException {
+    public static void shaders(RegisterShadersEvent event) throws IOException {
         event.registerShader(new ShaderInstance(event.getResourceProvider(),
-                ResourceLocation.fromNamespaceAndPath(TaczArtOfSniping.MOD_ID, "smoke_trail"),
+                new ResourceLocation(TaczArtOfSniping.MOD_ID, "smoke_trail"),
                 DefaultVertexFormat.POSITION_TEX_COLOR), shader -> smokeShader = shader);
     }
 
-    @SubscribeEvent public static void setup(FMLClientSetupEvent event) {
+    public static void setup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
             ScopeNetworking.setTrailReceiver(ShotTrails::receive);
             ScopeNetworking.setNearMissReceiver(NearMissSounds::receive);
@@ -75,7 +75,7 @@ public final class ShotTrails {
         if (mc.level == null || mc.player == null || !payload.localOnly() && !tacz.aos.block.RangefinderAccess.nearby(mc.player)
                 || !mc.level.dimension().location().equals(payload.dimension())) return;
         if (level != mc.level) { history.clear(); localHistory.clear(); level = mc.level; }
-        double now = tick + mc.getTimer().getGameTimeDeltaPartialTick(false);
+        double now = tick + mc.getFrameTime();
         for (var segment : payload.segments()) {
             if (payload.localOnly()) {
                 for (var piece : tacz.aos.trails.TrailAudience.clip(segment, ShotTrails::hasLocalChunk)) localHistory.accept(piece, now);
@@ -93,7 +93,8 @@ public final class ShotTrails {
     public static int drawnPieces() { return lastPieces; }
     public static double farthestDrawn() { return lastFarthest; }
 
-    @SubscribeEvent public static void tick(ClientTickEvent.Post event) {
+    @SubscribeEvent public static void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
         var mc = Minecraft.getInstance();
         if (mc.level != level) { history.clear(); localHistory.clear(); level = mc.level; }
         if (!mc.isPaused()) tick++;
@@ -102,15 +103,13 @@ public final class ShotTrails {
     }
 
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES || ShaderCompat.shadowPass()) return;
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
         lastPieces = 0; lastFarthest = 0;
         var mc = Minecraft.getInstance();
         if (!hasTrails() || mc.player == null || smokeShader == null) return;
-        shaderDraw = ShaderCompat.active();
-        if (shaderDraw) ShaderTrailMaterials.prepare();
-        RenderType smokeType = shaderDraw ? ShaderTrailMaterials.SMOKE_TYPE : SMOKE_TYPE;
-        if (buffers == null) { bytes = new ByteBufferBuilder(262144); buffers = MultiBufferSource.immediate(bytes); }
-        double now = tick + event.getPartialTick().getGameTimeDeltaPartialTick(false);
+        RenderType smokeType = SMOKE_TYPE;
+        if (buffers == null) { bytes = new BufferBuilder(262144); buffers = MultiBufferSource.immediate(bytes); }
+        double now = tick + event.getPartialTick();
         var camera = event.getCamera();
         Vec3 eye = camera.getPosition();
         var matrix = event.getPoseStack().last().pose();
@@ -120,9 +119,9 @@ public final class ShotTrails {
         var vertices = buffers.getBuffer(smokeType);
         for (var sample : visibleSamples(now)) {
             var s = sample.segment();
-            if (!shaderDraw && (history.hasMovingHead(s.shot(), now) || localHistory.hasMovingHead(s.shot(), now)))
+            if ((history.hasMovingHead(s.shot(), now) || localHistory.hasMovingHead(s.shot(), now)))
                 heads.put(s.shot(), sample);
-            double progress = Math.clamp(now - sample.start(), 0, 1);
+            double progress = net.minecraft.util.Mth.clamp(now - sample.start(), 0, 1);
             if (progress <= 0 || lastPieces >= 2048) continue;
             Vec3 from = new Vec3(s.x0(), s.y0(), s.z0()), to = new Vec3(s.x1(), s.y1(), s.z1());
             if (!event.getFrustum().isVisible(new AABB(from, to).inflate(0.2))) continue;
@@ -154,14 +153,12 @@ public final class ShotTrails {
             }
         }
         buffers.endBatch(smokeType);
-        // Shader packs render only the smoke ribbon; omit the separate bright bullet-head discs.
-        if (shaderDraw) return;
         vertices = buffers.getBuffer(TYPE);
         Vec3 right = vector(new Vector3f(1, 0, 0).rotate(camera.rotation()));
         Vec3 up = vector(new Vector3f(0, 1, 0).rotate(camera.rotation()));
         for (var sample : heads.values()) {
             var s = sample.segment();
-            double progress = Math.clamp(now - sample.start(), 0, 1);
+            double progress = net.minecraft.util.Mth.clamp(now - sample.start(), 0, 1);
             if (progress <= 0) continue;
             Vec3 point = new Vec3(s.x0(), s.y0(), s.z0()).lerp(new Vec3(s.x1(), s.y1(), s.z1()), progress);
             if (!event.getFrustum().isVisible(new AABB(point, point).inflate(0.2))) continue;
@@ -179,11 +176,11 @@ public final class ShotTrails {
         var world = Minecraft.getInstance().level;
         // ClientLevel.hasChunk() unconditionally returns true; query the real cache with creation disabled.
         return world != null && world.getChunkSource().getChunk(x, z,
-                net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false) != null;
+                net.minecraft.world.level.chunk.ChunkStatus.FULL, false) != null;
     }
 
     private static double visualTime() {
-        return tick + Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false);
+        return tick + Minecraft.getInstance().getFrameTime();
     }
 
     private static java.util.List<TrailHistory.Sample> visibleSamples(double now) {
@@ -204,12 +201,11 @@ public final class ShotTrails {
     }
     private static Vec3 vector(Vector3f v) { return new Vec3(v.x, v.y, v.z); }
     private static void vertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float alpha) {
-        out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z).setColor(0.92f, 0.93f, 0.94f, alpha);
+        out.vertex(matrix, (float) p.x, (float) p.y, (float) p.z).color(0.92f, 0.93f, 0.94f, alpha).endVertex();
     }
     private static void smokeVertex(VertexConsumer out, Matrix4f matrix, Vec3 p, float u, float v, float alpha) {
-        out.addVertex(matrix, (float) p.x, (float) p.y, (float) p.z)
-                .setUv(shaderDraw ? u * .125f : u, shaderDraw ? (v + 1) * .5f : v).setColor(0.88f, 0.89f, 0.90f, alpha);
-        if (shaderDraw) out.setLight(net.minecraft.client.renderer.LightTexture.FULL_BRIGHT);
+        out.vertex(matrix, (float) p.x, (float) p.y, (float) p.z)
+                .uv(u, v).color(0.88f, 0.89f, 0.90f, alpha).endVertex();
     }
     private static void smokeBand(VertexConsumer out, Matrix4f matrix, Vec3 a, Vec3 b, Vec3 side,
                                   double width0, double width1, float u0, float u1, float alpha0, float alpha1) {
@@ -233,6 +229,6 @@ public final class ShotTrails {
     }
     @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
         history.clear(); localHistory.clear(); level = null; tick = 0; lastPieces = 0;
-        if (bytes != null) { bytes.close(); bytes = null; buffers = null; }
+        if (bytes != null) {  bytes = null; buffers = null; }
     }
 }

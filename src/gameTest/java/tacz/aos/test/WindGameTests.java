@@ -5,10 +5,10 @@ import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.entity.EntityKineticBullet;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.compat.tacz.BallisticPreview;
 import tacz.aos.config.ServerConfig;
@@ -22,7 +22,7 @@ import java.util.List;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class WindGameTests {
-    @GameTest(template = "ballistics", batch = "wind")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "wind")
     public static void predictionObeysDragLagFormulaAndWaterExclusion(GameTestHelper helper) {
         float friction = .02f;
         var wind = new WindVector(0, 5);
@@ -43,7 +43,7 @@ public final class WindGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "wind")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "wind")
     public static void disabledWindAndPerShotStateAreIndependentOfAim(GameTestHelper helper) throws Exception {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var player = fixture.player;
@@ -71,11 +71,11 @@ public final class WindGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "wind")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "wind")
     public static void windReadoutNetworkRoundTripAndBounds(GameTestHelper helper) {
         var sample = new RangePayload(helper.getLevel().dimension().location(), Vec3.ZERO, new Vec3(1,0,0), 100,
                 true, 3, -4, true, 65.3f);
-        var buffer = new RegistryFriendlyByteBuf(io.netty.buffer.Unpooled.buffer(), helper.getLevel().registryAccess());
+        var buffer = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         try {
             RangePayload.STREAM_CODEC.encode(buffer, sample);
             helper.assertTrue(sample.equals(RangePayload.STREAM_CODEC.decode(buffer)), "Wind readout lost data in transit");

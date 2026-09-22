@@ -22,7 +22,7 @@ public final class TacticalCollectionBeltItem extends Item implements Equipable 
     public TacticalCollectionBeltItem(Properties properties) { super(properties.stacksTo(1)); }
 
     @Override public EquipmentSlot getEquipmentSlot() { return EquipmentSlot.LEGS; }
-    @Override public Holder<SoundEvent> getEquipSound() { return SoundEvents.ARMOR_EQUIP_LEATHER; }
+    @Override public SoundEvent getEquipSound() { return SoundEvents.ARMOR_EQUIP_LEATHER; }
 
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
@@ -30,7 +30,7 @@ public final class TacticalCollectionBeltItem extends Item implements Equipable 
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> lines, TooltipFlag flag) {
+    public void appendHoverText(ItemStack stack, @org.jetbrains.annotations.Nullable Level level, List<Component> lines, TooltipFlag flag) {
         lines.add(Component.translatable("item.tacz_aos.tactical_collection_belt.equipment").withStyle(ChatFormatting.GRAY));
         lines.add(Component.translatable("item.tacz_aos.tactical_collection_belt.effect").withStyle(ChatFormatting.GRAY));
     }

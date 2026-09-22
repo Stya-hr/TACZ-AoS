@@ -1,8 +1,8 @@
 package tacz.aos.network;
 
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.FriendlyByteBuf;
+import tacz.aos.network.PayloadCodec;
+import tacz.aos.network.ModPayload;
 import net.minecraft.resources.ResourceLocation;
 import tacz.aos.TaczArtOfSniping;
 
@@ -11,13 +11,13 @@ import java.util.List;
 import java.util.UUID;
 
 /** Bounded render leases and poses. Native tracking supplies spawn/type/metadata/equipment/removal packets. */
-public record ScopeTargetsPayload(ResourceLocation dimension, int interval, List<Target> targets) implements CustomPacketPayload {
+public record ScopeTargetsPayload(ResourceLocation dimension, int interval, List<Target> targets) implements ModPayload {
     public record Target(int id, UUID uuid, double x, double y, double z, float yaw, float pitch,
                          float headYaw, float bodyYaw, int light, boolean extra) {}
     public static final int MAX_TARGETS = 256;
-    public static final Type<ScopeTargetsPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(TaczArtOfSniping.MOD_ID, "scope_targets"));
-    public static final StreamCodec<RegistryFriendlyByteBuf, ScopeTargetsPayload> STREAM_CODEC = new StreamCodec<>() {
-        @Override public ScopeTargetsPayload decode(RegistryFriendlyByteBuf buf) {
+    public static final Type<ScopeTargetsPayload> TYPE = new Type<>(new ResourceLocation(TaczArtOfSniping.MOD_ID, "scope_targets"), ScopeTargetsPayload.class);
+    public static final PayloadCodec<FriendlyByteBuf, ScopeTargetsPayload> STREAM_CODEC = new PayloadCodec<>() {
+        @Override public ScopeTargetsPayload decode(FriendlyByteBuf buf) {
             var dimension = buf.readResourceLocation();
             int interval = buf.readVarInt(), size = buf.readVarInt();
             if (interval < 2 || interval > 20 || size < 0 || size > MAX_TARGETS) throw new IllegalArgumentException("Invalid scope lease bounds");
@@ -28,7 +28,7 @@ public record ScopeTargetsPayload(ResourceLocation dimension, int interval, List
             }
             return new ScopeTargetsPayload(dimension, interval, targets);
         }
-        @Override public void encode(RegistryFriendlyByteBuf buf, ScopeTargetsPayload payload) {
+        @Override public void encode(FriendlyByteBuf buf, ScopeTargetsPayload payload) {
             buf.writeResourceLocation(payload.dimension);
             buf.writeVarInt(payload.interval);
             buf.writeVarInt(payload.targets.size());
@@ -48,5 +48,5 @@ public record ScopeTargetsPayload(ResourceLocation dimension, int interval, List
                     || Math.abs(target.x) > 30_000_000 || Math.abs(target.z) > 30_000_000) throw new IllegalArgumentException("Invalid scope pose");
         }
     }
-    @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    @Override public Type<? extends ModPayload> type() { return TYPE; }
 }

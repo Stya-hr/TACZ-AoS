@@ -5,27 +5,25 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;
-import net.neoforged.neoforge.gametest.*;
+import net.minecraftforge.gametest.*;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.terrain.GeneratedChunks;
 import tacz.aos.ballistics.*;
 import java.util.*;
 @GameTestHolder(TaczArtOfSniping.MOD_ID) @PrefixGameTestTemplate(false)
 public final class GeneratedTargetGameTests {
-    @GameTest(template="empty",batch="generated_target",timeoutTicks=600)
+    @GameTest(setupTicks=20, template="empty",batch="generated_target",timeoutTicks=600)
     public static void savedFullMetadataAndMissingGapNeverLoadTerrain(GameTestHelper h) {
         var level=h.getLevel();var index=GeneratedChunks.INSTANCE;index.clear();
         int x=31100,z=31100;
-        List<java.util.concurrent.CompletableFuture<Void>> writes=new ArrayList<>();
         for(int i=0;i<4;i++) {
             var tag=new CompoundTag();tag.putInt("xPos",x+i);tag.putInt("zPos",z);
             tag.putString("Status",i==2?"minecraft:features":"minecraft:full");
-            writes.add(level.getChunkSource().chunkMap.write(new ChunkPos(x+i,z),tag));
+            level.getChunkSource().chunkMap.write(new ChunkPos(x+i,z),tag);
         }
         h.onEachTick(()->{
             // GameTest ticks are unthrottled. Give the native region I/O worker real CPU time.
             try {Thread.sleep(2);} catch(InterruptedException e){Thread.currentThread().interrupt();throw new RuntimeException(e);}
-            if(writes.stream().anyMatch(f->!f.isDone()))return;
             var value=index.path(level,new Vec3(x*16+8,80,z*16+8),new Vec3((x+3)*16+8,80,z*16+8));
             var front=index.state(level,x,z);var back=index.state(level,x+3,z);
             if(value==GeneratedChunks.State.UNKNOWN || front==GeneratedChunks.State.UNKNOWN || back==GeneratedChunks.State.UNKNOWN)return;
@@ -35,7 +33,7 @@ public final class GeneratedTargetGameTests {
             h.succeed();
         });
     }
-    @GameTest(template="ballistics",batch="generated_target")
+    @GameTest(setupTicks=20, template="ballistics",batch="generated_target")
     public static void transitWallsIgnoredButTargetWallsStopActualProjectile(GameTestHelper h) {
         var f=new LocalBallisticsGameTests.Fixture(h);
         h.setBlock(new BlockPos(10,5,4),Blocks.STONE);h.setBlock(new BlockPos(20,5,4),Blocks.STONE);
@@ -50,7 +48,7 @@ public final class GeneratedTargetGameTests {
         h.assertTrue(predicted.target()!=null && predicted.target().distanceTo(bullet.position())<.001,"Preview and actual impact differ");
         h.succeed();
     }
-    @GameTest(template="ballistics",batch="generated_target")
+    @GameTest(setupTicks=20, template="ballistics",batch="generated_target")
     public static void movingTargetCanDodgeAfterShot(GameTestHelper h) {
         var f=new LocalBallisticsGameTests.Fixture(h);
         var cow=h.spawn(net.minecraft.world.entity.EntityType.COW,new Vec3(20,5,4));cow.setNoAi(true);cow.setNoGravity(true);

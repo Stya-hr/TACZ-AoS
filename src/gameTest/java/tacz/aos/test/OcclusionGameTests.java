@@ -4,12 +4,12 @@ import io.netty.buffer.Unpooled;
 import java.util.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.*;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.properties.*;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.*;
-import net.neoforged.neoforge.gametest.*;
+import net.minecraftforge.gametest.*;
 import tacz.aos.network.ScopeOcclusionPayload;
 import tacz.aos.occlusion.OccluderBox;
 import tacz.aos.occlusion.OcclusionShapes;
@@ -17,7 +17,7 @@ import tacz.aos.scoping.ScopeOcclusion;
 
 @GameTestHolder("tacz_aos") @PrefixGameTestTemplate(false)
 public final class OcclusionGameTests {
-    @GameTest(template="ballistics",batch="occlusion")
+    @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
     public static void liveCoverTracksPlacementRemovalAndTransparentBlocksWithoutChunkLoads(GameTestHelper h) {
         for(int x=2;x<=18;x++)for(int y=4;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);
         var eye=h.absoluteVec(new Vec3(4,7,8));
@@ -38,7 +38,7 @@ public final class OcclusionGameTests {
         h.assertTrue(budget[0]==0,"Cell scan was not bounded");
         h.assertTrue(h.getLevel().getChunkSource().getLoadedChunksCount()==loaded,"Occlusion requested a missing chunk");h.succeed();
     }
-    @GameTest(template="ballistics",batch="occlusion")
+    @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
     public static void vegetationAndTransparentMaterialsDoNotOccludeButSolidCoverAndLeavesDo(GameTestHelper h) {
         for(int x=2;x<=18;x++)for(int y=4;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);
         var eye=h.absoluteVec(new Vec3(4,6,8.5));
@@ -55,7 +55,7 @@ public final class OcclusionGameTests {
                         "Leaf texture holes were preserved instead of opaque leaf geometry");
             }
         }
-        for(var clear:List.of(Blocks.SHORT_GRASS,Blocks.TALL_GRASS,Blocks.FERN,Blocks.LARGE_FERN,Blocks.WHEAT,
+        for(var clear:List.of(Blocks.GRASS,Blocks.TALL_GRASS,Blocks.FERN,Blocks.LARGE_FERN,Blocks.WHEAT,
                 Blocks.CARROTS,Blocks.POTATOES,Blocks.BEETROOTS,Blocks.NETHER_WART,Blocks.TORCHFLOWER_CROP,
                 Blocks.PITCHER_CROP,Blocks.COCOA,Blocks.SUGAR_CANE,Blocks.SWEET_BERRY_BUSH,
                 Blocks.DANDELION,Blocks.OAK_SAPLING,Blocks.VINE,Blocks.GLOW_LICHEN,Blocks.KELP,
@@ -73,7 +73,7 @@ public final class OcclusionGameTests {
         h.succeed();
     }
 
-    @GameTest(template="empty",batch="occlusion")
+    @GameTest(setupTicks=20, template="empty",batch="occlusion")
     public static void slabsStairsDoorsAndTrapdoorsKeepTheirActualOpenings(GameTestHelper h) {
         var level=h.getLevel();var pos=h.absolutePos(BlockPos.ZERO);
         var slab=Blocks.STONE_SLAB.defaultBlockState();
@@ -89,15 +89,15 @@ public final class OcclusionGameTests {
         var door=Blocks.OAK_DOOR.defaultBlockState().setValue(DoorBlock.FACING,Direction.NORTH).setValue(DoorBlock.OPEN,false);
         var closed=OcclusionShapes.boxes(door,level,pos);
         var open=OcclusionShapes.boxes(door.setValue(DoorBlock.OPEN,true),level,pos);
-        var face=closed.getFirst();
+        var face=closed.get(0);
         h.assertTrue(closed.size()==1 && face.getXsize()==1 && face.getZsize()==3.0/16
-                        && open.size()==1 && open.getFirst().getXsize()==3.0/16 && open.getFirst().getZsize()==1,
+                        && open.size()==1 && open.get(0).getXsize()==3.0/16 && open.get(0).getZsize()==1,
                 "Door did not rotate its thin opaque panel when opened");
         h.assertTrue(open.stream().noneMatch(b->b.contains(face.getCenter())),"Open door retained its old occlusion");
         var trap=Blocks.OAK_TRAPDOOR.defaultBlockState().setValue(TrapDoorBlock.HALF,Half.BOTTOM).setValue(TrapDoorBlock.OPEN,false);
         var horizontal=OcclusionShapes.boxes(trap,level,pos);
         var vertical=OcclusionShapes.boxes(trap.setValue(TrapDoorBlock.OPEN,true),level,pos);
-        h.assertTrue(horizontal.getFirst().getYsize()==3.0/16 && vertical.getFirst().getYsize()==1
+        h.assertTrue(horizontal.get(0).getYsize()==3.0/16 && vertical.get(0).getYsize()==1
                         && !contains(horizontal,.5,.5,.5) && !contains(vertical,.5,.5,.5),
                 "Trapdoor became a full cube instead of a thin panel");
         var fence=OcclusionShapes.boxes(Blocks.OAK_FENCE.defaultBlockState(),level,pos);
@@ -105,7 +105,7 @@ public final class OcclusionGameTests {
         h.succeed();
     }
 
-    @GameTest(template="empty",batch="occlusion")
+    @GameTest(setupTicks=20, template="empty",batch="occlusion")
     public static void complexUnknownGeometryFallsBackToWholeCellWithoutLosingProtrusions(GameTestHelper h) {
         var shape=net.minecraft.world.phys.shapes.Shapes.empty();
         for(int i=0;i<8;i++)shape=net.minecraft.world.phys.shapes.Shapes.or(shape,
@@ -126,11 +126,11 @@ public final class OcclusionGameTests {
         return boxes.stream().anyMatch(b->b.contains(x,y,z));
     }
 
-    @GameTest(template="empty",batch="occlusion")
+    @GameTest(setupTicks=20, template="empty",batch="occlusion")
     public static void occlusionPacketRoundTripAndAllocationBounds(GameTestHelper h) {
         var payload=new ScopeOcclusionPayload(h.getLevel().dimension().location(),List.of(new ScopeOcclusionPayload.Target(42,UUID.randomUUID(),new BlockPos(900,80,8),
                 List.of(new OccluderBox(-3,0,-1,-2,1,.5)))));
-        var b=new RegistryFriendlyByteBuf(Unpooled.buffer(),h.getLevel().registryAccess());
+        var b=new FriendlyByteBuf(Unpooled.buffer());
         try {
             ScopeOcclusionPayload.STREAM_CODEC.encode(b,payload);
             h.assertTrue(ScopeOcclusionPayload.STREAM_CODEC.decode(b).equals(payload),"Occlusion shape changed in transit");

@@ -23,7 +23,7 @@ public final class ConfigFileBootstrap {
         try {
             Path template = defaultDirectory.resolve(FILE_NAME);
             if (Files.exists(template)) {
-                // Preserve modpack defaults just as NeoForge's normal first-world creation does.
+                // Preserve modpack defaults just as Forge's normal first-world creation does.
                 Files.copy(template, target);
             } else {
                 var defaults = CommentedConfig.inMemory();

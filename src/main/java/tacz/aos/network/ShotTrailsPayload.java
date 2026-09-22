@@ -1,8 +1,8 @@
 package tacz.aos.network;
 
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.FriendlyByteBuf;
+import tacz.aos.network.PayloadCodec;
+import tacz.aos.network.ModPayload;
 import net.minecraft.resources.ResourceLocation;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.trails.TrailSegment;
@@ -11,11 +11,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Bounded batches per recipient/dimension/tick, separately for full and locally clipped traces. No chunk data or entity spawning. */
-public record ShotTrailsPayload(ResourceLocation dimension, boolean localOnly, List<TrailSegment> segments) implements CustomPacketPayload {
+public record ShotTrailsPayload(ResourceLocation dimension, boolean localOnly, List<TrailSegment> segments) implements ModPayload {
     public static final int MAX_SEGMENTS = 128;
-    public static final Type<ShotTrailsPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(TaczArtOfSniping.MOD_ID, "shot_trails"));
-    public static final StreamCodec<RegistryFriendlyByteBuf, ShotTrailsPayload> STREAM_CODEC = new StreamCodec<>() {
-        @Override public ShotTrailsPayload decode(RegistryFriendlyByteBuf buf) {
+    public static final Type<ShotTrailsPayload> TYPE = new Type<>(new ResourceLocation(TaczArtOfSniping.MOD_ID, "shot_trails"), ShotTrailsPayload.class);
+    public static final PayloadCodec<FriendlyByteBuf, ShotTrailsPayload> STREAM_CODEC = new PayloadCodec<>() {
+        @Override public ShotTrailsPayload decode(FriendlyByteBuf buf) {
             var dimension = buf.readResourceLocation();
             boolean localOnly = buf.readBoolean();
             int size = buf.readVarInt();
@@ -26,7 +26,7 @@ public record ShotTrailsPayload(ResourceLocation dimension, boolean localOnly, L
                     buf.readFloat(), buf.readBoolean()));
             return new ShotTrailsPayload(dimension, localOnly, segments);
         }
-        @Override public void encode(RegistryFriendlyByteBuf buf, ShotTrailsPayload payload) {
+        @Override public void encode(FriendlyByteBuf buf, ShotTrailsPayload payload) {
             buf.writeResourceLocation(payload.dimension()); buf.writeBoolean(payload.localOnly()); buf.writeVarInt(payload.segments().size());
             for (var s : payload.segments()) {
                 buf.writeVarInt(s.shot()); buf.writeVarInt(s.step());
@@ -41,5 +41,5 @@ public record ShotTrailsPayload(ResourceLocation dimension, boolean localOnly, L
         segments = List.copyOf(segments);
         if (segments.size() > MAX_SEGMENTS) throw new IllegalArgumentException("Invalid trail batch size");
     }
-    @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    @Override public Type<? extends ModPayload> type() { return TYPE; }
 }

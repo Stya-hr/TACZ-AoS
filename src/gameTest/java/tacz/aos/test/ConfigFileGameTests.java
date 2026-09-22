@@ -3,8 +3,8 @@ package tacz.aos.test;
 import com.electronwill.nightconfig.toml.TomlParser;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.config.ConfigFileBootstrap;
 import tacz.aos.config.ServerConfig;
@@ -16,7 +16,7 @@ import java.nio.file.Path;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class ConfigFileGameTests {
-    @GameTest(template = "empty", batch = "config_bootstrap")
+    @GameTest(setupTicks = 20, template = "empty", batch = "config_bootstrap")
     public static void createsEditableDefaultsWithoutChangingActiveConfig(GameTestHelper helper) throws IOException {
         Path root = scratch();
         var before = ServerConfig.current();
@@ -28,7 +28,7 @@ public final class ConfigFileGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "empty", batch = "config_bootstrap")
+    @GameTest(setupTicks = 20, template = "empty", batch = "config_bootstrap")
     public static void preservesExistingUserFileAndPackTemplate(GameTestHelper helper) throws IOException {
         Path root = scratch(), config = root.resolve("config"), defaults = root.resolve("defaults");
         Files.createDirectories(defaults);

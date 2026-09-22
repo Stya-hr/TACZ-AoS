@@ -8,12 +8,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.level.LevelEvent;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.level.LevelEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import tacz.aos.network.PacketDelivery;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.network.DistantGunshotPayload;
 
@@ -54,7 +54,7 @@ public final class DelayedGunshots {
         for (var listener : level.getChunkSource().chunkMap.getPlayers(new ChunkPos(pos), false)) {
             if (listener != shooter && listener.distanceToSqr(pos.getX(), pos.getY(), pos.getZ()) < (double) nativeDistance * nativeDistance
                     && listener.getEyePosition().distanceTo(origin) < config.minDistance())
-                PacketDistributor.sendToPlayer(listener, nativeMessage);
+                com.tacz.guns.network.NetworkHandler.CHANNEL.send(net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> listener), nativeMessage);
         }
         int maxDistance = config.maxDistance() == 0 ? ServerConfig.current().maxDistance() : config.maxDistance();
         double gain = config.volume() * (SoundManager.SILENCE_3P_SOUND.equals(name) ? .2 : 1);
@@ -64,13 +64,14 @@ public final class DelayedGunshots {
             double distance = listener.getEyePosition().distanceTo(origin);
             if (distance < config.minDistance() || distance > maxDistance) continue;
             state.pending.add(new Arrival(level.getGameTime() + GunshotAcoustics.delayTicks(distance, config.speed()),
-                    listener, origin, GunshotAcoustics.volume(distance, gain), Math.clamp(pitch, .8f, 1.2f)));
+                    listener, origin, GunshotAcoustics.volume(distance, gain), net.minecraft.util.Mth.clamp(pitch, .8f, 1.2f)));
         }
         return true;
     }
 
-    @SubscribeEvent public void tick(LevelTickEvent.Post event) {
-        if (event.getLevel() instanceof ServerLevel level && level.tickRateManager().runsNormally()) deliver(level, level.getGameTime());
+    @SubscribeEvent public void tick(TickEvent.LevelTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
+        if (event.level instanceof ServerLevel level) deliver(level, level.getGameTime());
     }
     public void deliver(ServerLevel level, long now) {
         var state = levels.get(level);
@@ -83,7 +84,7 @@ public final class DelayedGunshots {
             var listener = arrival.listener;
             if (now - arrival.tick > 20 || !listeners.contains(listener) || !listener.isAlive()
                     || listener.isSpectator() || listener.serverLevel() != level) continue;
-            PacketDistributor.sendToPlayer(listener, new DistantGunshotPayload(level.dimension().location(),
+            PacketDelivery.sendToPlayer(listener, new DistantGunshotPayload(level.dimension().location(),
                     arrival.origin.x, arrival.origin.y, arrival.origin.z, arrival.volume, arrival.pitch));
         }
         if (state.accepted.isEmpty() && state.pending.isEmpty()) levels.remove(level);

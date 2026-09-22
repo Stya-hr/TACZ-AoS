@@ -1,10 +1,10 @@
 package tacz.aos.scoping;
 
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.compat.tacz.TaczBridge;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.network.ScopeViewPayload;
@@ -36,9 +36,10 @@ public final class ScopeViews {
         var view = views.get(player.getUUID());
         if (view == null || tick - view.received > 100 || !view.payload.dimension().equals(player.level().dimension().location())) return ScopeCone.halfAngle(zoom);
         double maximum = ScopeCone.maximumHalfAngle(1);
-        return Math.clamp(view.payload.halfAngle(), Math.min(Math.toRadians(0.1), maximum), maximum);
+        return net.minecraft.util.Mth.clamp(view.payload.halfAngle(), Math.min(Math.toRadians(0.1), maximum), maximum);
     }
-    @SubscribeEvent public void tick(ServerTickEvent.Pre event) {
+    @SubscribeEvent public void tick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.START) return;
         tick++;
         views.values().removeIf(view -> tick - view.received > 100);
         attempts.values().removeIf(when -> tick - when > 100);

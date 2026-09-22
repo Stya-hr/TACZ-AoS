@@ -3,16 +3,16 @@ import com.mojang.authlib.GameProfile;
 import com.tacz.guns.api.entity.IGunOperator;
 import net.minecraft.gametest.framework.*;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.common.util.FakePlayerFactory;
-import net.neoforged.neoforge.gametest.*;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.common.util.FakePlayerFactory;
+import net.minecraftforge.gametest.*;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.scoping.*;
 import java.util.*;
 @GameTestHolder(TaczArtOfSniping.MOD_ID) @PrefixGameTestTemplate(false)
 public final class ScopeRetentionGameTests {
-    @GameTest(template="ballistics",batch="scope_retention",timeoutTicks=300)
+    @GameTest(setupTicks=20, template="ballistics",batch="scope_retention",timeoutTicks=300)
     public static void sharedRegionBudgetAndIndependentFlightLease(GameTestHelper h) {
         var level=h.getLevel();var old=ServerConfig.current();var activity=ScopeActivity.INSTANCE;
         var a=FakePlayerFactory.get(level,new GameProfile(UUID.randomUUID(),"target-a"));
@@ -23,7 +23,7 @@ public final class ScopeRetentionGameTests {
         try {
             LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(true,old.policy(),1024,32,false,old.ballistics(),old.scopeRendering(),
                 new ServerConfig.Activity(true,0,2,60,25,4096,1,20,600),old.prediction()));
-            var event=new ServerTickEvent.Pre(()->true,level.getServer());activity.tick(event);
+            var event=new TickEvent.ServerTickEvent(TickEvent.Phase.START, () -> true, level.getServer());activity.tick(event);
             Vec3 eye=a.getEyePosition(),target=eye.add(96,0,0),other=eye.add(160,0,0);
             for(int x=a.chunkPosition().x-3;x<=(int)Math.floor(other.x/16)+3;x++)
                 for(int z=a.chunkPosition().z-3;z<=a.chunkPosition().z+3;z++)level.getChunk(x,z);
@@ -50,7 +50,7 @@ public final class ScopeRetentionGameTests {
         }
         h.succeed();
     }
-    @GameTest(template="ballistics",batch="scope_throttle")
+    @GameTest(setupTicks=20, template="ballistics",batch="scope_throttle")
     public static void attemptsCooldownAndLatestTargetAcrossUnscoping(GameTestHelper h) {
         var level=h.getLevel();var old=ServerConfig.current();var activity=ScopeActivity.INSTANCE;
         var player=FakePlayerFactory.get(level,new GameProfile(UUID.randomUUID(),"cooldown"));
@@ -58,7 +58,7 @@ public final class ScopeRetentionGameTests {
         try {
             LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(true,old.policy(),1024,32,false,old.ballistics(),old.scopeRendering(),
                     new ServerConfig.Activity(true,0,2,60,196,4096,4,20,600),old.prediction()));
-            var event=new ServerTickEvent.Pre(()->true,level.getServer());activity.tick(event);
+            var event=new TickEvent.ServerTickEvent(TickEvent.Phase.START, () -> true, level.getServer());activity.tick(event);
             Vec3 eye=player.getEyePosition(),first=eye.add(96,0,0),obsolete=eye.add(160,0,0),latest=eye.add(224,0,0);
             for(int x=player.chunkPosition().x-3;x<=(int)Math.floor(latest.x/16)+3;x++)
                 for(int z=player.chunkPosition().z-3;z<=player.chunkPosition().z+3;z++)level.getChunk(x,z);
@@ -101,8 +101,8 @@ public final class ScopeRetentionGameTests {
             var uf=net.minecraft.server.players.PlayerList.class.getDeclaredField("playersByUUID");pf.setAccessible(true);uf.setAccessible(true);
             var players=(List<net.minecraft.server.level.ServerPlayer>)pf.get(list);var ids=(Map<UUID,net.minecraft.server.level.ServerPlayer>)uf.get(list);
             if(add){var channel=net.minecraft.network.Connection.class.getDeclaredField("channel");channel.setAccessible(true);
-                channel.set(p.connection.getConnection(),new io.netty.channel.embedded.EmbeddedChannel());players.add(p);ids.put(p.getUUID(),p);}
-            else{players.remove(p);ids.remove(p.getUUID());p.connection.getConnection().channel().close();}
+                channel.set(p.connection.connection,new io.netty.channel.embedded.EmbeddedChannel());players.add(p);ids.put(p.getUUID(),p);}
+            else{players.remove(p);ids.remove(p.getUUID());p.connection.connection.channel().close();}
         }catch(ReflectiveOperationException e){throw new AssertionError(e);}
     }
 }

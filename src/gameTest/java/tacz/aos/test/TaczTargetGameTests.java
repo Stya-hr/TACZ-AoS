@@ -8,7 +8,7 @@ import net.minecraft.gametest.framework.*;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.phys.*;
-import net.neoforged.neoforge.gametest.*;
+import net.minecraftforge.gametest.*;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.ballistics.*;
 import java.util.*;
@@ -21,7 +21,7 @@ public final class TaczTargetGameTests {
         level.setBlockAndUpdate(pos,state);level.setBlockAndUpdate(pos.above(),state.setValue(TargetBlock.HALF,DoubleBlockHalf.UPPER));
         return pos;
     }
-    @GameTest(template="ballistics",timeoutTicks=140)
+    @GameTest(setupTicks=20, template="ballistics",timeoutTicks=140)
     public static void frontHitFallsAndScheduledTickResetsBothHalves(GameTestHelper h) {
         var f=new LocalBallisticsGameTests.Fixture(h);var level=h.getLevel();
         var pos=place(level,h.absolutePos(new BlockPos(20,5,4)));
@@ -39,7 +39,7 @@ public final class TaczTargetGameTests {
             h.assertTrue(level.getBlockState(pos).getValue(TargetBlock.OUTPUT_POWER)==0,"Redstone did not reset");h.succeed();
         });
     }
-    @GameTest(template="ballistics")
+    @GameTest(setupTicks=20, template="ballistics")
     public static void backAndOutsideCoreDoNotKnockDownTarget(GameTestHelper h) {
         var f=new LocalBallisticsGameTests.Fixture(h);var level=h.getLevel();var pos=place(level,h.absolutePos(new BlockPos(20,5,4)));
         var shot=f.bullet(new Vec3(28,6.3,4.5),new Vec3(-16,0,0));
@@ -49,7 +49,7 @@ public final class TaczTargetGameTests {
         TargetBallistics.tick(level,shot,1024,new TargetCollisionSource(level,List.of()));
         h.assertTrue(level.getBlockState(pos).getValue(TargetBlock.STAND),"Transit target was hit outside selected core");shot.discard();h.succeed();
     }
-    @GameTest(template="ballistics",timeoutTicks=30)
+    @GameTest(setupTicks=20, template="ballistics",timeoutTicks=30)
     public static void minecartUsesNativeHitAndRecovery(GameTestHelper h) {
         var f=new LocalBallisticsGameTests.Fixture(h);var pos=h.absoluteVec(new Vec3(20,5,4.5));
         var cart=new TargetMinecart(h.getLevel(),pos.x,pos.y,pos.z);cart.setNoGravity(true);cart.xOld=pos.x;cart.yOld=pos.y;cart.zOld=pos.z;h.getLevel().addFreshEntity(cart);
@@ -59,13 +59,13 @@ public final class TaczTargetGameTests {
         shot.discard();
         h.runAfterDelay(15,()->{h.assertTrue(cart.getHurtTime()==0 && !cart.isRemoved(),"Minecart feedback failed to recover");h.succeed();});
     }
-    @GameTest(template="empty")
+    @GameTest(setupTicks=20, template="empty")
     public static void blockTargetPacketPreservesStateAndRejectsOtherBlocks(GameTestHelper h) {
         var state=com.tacz.guns.init.ModBlocks.TARGET.get().defaultBlockState().setValue(TargetBlock.STAND,false);
         var tag=new net.minecraft.nbt.CompoundTag();tag.putString("CustomName","\"Test\"");
         var payload=new tacz.aos.network.ScopeBlockTargetsPayload(h.getLevel().dimension().location(),List.of(
                 new tacz.aos.network.ScopeBlockTargetsPayload.Target(new BlockPos(900,80,-4),state,15728880,tag)));
-        var buf=new net.minecraft.network.RegistryFriendlyByteBuf(io.netty.buffer.Unpooled.buffer(),h.getLevel().registryAccess());
+        var buf=new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         try {
             var codec=tacz.aos.network.ScopeBlockTargetsPayload.STREAM_CODEC;codec.encode(buf,payload);
             h.assertTrue(codec.decode(buf).equals(payload),"Target state/metadata packet lost information");

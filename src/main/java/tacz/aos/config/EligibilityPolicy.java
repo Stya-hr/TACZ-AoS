@@ -8,6 +8,7 @@ import java.util.Set;
 
 /** Immutable and independent of Minecraft, so config parsing can be tested without a game. */
 public record EligibilityPolicy(boolean enabled, Set<String> gunIds, Map<String, ScopeRule> scopeRules) {
+    // Audited against the built-in "sniper" indexes in official TACZ Forge 1.20.1, 1.1.8-hotfix.
     public static final List<String> DEFAULT_GUNS = List.of(
             "tacz:ai_awp", "tacz:m95", "tacz:m700", "tacz:m107", "tacz:kar98", "tacz:springfield1873");
     public static final List<String> DEFAULT_SCOPES = List.of(

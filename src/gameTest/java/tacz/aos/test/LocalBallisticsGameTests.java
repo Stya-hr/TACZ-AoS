@@ -21,15 +21,15 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.EventPriority;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.ballistics.LocalBallistics;
 import tacz.aos.ballistics.ScopedBallistics;
-import net.neoforged.neoforge.event.level.LevelEvent;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import net.minecraftforge.event.level.LevelEvent;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.compat.tacz.TaczBridge;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.mixin.KineticBulletAccessor;
@@ -44,7 +44,7 @@ import java.util.function.Consumer;
 public final class LocalBallisticsGameTests {
     private static final ServerConfig.Ballistics LIMITS = new ServerConfig.Ballistics(true, 256, 16, 600);
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void extendedLifetimeStillObeysDistanceAndDuration(GameTestHelper helper) {
         var fixture = new Fixture(helper);
         var scheduler = new LocalBallistics(helper.getLevel());
@@ -63,12 +63,12 @@ public final class LocalBallisticsGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void airTrajectoryLifetimeAndReleaseMatchNative(GameTestHelper helper) {
         compareTrajectory(helper, false);
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void waterDragAndGravityMatchNative(GameTestHelper helper) {
         for (int x = 3; x <= 12; x++) for (int y = 3; y <= 6; y++) for (int z = 3; z <= 6; z++) {
             helper.setBlock(new BlockPos(x, y, z), Blocks.WATER);
@@ -101,12 +101,12 @@ public final class LocalBallisticsGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void damageHeadshotsAndPiercingMatchNative(GameTestHelper helper) {
         compareDamage(helper, LIMITS);
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void clippedTargetDamageHeadshotsAndPiercingMatchNative(GameTestHelper helper) {
         // Range clipping selects the snapshot-safe path even though these targets are loaded.
         compareDamage(helper, new ServerConfig.Ballistics(true, 16, 16, 600));
@@ -117,7 +117,7 @@ public final class LocalBallisticsGameTests {
         List<Zombie> targets = List.of(target(helper, 10), target(helper, 14), target(helper, 18));
         // Same three targets and deterministic projectile seed, varying only who schedules the tick.
         for (boolean head : List.of(false, true)) {
-            double y = 4 + (head ? targets.getFirst().getEyeHeight() : 0.7);
+            double y = 4 + (head ? targets.get(0).getEyeHeight() : 0.7);
             var reference = fixture.bullet(new Vec3(4, y, 4), new Vec3(18, 0, 0));
             var managed = fixture.bullet(new Vec3(4, y, 4), new Vec3(18, 0, 0));
             setField(reference, "pierce", 2);
@@ -126,10 +126,16 @@ public final class LocalBallisticsGameTests {
             List<Boolean> managedHeads = new ArrayList<>();
             Consumer<EntityHurtByGunEvent> hits = event -> {
                 if (!(event instanceof EntityHurtByGunEvent.Pre)) return;
-                if (event.getBullet() == reference) nativeHeads.add(event.isHeadShot());
-                if (event.getBullet() == managed) managedHeads.add(event.isHeadShot());
+                if (event.getBullet() == reference) {
+                    helper.assertTrue(targets.contains(event.getHurtEntity()), "Native hit a stale/unrelated target: " + event.getHurtEntity());
+                    nativeHeads.add(event.isHeadShot());
+                }
+                if (event.getBullet() == managed) {
+                    helper.assertTrue(targets.contains(event.getHurtEntity()), "Managed hit a stale/unrelated target: " + event.getHurtEntity());
+                    managedHeads.add(event.isHeadShot());
+                }
             };
-            NeoForge.EVENT_BUS.addListener(EventPriority.NORMAL, false, EntityHurtByGunEvent.class, hits);
+            MinecraftForge.EVENT_BUS.addListener(EventPriority.NORMAL, false, EntityHurtByGunEvent.class, hits);
             try {
                 resetTargets(targets);
                 helper.getLevel().tickNonPassenger(reference);
@@ -140,20 +146,20 @@ public final class LocalBallisticsGameTests {
                 int ammoBefore = IGun.getIGunOrNull(fixture.stack).getCurrentAmmoCount(fixture.stack);
                 targetTick(helper,managed,limits.maxDistance());
                 helper.assertTrue(referenceHealth.equals(targets.stream().map(Zombie::getHealth).toList()), "Native and managed damage differ");
-                helper.assertTrue(nativeHeads.equals(managedHeads) && managedHeads.equals(List.of(head, head)), "Headshot/pierce events differ: " + managedHeads);
+                helper.assertTrue(nativeHeads.equals(managedHeads) && managedHeads.equals(List.of(head, head)), "Headshot/pierce events differ: " + managedHeads + ", native=" + nativeHeads + ", health=" + referenceHealth + ", head=" + head + ", pos=" + managed.position() + ", block=" + helper.getLevel().getBlockState(managed.blockPosition()));
                 helper.assertTrue(targets.get(0).getHealth() < 1000 && targets.get(1).getHealth() < 1000
-                        && targets.get(2).getHealth() == 1000, "Pierce count/order was not preserved");
+                        && targets.get(2).getHealth() == 1000, "Pierce count/order was not preserved: " + referenceHealth + ", head=" + head + ", targets=" + targets.stream().map(t -> t.position().toString()).toList());
                 helper.assertTrue(IGun.getIGunOrNull(fixture.stack).getCurrentAmmoCount(fixture.stack) == ammoBefore, "Scheduler consumed ammo a second time");
                 helper.assertTrue(managed.isRemoved(), "Spent bullet remains active");
             } finally {
-                NeoForge.EVENT_BUS.unregister(hits);
+                MinecraftForge.EVENT_BUS.unregister(hits);
             }
         }
         targets.forEach(Zombie::discard);
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void wallBetweenEndpointsPreventsDamage(GameTestHelper helper) {
         var fixture = new Fixture(helper);
         var target = target(helper, 14);
@@ -167,7 +173,7 @@ public final class LocalBallisticsGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void unloadedTransitIsSkippedWithoutLoading(GameTestHelper helper) {
         var fixture = new Fixture(helper);
         // Isolated coordinates: only the two endpoint chunks are intentionally loaded by this fixture.
@@ -190,7 +196,7 @@ public final class LocalBallisticsGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void rangeCapacityAndUnsupportedAmmunition(GameTestHelper helper) {
         var fixture = new Fixture(helper);
         var scheduler = new LocalBallistics(helper.getLevel());
@@ -213,25 +219,25 @@ public final class LocalBallisticsGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void canceledDamageEventsRemainEffective(GameTestHelper helper) {
         var fixture = new Fixture(helper);
         var target = target(helper, 10);
         var bullet = fixture.bullet(new Vec3(4, 4.7, 4), new Vec3(12, 0, 0));
         Consumer<EntityHurtByGunEvent> cancel = event -> { if (event.getBullet() == bullet) event.setCanceled(true); };
-        NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, false, EntityHurtByGunEvent.class, cancel);
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.HIGHEST, false, EntityHurtByGunEvent.class, cancel);
         try {
             var scheduler = new LocalBallistics(helper.getLevel());
             targetTick(helper,bullet,256);
             helper.assertTrue(target.getHealth() == 1000, "TACZ damage cancellation was bypassed");
         } finally {
-            NeoForge.EVENT_BUS.unregister(cancel);
+            MinecraftForge.EVENT_BUS.unregister(cancel);
             target.discard();
         }
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void registeredEntityCannotBeTickedTwiceAndClearReleasesShots(GameTestHelper helper) {
         var fixture = new Fixture(helper);
         var scheduler = new LocalBallistics(helper.getLevel());
@@ -255,7 +261,7 @@ public final class LocalBallisticsGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "local_ballistics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "local_ballistics")
     public static void spawnEventTransfersOwnershipAndLevelTickAdvancesOnce(GameTestHelper helper) {
         var fixture = new Fixture(helper);
         var original = ServerConfig.current();
@@ -270,9 +276,9 @@ public final class LocalBallisticsGameTests {
             // Disabling new takeovers and releasing aim must leave this shot's ownership intact.
             setSettings(original);
             IGunOperator.fromLivingEntity(fixture.player).aim(false);
-            ScopedBallistics.INSTANCE.tick(new LevelTickEvent.Post(() -> true, helper.getLevel()));
+            ScopedBallistics.INSTANCE.tick(new TickEvent.LevelTickEvent(net.minecraftforge.fml.LogicalSide.SERVER, TickEvent.Phase.END, helper.getLevel(), () -> true));
             helper.assertTrue(bullet.tickCount == 1, "Shot did not advance exactly once");
-            ScopedBallistics.INSTANCE.tick(new LevelTickEvent.Post(() -> true, helper.getLevel()));
+            ScopedBallistics.INSTANCE.tick(new TickEvent.LevelTickEvent(net.minecraftforge.fml.LogicalSide.SERVER, TickEvent.Phase.END, helper.getLevel(), () -> true));
             helper.assertTrue(bullet.tickCount == 2, "Second tick duplicated or lost advancement");
         } finally {
             setSettings(original);
@@ -301,6 +307,7 @@ public final class LocalBallisticsGameTests {
 
     private static Zombie target(GameTestHelper helper, int x) {
         var mob = helper.spawn(EntityType.ZOMBIE, new Vec3(x, 4, 4));
+        mob.setBaby(false);
         mob.setNoAi(true);
         mob.setNoGravity(true);
         mob.getAttribute(Attributes.MAX_HEALTH).setBaseValue(1000);
@@ -326,21 +333,22 @@ public final class LocalBallisticsGameTests {
         final Player player;
         final ItemStack stack;
         Fixture(GameTestHelper helper) {
-            this(helper, helper.makeMockPlayer(GameType.SURVIVAL));
+            this(helper, helper.makeMockPlayer());
         }
         Fixture(GameTestHelper helper, Player player) {
             this.helper = helper;
             this.player = player;
             player.setPos(helper.absoluteVec(new Vec3(4, 5, 4)));
+            player.setOldPosAndRot();
             TestRangefinders.placeNear(player);
-            stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
-                    .setAmmoCount(7).putAttachment(AttachmentType.SCOPE, ResourceLocation.parse("tacz:scope_mk5hd"))
-                    .build(helper.getLevel().registryAccess());
+            stack = GunItemBuilder.create().setId(new ResourceLocation("tacz:ai_awp"))
+                    .setAmmoCount(7).putAttachment(AttachmentType.SCOPE, new ResourceLocation("tacz:scope_mk5hd"))
+                    .build();
             player.setItemInHand(InteractionHand.MAIN_HAND, stack);
             var gun = IGun.getIGunOrNull(stack);
             var tag = gun.getAttachmentTag(stack, AttachmentType.SCOPE).copy();
             tag.putInt("ZoomNumber", 1);
-            gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
+            gun.getAttachmentTag(stack, AttachmentType.SCOPE).merge(tag);
             var operator = IGunOperator.fromLivingEntity(player);
             operator.initialData();
             var data = TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
@@ -351,12 +359,14 @@ public final class LocalBallisticsGameTests {
         }
         EntityKineticBullet bullet(Vec3 relative, Vec3 velocity) {
             player.setPos(helper.absoluteVec(relative));
+            player.setOldPosAndRot();
             if (!tacz.aos.block.RangefinderAccess.nearby(player)) TestRangefinders.placeNear(player);
             var gun = IGun.getIGunOrNull(stack);
             var data = TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
             var bullet = new EntityKineticBullet(helper.getLevel(), player, stack, data.getAmmoId(), gun.getGunId(stack),
                     false, data, data.getBulletData());
             bullet.setPos(helper.absoluteVec(relative));
+            setField(bullet, "startPos", bullet.position());
             bullet.setDeltaMovement(velocity);
             bullet.getRandom().setSeed(12345);
             return bullet;

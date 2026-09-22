@@ -6,15 +6,15 @@ import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.common.util.FakePlayerFactory;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.common.util.FakePlayerFactory;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.network.ScopeViewPayload;
@@ -28,7 +28,7 @@ import java.util.UUID;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class ScopeViewGameTests {
-    @GameTest(template = "ballistics", batch = "scope_views")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "scope_views")
     public static void lensMarginRetainsTargetsWithoutCorridorQueriesOrExceedingCountLimit(GameTestHelper helper) {
         var level = helper.getLevel();
         var player = FakePlayerFactory.get(level, new GameProfile(UUID.randomUUID(), "scope-margin"));
@@ -74,13 +74,13 @@ public final class ScopeViewGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "scope_views")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "scope_views")
     public static void projectionHintsValidateEquipmentDimensionBoundsAndRate(GameTestHelper helper) {
         var player = FakePlayerFactory.get(helper.getLevel(), new GameProfile(UUID.randomUUID(), "scope-projection"));
         new LocalBallisticsGameTests.Fixture(helper, player);
         var views = ScopeViews.INSTANCE;
         var dimension = helper.getLevel().dimension().location();
-        var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), helper.getLevel().registryAccess());
+        var buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             var packet = new ScopeViewPayload(dimension, 25, 0.03f);
             ScopeViewPayload.STREAM_CODEC.encode(buffer, packet);

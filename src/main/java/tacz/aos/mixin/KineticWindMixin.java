@@ -1,7 +1,7 @@
 package tacz.aos.mixin;
 
 import com.tacz.guns.entity.EntityKineticBullet;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -28,18 +28,18 @@ public abstract class KineticWindMixin implements WindBulletAccess, tacz.aos.hum
     @Override public WindVector tacz_aos$wind() { return tacz_aos$crosswind; }
     @Override public void tacz_aos$wind(WindVector wind) { tacz_aos$crosswind = wind; }
 
-    @Inject(method = "tick", at = @At("RETURN"))
+    @Inject(method = "tick", at = @At("RETURN"), remap = true)
     private void tacz_aos$windStep(CallbackInfo ci) {
         var bullet = (EntityKineticBullet) (Object) this;
         bullet.setDeltaMovement(WindPhysics.afterDrag(bullet.getDeltaMovement(),
                 tacz_aos$crosswind, ((KineticBulletAccessor) this).tacz_aos$getFriction(), bullet.isInWater()));
     }
     @Inject(method = "writeSpawnData", at = @At("RETURN"))
-    private void tacz_aos$writeWind(RegistryFriendlyByteBuf buffer, CallbackInfo ci) {
+    private void tacz_aos$writeWind(FriendlyByteBuf buffer, CallbackInfo ci) {
         buffer.writeDouble(tacz_aos$crosswind.x()); buffer.writeDouble(tacz_aos$crosswind.z());
     }
     @Inject(method = "readSpawnData", at = @At("RETURN"))
-    private void tacz_aos$readWind(RegistryFriendlyByteBuf buffer, CallbackInfo ci) {
+    private void tacz_aos$readWind(FriendlyByteBuf buffer, CallbackInfo ci) {
         var wind = new WindVector(buffer.readDouble(), buffer.readDouble());
         if (wind.speed() > 30.0001) throw new IllegalArgumentException("Wind spawn data out of bounds");
         tacz_aos$crosswind = wind;

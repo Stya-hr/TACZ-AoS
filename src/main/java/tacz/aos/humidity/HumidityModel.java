@@ -23,7 +23,7 @@ public final class HumidityModel {
         int number = (tod - phase.start()) / settings.periodTicks();
         int start = phase.start() + number * settings.periodTicks();
         var profile = settings.weather(weather);
-        double mean = Math.clamp(phase.mean() + profile.saturationBias() * (100 - phase.mean()), settings.minimum(), settings.maximum());
+        double mean = net.minecraft.util.Mth.clamp(phase.mean() + profile.saturationBias() * (100 - phase.mean()), settings.minimum(), settings.maximum());
         double amplitude = Math.min(profile.amplitude(), Math.min(mean - settings.minimum(), settings.maximum() - mean));
         var random = new SplittableRandom(mix(seed ^ settings.seedSalt() ^ 0x5dbcf724068e31a9L)
                 ^ mix(day) ^ mix(index + 139L) ^ mix(number + 7919L));
@@ -32,7 +32,7 @@ public final class HumidityModel {
         return new Slot(day * 24000 + start, Math.min(settings.periodTicks(), phase.end() - start), mean + amplitude * noise);
     }
     public static double blend(double from, double to, double progress) {
-        double t = Math.clamp(progress, 0, 1);
+        double t = net.minecraft.util.Mth.clamp(progress, 0, 1);
         return from + (to - from) * t * t * (3 - 2 * t);
     }
     public static double densityRatio(double rh, HumiditySettings settings) {

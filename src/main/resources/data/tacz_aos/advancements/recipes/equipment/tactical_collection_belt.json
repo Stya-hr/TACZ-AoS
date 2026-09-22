@@ -6,7 +6,9 @@
       "conditions": {
         "items": [
           {
-            "items": "minecraft:diamond"
+            "items": [
+              "minecraft:diamond"
+            ]
           }
         ]
       }
@@ -14,7 +16,7 @@
     "has_the_recipe": {
       "trigger": "minecraft:recipe_unlocked",
       "conditions": {
-        "recipe": "tacz_aos:rangefinder"
+        "recipe": "tacz_aos:tactical_collection_belt"
       }
     }
   },
@@ -26,7 +28,7 @@
   ],
   "rewards": {
     "recipes": [
-      "tacz_aos:rangefinder"
+      "tacz_aos:tactical_collection_belt"
     ]
   }
 }

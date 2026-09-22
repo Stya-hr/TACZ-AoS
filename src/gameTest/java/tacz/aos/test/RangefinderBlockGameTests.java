@@ -11,16 +11,15 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.UseOnContext;
-import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.common.util.FakePlayerFactory;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.common.util.FakePlayerFactory;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.block.ModContent;
 import tacz.aos.block.RangefinderBlock;
@@ -30,7 +29,7 @@ import java.util.UUID;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class RangefinderBlockGameTests {
-    @GameTest(template = "ballistics", batch = "rangefinder_block")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "rangefinder_block")
     public static void placementEitherHalfAndSupportDropOne(GameTestHelper helper) {
         var level = helper.getLevel();
         var pos = helper.absolutePos(new BlockPos(4, 3, 4));
@@ -68,7 +67,7 @@ public final class RangefinderBlockGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "rangefinder_block")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "rangefinder_block")
     public static void blockedPlacementRecipeAndAnvilSound(GameTestHelper helper) {
         var player = FakePlayerFactory.get(helper.getLevel(), new GameProfile(UUID.randomUUID(), "range-placement-test"));
         player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
@@ -81,9 +80,9 @@ public final class RangefinderBlockGameTests {
         var hit = new BlockHitResult(Vec3.atBottomCenterOf(pos), Direction.UP, pos.below(), false);
         stack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
         helper.assertTrue(stack.getCount() == 1 && level.getBlockState(pos).isAir(), "Obstructed placement consumed item or left lower half");
-        var recipe = level.getRecipeManager().byKey(ResourceLocation.parse("tacz_aos:rangefinder")).orElseThrow();
-        var shaped = (net.minecraft.world.item.crafting.ShapedRecipe) recipe.value();
-        var input = CraftingInput.of(3,3, List.of(new ItemStack(Items.GLASS_PANE), new ItemStack(Items.DIAMOND), new ItemStack(Items.GLASS_PANE),
+        var recipe = level.getRecipeManager().byKey(new ResourceLocation("tacz_aos:rangefinder")).orElseThrow();
+        var shaped = (net.minecraft.world.item.crafting.ShapedRecipe) recipe;
+        var input = TestCrafting.grid(3,3, List.of(new ItemStack(Items.GLASS_PANE), new ItemStack(Items.DIAMOND), new ItemStack(Items.GLASS_PANE),
                 ItemStack.EMPTY, new ItemStack(Items.IRON_INGOT), ItemStack.EMPTY,
                 new ItemStack(Items.IRON_INGOT), ItemStack.EMPTY, new ItemStack(Items.IRON_INGOT)));
         helper.assertTrue(shaped.matches(input, level) && shaped.assemble(input, level.registryAccess()).is(ModContent.RANGEFINDER_ITEM.get()),

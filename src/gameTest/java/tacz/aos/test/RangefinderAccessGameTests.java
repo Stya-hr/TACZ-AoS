@@ -5,8 +5,8 @@ import com.tacz.guns.api.item.attachment.AttachmentType;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.ballistics.LocalBallistics;
 import tacz.aos.block.RangefinderAccess;
@@ -16,7 +16,7 @@ import tacz.aos.config.ServerConfig;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class RangefinderAccessGameTests {
-    @GameTest(template = "ballistics", batch = "rangefinder_access")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "rangefinder_access")
     public static void distanceBoundaryBothHalvesAndImmediateRemoval(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var player = fixture.player;
@@ -43,7 +43,7 @@ public final class RangefinderAccessGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "rangefinder_access")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "rangefinder_access")
     public static void everyZoomAdmitsShotsAndAnyDeviceGrantsAccess(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var player = fixture.player;
@@ -56,7 +56,7 @@ public final class RangefinderAccessGameTests {
         var gun = IGun.getIGunOrNull(fixture.stack);
         for (int slot = 0; slot < 3; slot++) {
             var tag = gun.getAttachmentTag(fixture.stack, AttachmentType.SCOPE).copy();
-            tag.putInt("ZoomNumber", slot); gun.setAttachmentTag(fixture.stack, AttachmentType.SCOPE, tag);
+            tag.putInt("ZoomNumber", slot); gun.getAttachmentTag(fixture.stack, AttachmentType.SCOPE).merge(tag);
             helper.assertTrue(TaczBridge.evaluate(player).eligible(), "Zoom slot rejected: " + slot);
             var bullet = fixture.bullet(new Vec3(4, 5, 4), new Vec3(1, 0, 0));
             helper.assertTrue(TaczBridge.inspectNewBullet(bullet).isPresent(), "Zoom slot could not create shot: " + slot);
@@ -69,7 +69,7 @@ public final class RangefinderAccessGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "rangefinder_access")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "rangefinder_access")
     public static void leavingOrRemovingDeviceDoesNotCancelAcceptedFlight(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var scheduler = new LocalBallistics(helper.getLevel());

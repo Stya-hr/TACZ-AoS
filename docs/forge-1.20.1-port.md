@@ -1,0 +1,54 @@
+# Forge 1.20.1 port
+
+This branch targets Minecraft **1.20.1**, **Forge 47.3.0**, and **Java 17**. The release artifact is `tacz_aos-forge-1.20.1-1.0.0-beta.1.jar`.
+
+## Dependencies and defaults
+
+- Required: official [Timeless and Classics Zero](https://modrinth.com/mod/timeless-and-classics-zero) **1.1.8-hotfix**.
+- Optional: the supplied **NeoVoxy 0.3.3 Forge 1.20.1 client** jar, with **stable Embeddium 0.3.31**. The `0.3.31-beta.53` build does not satisfy that Voxy jar's dependency range.
+- Optional integrations retain Forge versions of Curios, Lightman's Currency, Collectors Album, Champions Unofficial, Touhou Little Maid, ParCool, and Crawl on Demand. See [dependency details](../libs/README.md).
+- NeoForge, Iris, and Sodium integration code is excluded from this build. Reference copies live in `archive/neoforge-1.21.1-rendering/`. Oculus/shader compatibility is not claimed.
+
+The default sniper whitelist was checked against the pinned official TACZ gun pack:
+
+| Gun | ID |
+| --- | --- |
+| AWP | `tacz:ai_awp` |
+| M95 | `tacz:m95` |
+| M700 | `tacz:m700` |
+| M107 | `tacz:m107` |
+| Kar98k | `tacz:kar98` |
+| Springfield 1873 | `tacz:springfield1873` |
+
+Scope IDs and HUD magnification layouts were also checked against that pack. The first five guns retain the configured ballistic overrides; Springfield retains its TACZ parameters. M109 is not part of this official built-in sniper roster.
+
+The active server configuration is `<world>/serverconfig/tacz_aos-server.toml`. The file generated in the instance's `config/` directory is a reference template; copy it into `defaultconfigs/` to establish defaults for newly created worlds. This port does not migrate old configurations.
+
+## Validation
+
+The following passed on the Forge development runtime:
+
+- **118 unit tests** and **72 baseline server GameTests**.
+- **9 optional-integration GameTests** with the actual Forge dependency jars: special loot, maid power points, Curios, and both optional crawling mods.
+- A real client without Voxy: scope HUD/layouts, distant entities and AI, smoke rendering and expiry, rangefinder models, and observer feedback.
+- A real client with the supplied Voxy and stable Embeddium: **2-chunk vanilla view distance**, target approximately **880 blocks away**, actual exploration/save/rejoin, Voxy depth picking, distant entity tracking and AI, both TACZ targets and their recovery animations, occlusion, and damage after unscoping.
+- A supplemental real-client test of ParCool and Crawl on Demand: prone idle sway suppression and restoration on exit.
+
+The release jar was inspected for Java 17 class versions, Forge metadata, remapped mixin references, 1.20.1 resource paths, and absence of active NeoForge/shader compatibility classes. Only MixinExtras is bundled; optional mods and test classes are not bundled. The release jar has not separately been tested in a normal launcher installation.
+
+## Reproduction
+
+Use a Java 17 installation and the Gradle wrapper. Place the supplied Voxy jar in `libs/` before building.
+
+The build also supports running Gradle on Java 21 while emitting Java 17 bytecode. TACZ's nested libraries are resolved lazily, after Loom configures its repositories. Resolving them during build-script evaluation previously caused `Cannot mutate content repository descriptor 'LoomLocalRemappedMods' after repository has been used` when Java 21 triggered Loom's LWJGL upgrade. After updating the build script, reload the Gradle project in the IDE; deleting dependency caches is not required.
+
+```text
+gradlew build
+gradlew runGameTestServer
+gradlew runGameTestServer -Pgametest_namespaces=tacz_aos_lootcompat -Penable_loot_compat_runtime=true -Penable_maid_compat_runtime=true -Penable_curios_runtime=true -Penable_prone_compat_runtime=true
+gradlew runClientScopeTest
+gradlew runClientLongRangeTest -Penable_voxy_runtime=true
+gradlew runClientScopeTest -Penable_prone_compat_runtime=true -Pprone_sway_test_only=true
+```
+
+Client tests create isolated test worlds under `build/` and close automatically. Server GameTests reset only their dedicated `build/gametest-forge/world` directory before each run. Run baseline and optional-integration GameTests separately: third-party mods can legitimately add drops to baseline fixtures.

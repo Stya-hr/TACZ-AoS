@@ -71,7 +71,7 @@ public record BallisticPreview(Vec3 start, Vec3 velocity, float gravity, float f
                 player.yOld + (player.getY() - player.yOld) / 2 + player.getEyeHeight(),
                 player.zOld + (player.getZ() - player.zOld) / 2);
         // Supported scripts delegate to TACZ's default vanilla launch; custom calcSpread is rejected above.
-        Vec3 motion = player.getKnownMovement();
+        Vec3 motion = player.getDeltaMovement();
         float pitch = player.getXRot() * ((float) Math.PI / 180f);
         float yaw = player.getYRot() * ((float) Math.PI / 180f);
         Vec3 direction = new Vec3(-Mth.sin(yaw) * Mth.cos(pitch), -Mth.sin(pitch), Mth.cos(yaw) * Mth.cos(pitch));

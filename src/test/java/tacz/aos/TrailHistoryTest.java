@@ -32,7 +32,7 @@ class TrailHistoryTest {
         assertTrue(h.hasVisibleSamples(10.5));
         assertFalse(h.hasMovingHead(1, 10.5));
         assertEquals(1, h.samples().size());
-        assertEquals(10, h.samples().getFirst().start());
+        assertEquals(10, h.samples().get(0).start());
         h.accept(segment(1, 3, false), 12);
         assertEquals(1, h.samples().size());
         h.expire(62); assertTrue(h.isEmpty());
@@ -73,7 +73,7 @@ class TrailHistoryTest {
         h.accept(segment(1, 1, false), 10);
         h.accept(new TrailSegment(1, 2, 2, 80, 0, 2, 80, 0, 0, true), 15);
         assertEquals(1, h.samples().size(), "A stop spawned fresh smoke");
-        assertEquals(10, h.samples().getFirst().start());
+        assertEquals(10, h.samples().get(0).start());
         assertFalse(h.hasMovingHead(1, 15));
         h.expire(25); assertTrue(h.hasVisibleSamples(25));
         h.expire(32); assertFalse(h.hasVisibleSamples(32));
@@ -89,8 +89,8 @@ class TrailHistoryTest {
         h.expire(12);
         var samples = h.visibleSamples(12);
         assertEquals(2, samples.size());
-        assertEquals(16, samples.getFirst().segment().x1());
-        assertEquals(48, samples.getLast().segment().x0());
+        assertEquals(16, samples.get(0).segment().x1());
+        assertEquals(48, samples.get(samples.size() - 1).segment().x0());
         assertFalse(h.hasMovingHead(1, 12));
         assertTrue(samples.stream().flatMap(p -> tacz.aos.trails.TrailAudience.clip(p.segment(), (x,z) -> false).stream()).findAny().isEmpty());
         h.clear(); assertTrue(h.isEmpty());
@@ -124,12 +124,12 @@ class TrailHistoryTest {
         h.accept(segment(1, 2, false), 101); h.accept(segment(1, 3, true), 102);
         h.accept(segment(1, 4, false), 103);
         assertEquals(2, h.samples().size());
-        assertTrue(h.samples().getLast().segment().terminal());
+        assertTrue(h.samples().get(h.samples().size() - 1).segment().terminal());
     }
     @Test void missingUpdatesDoNotSynthesizeConnectingSegments() {
         var h = new TrailHistory(); h.accept(segment(1, 1, false), 0); h.accept(segment(1, 9, true), 9);
         assertEquals(2, h.samples().size());
-        assertEquals(9, h.samples().getLast().segment().x0());
+        assertEquals(9, h.samples().get(h.samples().size() - 1).segment().x0());
         h.expire(61); assertTrue(h.isEmpty());
     }
     @Test void memoryAndLostTerminalCleanupAreBounded() {

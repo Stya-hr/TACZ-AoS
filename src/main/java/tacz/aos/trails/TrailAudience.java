@@ -12,7 +12,7 @@ public final class TrailAudience {
     }
     /** Unity gain at the path, fading to silence at five blocks. Never amplify the source audio. */
     public static float flybyVolume(double distance) {
-        return (float) Math.clamp(1 - distance / HEARING_RADIUS, 0, 1);
+        return (float) net.minecraft.util.Mth.clamp(1 - distance / HEARING_RADIUS, 0, 1);
     }
     private TrailAudience() {}
 
@@ -52,7 +52,7 @@ public final class TrailAudience {
         if (length < 1.0e-12 || s.speed() < 1) return null;
         double t = ((x-s.x0())*dx + (y-s.y0())*dy + (z-s.z0())*dz) / length;
         if (t > 1 && !s.terminal()) return null;
-        t = Math.clamp(t, 0, 1);
+        t = net.minecraft.util.Mth.clamp(t, 0, 1);
         double px = lerp(s.x0(), s.x1(), t), py = lerp(s.y0(), s.y1(), t), pz = lerp(s.z0(), s.z1(), t);
         double distance = Math.sqrt((px-x)*(px-x)+(py-y)*(py-y)+(pz-z)*(pz-z));
         return distance < HEARING_RADIUS ? new Pass(px, py, pz, distance) : null;

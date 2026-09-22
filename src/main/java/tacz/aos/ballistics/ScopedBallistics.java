@@ -2,10 +2,10 @@ package tacz.aos.ballistics;
 
 import com.tacz.guns.entity.EntityKineticBullet;
 import net.minecraft.server.level.ServerLevel;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.level.LevelEvent;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.level.LevelEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.compat.tacz.TaczBridge.ShotContext;
 import tacz.aos.config.ServerConfig;
 
@@ -30,8 +30,9 @@ public final class ScopedBallistics {
         return admission;
     }
 
-    @SubscribeEvent public void tick(LevelTickEvent.Post event) {
-        if (event.getLevel() instanceof ServerLevel level && level.tickRateManager().runsNormally()) {
+    @SubscribeEvent public void tick(TickEvent.LevelTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
+        if (event.level instanceof ServerLevel level) {
             var scheduler = levels.get(level);
             if (scheduler != null) scheduler.tick();
         }

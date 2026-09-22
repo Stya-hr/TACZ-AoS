@@ -2,14 +2,14 @@ package tacz.aos.network;
 
 import java.util.*;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.FriendlyByteBuf;
+import tacz.aos.network.PayloadCodec;
+import tacz.aos.network.ModPayload;
 import net.minecraft.resources.ResourceLocation;
 import tacz.aos.occlusion.OccluderBox;
 
 /** Bounded replacement of short-lived visual occluders; never inserts client chunks. */
-public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targets) implements CustomPacketPayload {
+public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targets) implements ModPayload {
     public static final int MAX_BOXES=256, MAX_PER_TARGET=32;
     public record Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes) {
         public Target {
@@ -19,13 +19,13 @@ public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targ
                     || Math.max(Math.abs(b.minZ()),Math.abs(b.maxZ()))>64)throw new IllegalArgumentException("Occluder outside local region");
         }
     }
-    public static final Type<ScopeOcclusionPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath("tacz_aos","scope_occlusion"));
+    public static final Type<ScopeOcclusionPayload> TYPE=new Type<>(new ResourceLocation("tacz_aos","scope_occlusion"), ScopeOcclusionPayload.class);
     public ScopeOcclusionPayload {
         targets=List.copyOf(targets);
         if(targets.size()>256 || targets.stream().mapToInt(t->t.boxes.size()).sum()>MAX_BOXES)throw new IllegalArgumentException("Occlusion budget exceeded");
     }
-    public static final StreamCodec<RegistryFriendlyByteBuf,ScopeOcclusionPayload> STREAM_CODEC=new StreamCodec<>() {
-        public ScopeOcclusionPayload decode(RegistryFriendlyByteBuf b) {
+    public static final PayloadCodec<FriendlyByteBuf,ScopeOcclusionPayload> STREAM_CODEC=new PayloadCodec<>() {
+        public ScopeOcclusionPayload decode(FriendlyByteBuf b) {
             var dim=b.readResourceLocation();int n=b.readVarInt(),total=0;if(n<0 || n>256)throw new IllegalArgumentException("Invalid count");
             var targets=new ArrayList<Target>();
             for(int i=0;i<n;i++) {
@@ -37,11 +37,11 @@ public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targ
             }
             return new ScopeOcclusionPayload(dim,targets);
         }
-        public void encode(RegistryFriendlyByteBuf b,ScopeOcclusionPayload p) {
+        public void encode(FriendlyByteBuf b,ScopeOcclusionPayload p) {
             b.writeResourceLocation(p.dimension);b.writeVarInt(p.targets.size());
             for(var t:p.targets){b.writeVarInt(t.id);b.writeUUID(t.uuid);b.writeBlockPos(t.origin);b.writeVarInt(t.boxes.size());
                 for(var a:t.boxes){b.writeFloat((float)a.minX());b.writeFloat((float)a.minY());b.writeFloat((float)a.minZ());b.writeFloat((float)a.maxX());b.writeFloat((float)a.maxY());b.writeFloat((float)a.maxZ());}}
         }
     };
-    public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    public Type<? extends ModPayload> type(){return TYPE;}
 }

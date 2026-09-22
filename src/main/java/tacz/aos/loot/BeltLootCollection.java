@@ -8,11 +8,11 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.EventPriority;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.ModList;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.event.entity.living.LivingDropsEvent;
 import org.jetbrains.annotations.Nullable;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.block.ModContent;
@@ -23,7 +23,7 @@ public final class BeltLootCollection {
     private BeltLootCollection() {}
 
     public static boolean isEquipped(Player player) {
-        return player.getItemBySlot(EquipmentSlot.LEGS).is(ModContent.TACTICAL_COLLECTION_BELT)
+        return player.getItemBySlot(EquipmentSlot.LEGS).is(ModContent.TACTICAL_COLLECTION_BELT.get())
                 || ModList.get().isLoaded("curios") && CuriosBeltCompat.isEquipped(player);
     }
 

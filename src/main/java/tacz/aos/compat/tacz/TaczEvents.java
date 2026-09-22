@@ -2,13 +2,13 @@ package tacz.aos.compat.tacz;
 
 import com.tacz.guns.entity.EntityKineticBullet;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.EventPriority;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
-import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.event.TickEvent;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.ballistics.LocalBallistics;
 import tacz.aos.ballistics.ScopedBallistics;
@@ -27,7 +27,7 @@ public final class TaczEvents {
         if (event.getLevel().isClientSide() || event.loadedFromDisk()
                 || !(event.getEntity() instanceof EntityKineticBullet bullet)) return;
         TaczBridge.inspectNewBullet(bullet).ifPresent(context -> {
-            NeoForge.EVENT_BUS.post(new TaczShotObservedEvent(bullet, context));
+            MinecraftForge.EVENT_BUS.post(new TaczShotObservedEvent(bullet, context));
             var admission = ScopedBallistics.INSTANCE.admit(bullet, context);
             if (admission == LocalBallistics.Admission.ACCEPTED) event.setCanceled(true);
             if (ServerConfig.current().diagnostics()) {
@@ -37,8 +37,9 @@ public final class TaczEvents {
     }
 
     @SubscribeEvent
-    public void onPlayerTick(PlayerTickEvent.Post event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+    public void onPlayerTick(TickEvent.PlayerTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
+        if (!(event.player instanceof ServerPlayer player)) return;
         if (!ServerConfig.current().diagnostics()) {
             lastDiagnostic.clear();
             return;

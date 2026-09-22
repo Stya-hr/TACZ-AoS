@@ -9,7 +9,7 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.*;
-import net.neoforged.neoforge.network.PacketDistributor;
+import tacz.aos.network.PacketDelivery;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.network.ScopeOcclusionPayload;
 import tacz.aos.occlusion.*;
@@ -32,8 +32,7 @@ public final class ScopeOcclusion {
         if(cfg.enabled())for(var target:targets) {
             if(budget[0]<=0 || boxes>=cfg.boxesPerPlayer())break;
             // Native terrain already supplies exact occlusion here; do not duplicate its work.
-            if(((tacz.aos.mixin.ChunkMapAccessor)player.serverLevel().getChunkSource().chunkMap)
-                    .tacz_aos$isChunkTracked(player,target.chunkPosition().x,target.chunkPosition().z))continue;
+            if(tacz.aos.scoping.NativeChunkTracking.isTracked((tacz.aos.mixin.ChunkMapAccessor)(Object)player.serverLevel().getChunkSource().chunkMap, player,target.chunkPosition().x,target.chunkPosition().z))continue;
             var geometry=collect(player.serverLevel(),player.getEyePosition(),target.getBoundingBox(),cfg.radius(),budget,
                     Math.min(ScopeOcclusionPayload.MAX_PER_TARGET,cfg.boxesPerPlayer()-boxes));
             var origin=target.blockPosition();
@@ -44,7 +43,7 @@ public final class ScopeOcclusion {
         remaining-=initial-budget[0];
         var payload=new ScopeOcclusionPayload(player.level().dimension().location(),entries);var previous=sent.get(player.getUUID());
         if(previous==null || !previous.payload.equals(payload) || tick-previous.tick>=20) {
-            PacketDistributor.sendToPlayer(player,payload);sent.put(player.getUUID(),new Sent(payload,tick));
+            PacketDelivery.sendToPlayer(player,payload);sent.put(player.getUUID(),new Sent(payload,tick));
         }
     }
     public static List<OccluderBox> collect(ServerLevel level,Vec3 eye,AABB entity,int radius,int[] budget,int limit) {
@@ -63,7 +62,7 @@ public final class ScopeOcclusion {
                         if(budget[0]--<=0){budget[0]=0;break outer;}
                         var pos=new BlockPos(x,y,z);var state=getter.getBlockState(pos);
                         var parts=OcclusionShapes.boxes(state,getter,pos);
-                        if(parts.size()==1 && parts.getFirst().equals(FULL_BLOCK))full=true;
+                        if(parts.size()==1 && parts.get(0).equals(FULL_BLOCK))full=true;
                         else for(var a:parts)boxes.add(new OccluderBox(a.minX+x,a.minY+y,a.minZ+z,a.maxX+x,a.maxY+y,a.maxZ+z));
                     }
                     if(full){if(run==Integer.MIN_VALUE)run=x;}

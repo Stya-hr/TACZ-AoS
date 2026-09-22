@@ -12,8 +12,8 @@ class TrailAudienceTest {
         var s = line(-24, 8, 56, 8, true);
         var parts = TrailAudience.clip(s, (x,z) -> z == 0 && (x == -1 || x == 1));
         assertEquals(2, parts.size(), 1e-10);
-        assertEquals(-16, parts.getFirst().x0(), 1e-10); assertEquals(0, parts.getFirst().x1(), 1e-10);
-        assertEquals(16, parts.getLast().x0(), 1e-10); assertEquals(32, parts.getLast().x1(), 1e-10);
+        assertEquals(-16, parts.get(0).x0(), 1e-10); assertEquals(0, parts.get(0).x1(), 1e-10);
+        assertEquals(16, parts.get(parts.size() - 1).x0(), 1e-10); assertEquals(32, parts.get(parts.size() - 1).x1(), 1e-10);
         assertTrue(parts.stream().noneMatch(TrailSegment::terminal));
         var history = new TrailHistory();
         parts.forEach(p -> history.accept(p, 0)); parts.forEach(p -> history.accept(p, 0));
@@ -23,9 +23,9 @@ class TrailAudienceTest {
     }
     @Test void negativeBoundaryDiagonalAndVerticalAreClippedCorrectly() {
         var negative = TrailAudience.clip(line(16, 8, -32, 8, true), (x,z) -> x == 0);
-        assertEquals(1, negative.size()); assertEquals(16, negative.getFirst().x0()); assertEquals(0, negative.getFirst().x1());
+        assertEquals(1, negative.size()); assertEquals(16, negative.get(0).x0()); assertEquals(0, negative.get(0).x1());
         var diagonal = TrailAudience.clip(line(-32, -32, 32, 32, true), (x,z) -> x == -1 && z == -1);
-        assertEquals(1, diagonal.size()); assertEquals(-16, diagonal.getFirst().x0()); assertEquals(0, diagonal.getFirst().z1());
+        assertEquals(1, diagonal.size()); assertEquals(-16, diagonal.get(0).x0()); assertEquals(0, diagonal.get(0).z1());
         var vertical = new TrailSegment(1, 1, 8, 70, 8, 8, 90, 8, 20, true);
         assertEquals(java.util.List.of(vertical), TrailAudience.clip(vertical, (x,z) -> x == 0 && z == 0));
     }

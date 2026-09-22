@@ -14,8 +14,8 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import org.joml.Vector2d;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.compat.tacz.BallisticPreview;
@@ -25,10 +25,10 @@ import tacz.aos.mixin.KineticBulletAccessor;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class SnipingPhysicsGameTests {
-    @GameTest(template = "ballistics", batch = "crawlondemand_spread")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "crawlondemand_spread")
     public static void optionalCrawlOnDemandControlsBothLaunchRoutes(GameTestHelper helper) throws Exception {
         var old = tacz.aos.config.ServerConfig.current();
-        var player = new net.neoforged.neoforge.common.util.FakePlayer(helper.getLevel(),
+        var player = new net.minecraftforge.common.util.FakePlayer(helper.getLevel(),
                 new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "crawl-demand-test"));
         var fixture = new LocalBallisticsGameTests.Fixture(helper, player);
         player.setDeltaMovement(Vec3.ZERO); player.setOnGround(true);
@@ -38,13 +38,13 @@ public final class SnipingPhysicsGameTests {
         player.setPose(net.minecraft.world.entity.Pose.SWIMMING);
         helper.assertTrue(!tacz.aos.compat.crawlondemand.CrawlOnDemandCompat.isCrawling(player),
                 "Swimming pose mistaken for Crawl on Demand input");
-        if (!net.neoforged.fml.ModList.get().isLoaded("crawlondemand")) {
+        if (!net.minecraftforge.fml.ModList.get().isLoaded("crawlondemand")) {
             helper.succeed(); return;
         }
-        var manager = Class.forName("me.talilon.minecraft.crawlondemand.platform.CrawlStateManager");
+        var manager = Class.forName("me.thecraftycoder.minecraft.crawlondemand.platform.CrawlStateManager");
         var setter = manager.getMethod("setCrawling", net.minecraft.world.entity.player.Player.class, boolean.class);
-        var packet = Class.forName("me.talilon.minecraft.crawlondemand.network.CrawlStatePacket");
-        var handle = packet.getMethod("handle", net.minecraft.world.entity.player.Player.class);
+        var packet = Class.forName("me.thecraftycoder.minecraft.crawlondemand.network.CrawlStatePacket");
+        var handle = packet.getMethod("handle", net.minecraft.server.level.ServerPlayer.class);
         var gun = (ModernKineticGunItem) IGun.getIGunOrNull(fixture.stack);
         var data = TimelessAPI.getCommonGunIndex(gun.getGunId(fixture.stack)).orElseThrow().getGunData();
         try {
@@ -80,11 +80,11 @@ public final class SnipingPhysicsGameTests {
         }
     }
 
-    @GameTest(template = "ballistics", batch = "parcool_spread")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "parcool_spread")
     public static void optionalParCoolActionControlsActualBulletSpread(GameTestHelper helper) throws Exception {
         var old = tacz.aos.config.ServerConfig.current();
         // GameTestHelper.makeMockPlayer() reports isLocalPlayer=true even on the server.
-        var serverPlayer = new net.neoforged.neoforge.common.util.FakePlayer(helper.getLevel(),
+        var serverPlayer = new net.minecraftforge.common.util.FakePlayer(helper.getLevel(),
                 new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "parcool-spread-test"));
         var fixture = new LocalBallisticsGameTests.Fixture(helper, serverPlayer);
         var player = fixture.player;
@@ -92,7 +92,7 @@ public final class SnipingPhysicsGameTests {
         player.setDeltaMovement(Vec3.ZERO); player.setOnGround(true);
         var operator = IGunOperator.fromLivingEntity(player);
         operator.crawl(false); operator.aim(false);
-        if (!net.neoforged.fml.ModList.get().isLoaded("parcool")) {
+        if (!net.minecraftforge.fml.ModList.get().isLoaded("parcool")) {
             helper.assertTrue(!tacz.aos.compat.parcool.ParCoolCompat.isCrawling(player), "Absent optional mod reported crawling");
             helper.succeed(); return;
         }
@@ -100,7 +100,7 @@ public final class SnipingPhysicsGameTests {
         boolean modern;
         try { abilityType = Class.forName("com.alrex.parcool.common.Parkourability"); modern = true; }
         catch (ClassNotFoundException e) {
-            abilityType = Class.forName("com.alrex.parcool.common.attachment.common.Parkourability"); modern = false;
+            abilityType = Class.forName("com.alrex.parcool.common.capability.Parkourability"); modern = false;
         }
         Object ability = abilityType.getMethod("get", net.minecraft.world.entity.player.Player.class).invoke(null, player);
         helper.assertTrue(ability != null, "ParCool player attachment missing");
@@ -120,7 +120,9 @@ public final class SnipingPhysicsGameTests {
                 if (active) {
                     if (modern) crawl.getClass().getMethod("start").invoke(crawl);
                     else crawl.getClass().getMethod("start", net.minecraft.world.entity.player.Player.class, abilityType,
-                            java.nio.ByteBuffer.class).invoke(crawl, player, ability, java.nio.ByteBuffer.allocate(0));
+                            java.nio.ByteBuffer.class, Class.forName("com.alrex.parcool.common.capability.IStamina"))
+                            .invoke(crawl, player, ability, java.nio.ByteBuffer.allocate(0), Class.forName("com.alrex.parcool.common.capability.IStamina")
+                                    .getMethod("get", net.minecraft.world.entity.player.Player.class).invoke(null, player));
                 } else {
                     if (modern) crawl.getClass().getMethod("finish").invoke(crawl);
                     else crawl.getClass().getMethod("finish", net.minecraft.world.entity.player.Player.class).invoke(crawl, player);
@@ -152,16 +154,16 @@ public final class SnipingPhysicsGameTests {
         }
     }
 
-    @GameTest(template = "ballistics", batch = "prone_spread")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "prone_spread")
     public static void proneWhitelistClearsBothLaunchRoutesAndRestoresNativeSpread(GameTestHelper helper) {
         var old = tacz.aos.config.ServerConfig.current();
-        var player = helper.makeMockPlayer(net.minecraft.world.level.GameType.SURVIVAL);
+        var player = helper.makeMockPlayer();
         player.setPos(helper.absoluteVec(new Vec3(4, 10, 4)));
         player.setOldPosAndRot(); player.setOnGround(true);
         player.setDeltaMovement(new Vec3(.13, 0, .21));
         // Bare gun, no rangefinder and no ADS: only the gun whitelist and TACZ crawl flag apply.
-        var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:ai_awp"))
-                .build(helper.getLevel().registryAccess());
+        var stack = GunItemBuilder.create().setId(new ResourceLocation("tacz:ai_awp"))
+                .build();
         player.setItemInHand(InteractionHand.MAIN_HAND, stack);
         var gun = (ModernKineticGunItem) IGun.getIGunOrNull(stack);
         var data = TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow().getGunData();
@@ -213,7 +215,7 @@ public final class SnipingPhysicsGameTests {
                             "Prone spread changed gravity/drag");
                     if (shouldClear) {
                         double speed = tacz.aos.compat.tacz.GunPhysics.launchSpeed(reference, 20);
-                        helper.assertTrue(Math.abs(actual.getDeltaMovement().subtract(shooter.getKnownMovement()).length() - speed) < 1e-5,
+                        helper.assertTrue(Math.abs(actual.getDeltaMovement().subtract(shooter.getDeltaMovement()).length() - speed) < 1e-5,
                                 "Prone spread changed speed or inherited shooter movement");
                     }
                     actual.discard(); reference.discard();
@@ -226,7 +228,7 @@ public final class SnipingPhysicsGameTests {
         }
     }
 
-    @GameTest(template = "ballistics", batch = "global_physics_damage", timeoutTicks = 200)
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "global_physics_damage", timeoutTicks = 200)
     public static void nativeAndManagedShotsDamageTargetOnPredictedCurve(GameTestHelper helper) {
         var fixture = new LocalBallisticsGameTests.Fixture(helper);
         var player = fixture.player;
@@ -285,7 +287,7 @@ public final class SnipingPhysicsGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "sniping_physics")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "sniping_physics")
     public static void allLaunchRoutesUseGlobalPhysicsWithoutChangingSharedData(GameTestHelper helper) {
         var old = tacz.aos.config.ServerConfig.current();
         // Run against this release's default whitelist even if the isolated test world has an older config.
@@ -304,10 +306,10 @@ public final class SnipingPhysicsGameTests {
         float[] speeds = {45.25f, 42.9f, 42.9f, 41.148f, 39f, -1};
         float[] drags = {143f/6000, 86f/6000, 86f/6000, .030666667f, .0275f, -1};
         for (int i = 0; i < ids.length; i++) {
-            var stack = GunItemBuilder.create().setId(ResourceLocation.parse("tacz:" + ids[i]))
-                    .putAttachment(AttachmentType.SCOPE, ResourceLocation.parse(i == 5 ? "tacz:scope_1873_6x"
+            var stack = GunItemBuilder.create().setId(new ResourceLocation("tacz:" + ids[i]))
+                    .putAttachment(AttachmentType.SCOPE, new ResourceLocation(i == 5 ? "tacz:scope_1873_6x"
                             : i == 4 ? "tacz:scope_98k" : "tacz:scope_mk5hd"))
-                    .build(helper.getLevel().registryAccess());
+                    .build();
             player.setItemInHand(InteractionHand.MAIN_HAND, stack);
             var gun = IGun.getIGunOrNull(stack);
             var index = TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).orElseThrow();
@@ -326,7 +328,7 @@ public final class SnipingPhysicsGameTests {
                         "Fixture scope is incompatible with " + ids[i]);
                 var tag = gun.getAttachmentTag(stack, AttachmentType.SCOPE).copy();
                 tag.putInt("ZoomNumber", i < 4 && state < 3 ? state : 0);
-                gun.setAttachmentTag(stack, AttachmentType.SCOPE, tag);
+                gun.getAttachmentTag(stack, AttachmentType.SCOPE).merge(tag);
                 var preview = BallisticPreview.read(player).orElseThrow();
                 var bullet = new EntityKineticBullet(helper.getLevel(), player, stack, data.getAmmoId(), gun.getGunId(stack),
                         false, data, index.getBulletData());
@@ -340,7 +342,7 @@ public final class SnipingPhysicsGameTests {
                         "Default launch wind disagrees with preview");
                 boolean changed = i < 5;
                 double speed = changed ? speeds[i] : nativeSpeed;
-                helper.assertTrue(Math.abs(bullet.getDeltaMovement().subtract(player.getKnownMovement()).length() - speed) < 1e-4,
+                helper.assertTrue(Math.abs(bullet.getDeltaMovement().subtract(player.getDeltaMovement()).length() - speed) < 1e-4,
                         "Wrong launch speed: " + ids[i] + " state=" + state);
                 float expectedDrag = tacz.aos.humidity.HumidityModel.friction(changed ? drags[i] : originalDrag,
                         tacz.aos.humidity.HumidityField.current(helper.getLevel()).densityRatio());
@@ -350,7 +352,7 @@ public final class SnipingPhysicsGameTests {
                 helper.assertTrue(preview.velocity().distanceTo(bullet.getDeltaMovement()) < 1e-4
                                 && preview.gravity() == fields.tacz_aos$getGravity() && preview.friction() == fields.tacz_aos$getFriction(),
                         "Actual TACZ launch disagrees with prediction: " + ids[i] + " state=" + state);
-                var buffer = new net.minecraft.network.RegistryFriendlyByteBuf(io.netty.buffer.Unpooled.buffer(), helper.getLevel().registryAccess());
+                var buffer = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
                 try {
                     bullet.writeSpawnData(buffer);
                     var received = new EntityKineticBullet(EntityKineticBullet.TYPE, helper.getLevel());

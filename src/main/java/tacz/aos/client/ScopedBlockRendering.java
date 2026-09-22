@@ -8,17 +8,18 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.phys.*;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.neoforge.client.event.*;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.client.event.*;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.network.*;
 import java.util.*;
+import net.minecraftforge.event.TickEvent;
 
 /** Isolated render data, not fake client chunks or world block replacements. */
 @EventBusSubscriber(modid=TaczArtOfSniping.MOD_ID,value=Dist.CLIENT)
@@ -29,7 +30,7 @@ public final class ScopedBlockRendering {
     public static int draws(){return draws;}
     public static int count(){return targets.size();}
     public static TargetBlockEntity visual(BlockPos pos){var e=targets.get(pos);return e==null?null:e.visual;}
-    @SubscribeEvent public static void setup(FMLClientSetupEvent event){event.enqueueWork(()->ScopeNetworking.setBlockTargetReceiver(ScopedBlockRendering::receive));}
+    public static void setup(FMLClientSetupEvent event){event.enqueueWork(()->ScopeNetworking.setBlockTargetReceiver(ScopedBlockRendering::receive));}
     private static void receive(ScopeBlockTargetsPayload payload) {
         var mc=Minecraft.getInstance();if(mc.level==null || !mc.level.dimension().location().equals(payload.dimension()))return;
         if(level!=mc.level){targets.clear();level=mc.level;}
@@ -39,12 +40,13 @@ public final class ScopedBlockRendering {
             var visual=metadataChanged?new TargetBlockEntity(t.pos(),t.state()):old.visual;
             if(old!=null && metadataChanged){visual.rot=old.visual.rot;visual.oRot=old.visual.oRot;}
             visual.setLevel(level);visual.setBlockState(t.state());
-            if(metadataChanged)visual.loadWithComponents(t.data(),level.registryAccess());
+            if(metadataChanged)visual.load(t.data());
             next.put(t.pos(),new Entry(visual,t.light(),t.data()));
         }
         targets.clear();targets.putAll(next);received=tick;
     }
-    @SubscribeEvent public static void tick(ClientTickEvent.Post event) {
+    @SubscribeEvent public static void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
         tick++;var mc=Minecraft.getInstance();
         if(level!=mc.level || tick-received>40){targets.clear();level=mc.level;}
         if(level==null)return;
@@ -62,7 +64,7 @@ public final class ScopedBlockRendering {
         return best;
     }
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
-        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES || ShaderCompat.shadowPass())return;
+        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES)return;
         draws=0;var mc=Minecraft.getInstance();
         if(!ScopedRendering.active() || mc.level!=level || level==null || mc.player==null)return;
         float fogStart=RenderSystem.getShaderFogStart(),fogEnd=RenderSystem.getShaderFogEnd();
@@ -80,7 +82,7 @@ public final class ScopedBlockRendering {
                 stack.pushPose();
                 try {
                     stack.translate(pos.getX()-eye.x,pos.getY()-eye.y,pos.getZ()-eye.z);
-                    renderer.render(target,event.getPartialTick().getGameTimeDeltaPartialTick(false),stack,buffers,entry.light,
+                    renderer.render(target,event.getPartialTick(),stack,buffers,entry.light,
                             net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY);
                     draws++;
                 } finally {stack.popPose();}

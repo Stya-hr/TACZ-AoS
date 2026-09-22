@@ -8,7 +8,7 @@
 
 ## 安装要求
 
-Minecraft **1.21.1**、**NeoForge 21.1.248 或更新版本**、Java **21**，以及 [TACZ 1.21.1 移植版](https://modrinth.com/mod/tacz-1.21.1)（**1.1.8-hotfix-r6**，支持范围低于 1.2）。客户端与服务端都需要安装 AoS 和 TACZ。
+Minecraft **1.20.1**、**Forge 47.3.0 或更新版本**、Java **17**，以及 [TACZ 官方 Forge 1.20.1 版](https://modrinth.com/mod/timeless-and-classics-zero)（**1.1.8-hotfix**，支持范围低于 1.2）。客户端与服务端都需要安装 AoS 和 TACZ。
 
 ## 添加了什么
 
@@ -58,7 +58,7 @@ AoS 采用少量目标区域的加载方案，不会为了远距离狙击而加�
 
 ## 配置
 
-启动游戏后会生成 `config/tacz_aos-server.toml`。如果存档中存在 `serverconfig/tacz_aos-server.toml`，则优先使用存档配置。多人游戏应修改**服务端**实际生效的文件，修改后重启世界或服务器。
+Forge 实际使用 `<存档>/serverconfig/tacz_aos-server.toml`，首次进入世界时自动生成。多人游戏应修改**服务端**的这份文件，修改后重启世界或服务器。`config/` 下自动生成的文件是参考模板；如需为新建世界设定默认值，将修改后的模板复制到 `defaultconfigs/tacz_aos-server.toml`。
 
 添加其他 TACZ 枪包时，在 `[eligibility]` 的 `guns` 中追加**枪械 ID**，在 `scopeRules` 中追加**瞄准镜配件 ID**。使用 `pack:rifle` 这样的枪包 ID，而不是 TACZ 的通用枪械物品 ID；保留仍需使用的原有条目。例如：
 
@@ -79,14 +79,15 @@ maxDistance = 1024
 
 | 可选模组 | 兼容功能 |
 | --- | --- |
-| [**NeoVoxy（NHblock-Johnsnow）**](https://github.com/NHblock-Johnsnow/neo-voxy) | 利用远处 LOD 地形选取目标，由 AoS 补充目标区域实体。本模组仅测试了该分支的兼容性，不保证其他 Voxy 分支兼容，因此建议游玩时使用此分支。 |
-| **Iris** | 光影下的瞄准选点、实体遮挡和弹道烟迹。支持 1.8.x，具体观感取决于光影包。 |
-| **Curios** | 收集腰带可放入已有的 `belt` 功能槽，不新增槽位；外观槽不生效。支持 9.5.1–9.x。 |
+| [**NeoVoxy（NHblock-Johnsnow）**](https://github.com/NHblock-Johnsnow/neo-voxy) | 利用远处 LOD 地形选取目标，由 AoS 补充目标区域实体。本分支针对 Forge 1.20.1 客户端版 NeoVoxy 0.3.3，需另装 Embeddium 0.3.31+。不保证其他 Voxy 分支兼容，建议使用此分支。 |
+| **Curios** | 收集腰带可放入已有的 `belt` 功能槽，不新增槽位；外观槽不生效。支持 5.14.1–5.x。 |
 | **ParCool / Crawl on Demand** | 识别其匍匐状态，为白名单枪械启用零散布与待机晃动抑制。 |
 
-请选择适用于 Minecraft 1.21.1 NeoForge 的版本，并安装各可选模组自身的前置。使用标准枪械与弹丸接口的其他 TACZ 枪包可通过配置扩展；自定义弹丸或渲染器可能需要额外适配。本模组会保留其他玩家和区块加载器已有的加载请求。
+本 Forge 分支已移除 Iris／Sodium 专用兼容，不承诺 Oculus 光影兼容。
 
-**不支持同时使用：[Tacz Bullet Improvement](https://modrinth.com/mod/tacz-tacz-bullet-improvement)。** 其公开说明将 TACZ 的飞行子弹替换为瞬时射线命中，与 AoS 的飞行时间、下坠、风偏和着弹预测机制冲突。其列出的发布版本也面向 Minecraft 1.20–1.20.1 Forge，而 AoS 使用 1.21.1 NeoForge。请勿搭配使用；即使未来移植到相同版本，仍需专门适配。
+请选择适用于 Minecraft 1.20.1 Forge 的版本，并安装各可选模组自身的前置。使用标准枪械与弹丸接口的其他 TACZ 枪包可通过配置扩展；自定义弹丸或渲染器可能需要额外适配。本模组会保留其他玩家和区块加载器已有的加载请求。
+
+**不支持同时使用：[Tacz Bullet Improvement](https://modrinth.com/mod/tacz-tacz-bullet-improvement)。** 其公开说明将 TACZ 的飞行子弹替换为瞬时射线命中，与 AoS 的飞行时间、下坠、风偏和着弹预测机制冲突。请勿搭配使用；Minecraft 版本相同也不会消除这项机制冲突。
 
 ## 许可证
 

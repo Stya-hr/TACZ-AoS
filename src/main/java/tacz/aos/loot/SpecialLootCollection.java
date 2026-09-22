@@ -5,11 +5,11 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.EventPriority;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.ModList;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import org.jetbrains.annotations.Nullable;
 import tacz.aos.TaczArtOfSniping;
 
@@ -26,7 +26,7 @@ public final class SpecialLootCollection {
 
     private static final class Installed {
         static final boolean ANY = ModList.get().isLoaded("lightmanscurrency")
-                || ModList.get().isLoaded("collectorsalbum") || ModList.get().isLoaded("champions");
+                || ModList.get().isLoaded("collectorsalbum");
     }
 
     @Nullable
@@ -60,8 +60,6 @@ public final class SpecialLootCollection {
                 && method.equals("DropEntityLoot")
                 || owner.equals("io.github.lightman314.lightmanscurrency.common.EventHandler")
                 && method.equals("playerDrops")
-                || owner.equals("top.theillusivec4.champions.common.champion.ChampionLootHandler")
-                && method.equals("spawnDrop")
                 // Mixin renames this injected handler; the original suffix remains in its name.
                 || owner.equals("net.minecraft.world.entity.LivingEntity")
                 && method.endsWith("collectorsAlbum$die");
@@ -90,7 +88,7 @@ public final class SpecialLootCollection {
             // event can disagree with the entity section being inserted by the caller.
             if (completed && collector != null && collector.isAlive() && collector.level() == victim.level()) {
                 for (var drop : drops) {
-                    if (!drop.isRemoved() && drop.isAddedToLevel() && drop.level() == collector.level()) {
+                    if (!drop.isRemoved() && drop.isAddedToWorld() && drop.level() == collector.level()) {
                         drop.setPos(collector.position());
                         drop.setDeltaMovement(Vec3.ZERO);
                     }

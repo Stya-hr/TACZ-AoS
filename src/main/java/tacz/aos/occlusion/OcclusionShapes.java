@@ -9,7 +9,7 @@ import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import net.neoforged.neoforge.common.Tags;
+import net.minecraftforge.common.Tags;
 
 /** Server-side material policy and bounded geometry; no render-layer or shader introspection. */
 public final class OcclusionShapes {
@@ -21,7 +21,7 @@ public final class OcclusionShapes {
 
     public static List<AABB> boxes(BlockState state, BlockGetter level, BlockPos pos) {
         var block = state.getBlock();
-        if (state.isAir() || state.is(Tags.Blocks.GLASS_BLOCKS) || state.is(Tags.Blocks.GLASS_PANES)
+        if (state.isAir() || state.is(Tags.Blocks.GLASS) || state.is(Tags.Blocks.GLASS_PANES)
                 || block == Blocks.GLASS || block == Blocks.GLASS_PANE || block == Blocks.TINTED_GLASS
                 || block instanceof StainedGlassBlock || block instanceof StainedGlassPaneBlock) return List.of();
         // Leaf texture holes must not reveal entities, including leaves supplied by other mods.

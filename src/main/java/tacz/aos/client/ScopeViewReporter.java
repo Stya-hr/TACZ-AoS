@@ -2,8 +2,8 @@ package tacz.aos.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.minecraftforge.client.event.RenderLevelStageEvent;
+import tacz.aos.network.PacketDelivery;
 import tacz.aos.network.ScopeViewPayload;
 import tacz.aos.scoping.ScopeCone;
 
@@ -21,7 +21,7 @@ final class ScopeViewReporter {
         double angle = ScopeCone.projectionHalfAngle(Math.abs(projection.m00()), Math.abs(projection.m11()));
         if (!Double.isFinite(angle) || angle <= 0) return;
         if (zoom == lastZoom && Math.abs(angle - lastAngle) < lastAngle * 0.02 && tick - sent < 40) return;
-        PacketDistributor.sendToServer(new ScopeViewPayload(level.dimension().location(), (float) zoom, (float) angle));
+        PacketDelivery.sendToServer(new ScopeViewPayload(level.dimension().location(), (float) zoom, (float) angle));
         sent = tick; lastZoom = zoom; lastAngle = angle;
     }
     static void reset() { level = null; sent = Long.MIN_VALUE / 2; lastZoom = lastAngle = 0; }

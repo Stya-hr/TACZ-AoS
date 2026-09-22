@@ -7,16 +7,14 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
-import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.game.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
-import net.minecraft.server.level.ChunkTrackingView;
-import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.common.util.FakePlayer;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.common.util.FakePlayer;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.ballistics.BlockImpactEffects;
 import tacz.aos.ballistics.LocalBallistics;
@@ -31,21 +29,21 @@ import java.util.UUID;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class ObserverFeedbackGameTests {
-    @GameTest(template = "ballistics", batch = "distant_gunshots")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "distant_gunshots")
     public static void managedShotAudioIsDelayedOnceAndSurvivesBulletRemoval(GameTestHelper h) throws ReflectiveOperationException {
         var shooter = viewer(h, new Vec3(4,5,4), true);
         var near = viewer(h, new Vec3(44,5,4), true);
         var far = viewer(h, new Vec3(1004,5,4), false);
         var fixture = new LocalBallisticsGameTests.Fixture(h, shooter.player);
         var scheduler = new LocalBallistics(h.getLevel());
-        var gun = net.minecraft.resources.ResourceLocation.parse("tacz:ai_awp");
+        var gun = new net.minecraft.resources.ResourceLocation("tacz:ai_awp");
         int chunks = h.getLevel().getChunkSource().getLoadedChunksCount();
         long now = h.getLevel().getGameTime();
         var mapField = net.minecraft.server.level.ChunkMap.class.getDeclaredField("playerMap");
         mapField.setAccessible(true);
         var nativePlayers = (net.minecraft.server.level.PlayerMap) mapField.get(h.getLevel().getChunkSource().chunkMap);
-        nativePlayers.addPlayer(near.player, false); nativePlayers.addPlayer(far.player, false);
-        far.player.setChunkTrackingView(ChunkTrackingView.of(shooter.player.chunkPosition(), 4));
+        nativePlayers.addPlayer(near.player.chunkPosition().toLong(), near.player, false); nativePlayers.addPlayer(far.player.chunkPosition().toLong(), far.player, false);
+        far.player.setLastSectionPos(net.minecraft.core.SectionPos.of(shooter.player));
         try {
             var bullet = fixture.bullet(new Vec3(4,6,4), new Vec3(40,0,0));
             LocalBallisticsGameTests.accept(h, scheduler, bullet, new ServerConfig.Ballistics(true,2048,16,600));
@@ -66,7 +64,7 @@ public final class ObserverFeedbackGameTests {
             h.assertTrue(chunks == h.getLevel().getChunkSource().getLoadedChunksCount(), "Sound propagation loaded terrain");
             sound.accepted(h.getLevel(), shooter.player.getUUID(), gun);
             sound.replace(shooter.player, 2048, gun, gun, com.tacz.guns.sound.SoundManager.SHOOT_3P_SOUND, .8f, 1);
-            sound.dimension(new net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerChangedDimensionEvent(
+            sound.dimension(new net.minecraftforge.event.entity.player.PlayerEvent.PlayerChangedDimensionEvent(
                     far.player, net.minecraft.world.level.Level.OVERWORLD, net.minecraft.world.level.Level.NETHER));
             sound.deliver(h.getLevel(), now + 59);
             h.assertTrue(far.count(tacz.aos.network.DistantGunshotPayload.class) == 1, "Dimension change retained an old gunshot");
@@ -81,7 +79,7 @@ public final class ObserverFeedbackGameTests {
                 sound.deliver(h.getLevel(),now+60);
             } finally { configField.set(null,original); }
         } finally {
-            nativePlayers.removePlayer(near.player); nativePlayers.removePlayer(far.player);
+            nativePlayers.removePlayer(near.player.chunkPosition().toLong(), near.player); nativePlayers.removePlayer(far.player.chunkPosition().toLong(), far.player);
             scheduler.clear();
             for (var v : List.of(shooter,near,far)) h.getLevel().players().remove(v.player);
         }
@@ -90,7 +88,7 @@ public final class ObserverFeedbackGameTests {
 
     private record Viewer(FakePlayer player, List<Packet<?>> packets) {
         long count(Class<?> type) {
-            return packets.stream().filter(p -> p instanceof ClientboundCustomPayloadPacket c && type.isInstance(c.payload())).count();
+            return packets.stream().filter(p -> p instanceof ClientboundCustomPayloadPacket c && type.isInstance(TestPackets.decode(c))).count();
         }
     }
     private static Viewer viewer(GameTestHelper helper, Vec3 position, boolean tracked) {
@@ -98,16 +96,17 @@ public final class ObserverFeedbackGameTests {
         var player = new FakePlayer(level, new GameProfile(UUID.randomUUID(), "feedback-viewer"));
         player.setPos(helper.absoluteVec(position));
         var packets = new ArrayList<Packet<?>>();
-        player.connection = new ServerGamePacketListenerImpl(level.getServer(), new Connection(PacketFlow.SERVERBOUND), player,
-                CommonListenerCookie.createInitial(player.getGameProfile(), false)) {
+        player.connection = new ServerGamePacketListenerImpl(level.getServer(), new Connection(PacketFlow.SERVERBOUND) {
+            @Override public void send(Packet<?> p) { packets.add(p); }
+        }, player) {
             @Override public void send(Packet<?> p) { packets.add(p); }
         };
-        player.setChunkTrackingView(tracked ? ChunkTrackingView.of(player.chunkPosition(), 4) : ChunkTrackingView.EMPTY);
+        player.setLastSectionPos(tracked ? net.minecraft.core.SectionPos.of(player) : net.minecraft.core.SectionPos.of(100000, 0, 100000));
         level.players().add(player);
         return new Viewer(player, packets);
     }
 
-    @GameTest(template = "ballistics", batch = "observer_feedback")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "observer_feedback")
     public static void missingScopeEntityRepairIsAuthorizedBoundedAndUsesNativePairing(GameTestHelper h) {
         var viewer = viewer(h, new Vec3(4,5,4), false);
         new LocalBallisticsGameTests.Fixture(h, viewer.player);
@@ -128,9 +127,9 @@ public final class ObserverFeedbackGameTests {
                     new tacz.aos.network.ScopeEntityRepairPayload.Target(other.getId(), other.getUUID()),
                     new tacz.aos.network.ScopeEntityRepairPayload.Target(cow.getId(), UUID.randomUUID())));
             subscriptions.repair(viewer.player, request);
-            h.assertTrue(viewer.packets.size() == 1 && viewer.packets.getFirst() instanceof net.minecraft.network.protocol.game.ClientboundBundlePacket,
+            h.assertTrue(viewer.packets.size() == 1 && viewer.packets.get(0) instanceof net.minecraft.network.protocol.game.ClientboundBundlePacket,
                     "Repair duplicated or disclosed an unauthorized target");
-            var bundle = (net.minecraft.network.protocol.game.ClientboundBundlePacket) viewer.packets.getFirst();
+            var bundle = (net.minecraft.network.protocol.game.ClientboundBundlePacket) viewer.packets.get(0);
             int spawns = 0;
             for (var packet : bundle.subPackets()) if (packet instanceof net.minecraft.network.protocol.game.ClientboundAddEntityPacket spawn) {
                 h.assertTrue(spawn.getId() == cow.getId() && spawn.getUUID().equals(cow.getUUID()), "Repair spawned the wrong identity");
@@ -149,7 +148,7 @@ public final class ObserverFeedbackGameTests {
         h.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "observer_feedback")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "observer_feedback")
     public static void bystanderReceivesLocalTrailAndOneFlybyWithoutRangefinder(GameTestHelper h) {
         var f = new LocalBallisticsGameTests.Fixture(h);
         var visible = viewer(h, new Vec3(12, 5.38, 7), true);
@@ -169,7 +168,7 @@ public final class ObserverFeedbackGameTests {
             h.assertTrue(visible.count(NearMissPayload.class) == 1, "Flyby was missing or repeated");
             h.assertTrue(outsideHearing.count(ShotTrailsPayload.class) >= 1 && outsideHearing.count(NearMissPayload.class) == 0,
                     "Observer six blocks from the path must see smoke but hear no flyby");
-            for (var packet : visible.packets) if (packet instanceof ClientboundCustomPayloadPacket c && c.payload() instanceof ShotTrailsPayload p)
+            for (var packet : visible.packets) if (packet instanceof ClientboundCustomPayloadPacket c && TestPackets.decode(c) instanceof ShotTrailsPayload p)
                 h.assertTrue(p.localOnly(), "Observer was granted full-distance trails");
             h.assertTrue(untracked.count(ShotTrailsPayload.class) == 0 && untracked.count(NearMissPayload.class) == 0,
                     "Untracked chunks leaked effects");
@@ -182,7 +181,7 @@ public final class ObserverFeedbackGameTests {
         h.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "observer_feedback")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "observer_feedback")
     public static void targetImpactUsesNativeDecalOnlyOnConfirmedLoadedSurface(GameTestHelper h) {
         var f = new LocalBallisticsGameTests.Fixture(h);
         var visible = viewer(h, new Vec3(12, 5, 7), true);

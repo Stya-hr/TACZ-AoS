@@ -4,8 +4,8 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.TaczArtOfSniping;
 import tacz.aos.scoping.ScopeRangefinder;
 import tacz.aos.terrain.CollisionCell;
@@ -14,7 +14,7 @@ import java.util.List;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class RangefinderGameTests {
-    @GameTest(template = "ballistics", batch = "rangefinder")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "rangefinder")
     public static void straightDistanceUsesFirstSurfaceAndUnknownStops(GameTestHelper helper) {
         var eye = new Vec3(.5, 10.5, .5);
         var direction = new Vec3(1, 0, 0);

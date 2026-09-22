@@ -19,10 +19,10 @@ public abstract class BeltExperienceMixin {
     @Unique private ServerPlayer tacz_aos$lootCollector;
 
     @WrapMethod(method = "dropAllDeathLoot")
-    private void tacz_aos$deathLoot(ServerLevel level, DamageSource source, Operation<Void> original) {
+    private void tacz_aos$deathLoot(DamageSource source, Operation<Void> original) {
         var previous = tacz_aos$lootCollector;
         tacz_aos$lootCollector = BeltLootCollection.collector((LivingEntity)(Object)this, source);
-        try { original.call(level, source); }
+        try { original.call(source); }
         finally { tacz_aos$lootCollector = previous; }
     }
 

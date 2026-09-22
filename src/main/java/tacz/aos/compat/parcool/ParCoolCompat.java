@@ -2,7 +2,7 @@ package tacz.aos.compat.parcool;
 
 import java.lang.reflect.Method;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.fml.ModList;
+import net.minecraftforge.fml.ModList;
 import tacz.aos.TaczArtOfSniping;
 
 /** Optional read-only bridge to ParCool's local/synchronized action state, never its visual swimming pose. */
@@ -39,7 +39,7 @@ public final class ParCoolCompat {
             try {
                 ability = Class.forName("com.alrex.parcool.common.Parkourability");
             } catch (ClassNotFoundException legacy) {
-                ability = Class.forName("com.alrex.parcool.common.attachment.common.Parkourability");
+                ability = Class.forName("com.alrex.parcool.common.capability.Parkourability");
                 Class<?> crawl = Class.forName("com.alrex.parcool.common.action.impl.Crawl");
                 return new Access(ability.getMethod("get", Player.class), ability.getMethod("get", Class.class),
                         crawl, crawl.getMethod("isDoing"));

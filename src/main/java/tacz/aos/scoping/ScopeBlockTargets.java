@@ -6,7 +6,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.network.PacketDistributor;
+import tacz.aos.network.PacketDelivery;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.network.ScopeBlockTargetsPayload;
 import java.util.*;
@@ -38,7 +38,7 @@ public final class ScopeBlockTargets {
         var result=new ArrayList<ScopeBlockTargetsPayload.Target>();long bytes=0;
         for(var target:found) {
             if(result.size()>=limit)break;
-            BlockPos pos=target.getBlockPos();var tag=target.getUpdateTag(level.registryAccess());
+            BlockPos pos=target.getBlockPos();var tag=target.getUpdateTag();
             if(tag.sizeInBytes()>ScopeBlockTargetsPayload.MAX_TAG_BYTES || bytes+tag.sizeInBytes()>ScopeBlockTargetsPayload.MAX_TOTAL_TAG_BYTES)tag=new CompoundTag();
             if(bytes+tag.sizeInBytes()>ScopeBlockTargetsPayload.MAX_TOTAL_TAG_BYTES)break;
             bytes+=tag.sizeInBytes();
@@ -48,9 +48,9 @@ public final class ScopeBlockTargets {
         return List.copyOf(result);
     }
     public static void send(ServerPlayer player,double zoom,int entityCount) {
-        PacketDistributor.sendToPlayer(player,new ScopeBlockTargetsPayload(player.level().dimension().location(),select(player,zoom,entityCount)));
+        PacketDelivery.sendToPlayer(player,new ScopeBlockTargetsPayload(player.level().dimension().location(),select(player,zoom,entityCount)));
     }
     public static void clear(ServerPlayer player) {
-        PacketDistributor.sendToPlayer(player,new ScopeBlockTargetsPayload(player.level().dimension().location(),List.of()));
+        PacketDelivery.sendToPlayer(player,new ScopeBlockTargetsPayload(player.level().dimension().location(),List.of()));
     }
 }

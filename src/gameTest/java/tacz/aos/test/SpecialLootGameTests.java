@@ -1,6 +1,5 @@
 package tacz.aos.test;
 
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.chat.Component;
@@ -11,11 +10,11 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import tacz.aos.block.ModContent;
 
 import java.lang.reflect.Proxy;
@@ -29,7 +28,7 @@ import java.util.function.Consumer;
 public final class SpecialLootGameTests {
     private static ItemStack reward() {
         var stack = new ItemStack(Items.DIAMOND, 3);
-        stack.set(DataComponents.CUSTOM_NAME, Component.literal("special-loot-test"));
+        stack.setHoverName(Component.literal("special-loot-test"));
         return stack;
     }
 
@@ -38,7 +37,7 @@ public final class SpecialLootGameTests {
             before.run();
             for (int mode = 0; mode < 4; mode++) {
                 try (var f = new BeltLootGameTests.Fixture(h)) {
-                    if (mode != 1) f.player.setItemSlot(EquipmentSlot.LEGS, ModContent.TACTICAL_COLLECTION_BELT.toStack());
+                    if (mode != 1) f.player.setItemSlot(EquipmentSlot.LEGS, new ItemStack(ModContent.TACTICAL_COLLECTION_BELT.get()));
                     if (mode == 2) f.victim.hurt(h.getLevel().damageSources().playerAttack(f.player), 100);
                     else f.shoot(mode == 0);
                     boolean collected = mode == 0 || mode == 3;
@@ -60,7 +59,7 @@ public final class SpecialLootGameTests {
         return item.getItem().is(Items.DIAMOND) && item.getItem().getHoverName().getString().equals("special-loot-test");
     }
 
-    @GameTest(template = "ballistics", batch = "special_loot")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "special_loot")
     @SuppressWarnings("unchecked")
     public static void collectorsAlbumActualDeathInjection(GameTestHelper h) throws Exception {
         if (!ModList.get().isLoaded("collectorsalbum")) { h.succeed(); return; }
@@ -71,12 +70,12 @@ public final class SpecialLootGameTests {
         var previous = new HashMap<>(drops);
         var provider = Class.forName("team.tnt.collectorsalbum.common.resource.drops.ItemStackDropProvider")
                 .getConstructor(ItemStack.class).newInstance(reward());
-        check(h, () -> { drops.clear(); drops.put(ResourceLocation.parse("tacz_aos:test"), provider); },
+        check(h, () -> { drops.clear(); drops.put(new ResourceLocation("tacz_aos:test"), provider); },
                 () -> { drops.clear(); drops.putAll(previous); });
         h.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "special_loot")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "special_loot")
     @SuppressWarnings("unchecked")
     public static void lightmansCurrencyActualDeathListener(GameTestHelper h) throws Exception {
         if (!ModList.get().isLoaded("lightmanscurrency")) { h.succeed(); return; }
@@ -102,53 +101,44 @@ public final class SpecialLootGameTests {
         h.succeed();
     }
 
-    @GameTest(template = "ballistics", batch = "special_loot")
-    public static void championsActualSpawnHelperAndUnrelatedItems(GameTestHelper h) throws Exception {
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "special_loot")
+    @SuppressWarnings("unchecked")
+    public static void championsActualGlobalLootModifier(GameTestHelper h) throws Exception {
         if (!ModList.get().isLoaded("champions")) { h.succeed(); return; }
-        var type = Class.forName("top.theillusivec4.champions.common.champion.ChampionLootHandler");
-        var spawn = type.getDeclaredMethod("spawnDrop", LivingEntity.class, ServerLevel.class, ItemStack.class);
-        spawn.setAccessible(true);
-        Consumer<LivingDeathEvent> listener = event -> {
+        // Forge 2.1.10.2 appends to normal loot, unlike the later 20.x direct-spawn helper.
+        var config = Class.forName("top.theillusivec4.champions.common.config.ChampionsConfig");
+        var fake = config.getField("fakeLoot"); var scaling = config.getField("lootScaling");
+        var source = config.getField("lootSource"); var allowList = config.getField("allowChampionsList"); Object oldAllowList = allowList.get(null);
+        Object oldFake = fake.get(null), oldScaling = scaling.get(null), oldSource = source.get(null);
+        var type = Class.forName("top.theillusivec4.champions.common.config.ConfigLoot");
+        var field = type.getDeclaredField("DROPS"); field.setAccessible(true);
+        var drops = (Map<Integer, Object>)field.get(null); var previous = new HashMap<>(drops);
+        var data = Class.forName("top.theillusivec4.champions.common.config.ConfigLoot$Data")
+                .getDeclaredConstructor(ItemStack.class, boolean.class, int.class);
+        data.setAccessible(true);
+        Object deterministic = data.newInstance(reward(), false, 1);
+        Consumer<LivingDeathEvent> unrelated = event -> {
             if (event.getEntity().level() != h.getLevel()) return;
-            try { spawn.invoke(null, event.getEntity(), h.getLevel(), reward()); }
-            catch (ReflectiveOperationException e) { throw new RuntimeException(e); }
-            var position = event.getEntity().position();
-            h.getLevel().addFreshEntity(new ItemEntity(h.getLevel(), position.x, position.y, position.z, new ItemStack(Items.STICK)));
+            var champion = top.theillusivec4.champions.common.capability.ChampionCapability.getCapability(event.getEntity()).orElseThrow(AssertionError::new);
+            champion.getServer().setRank(top.theillusivec4.champions.common.rank.RankManager.getRank(1));
+            var p = event.getEntity().position();
+            h.getLevel().addFreshEntity(new ItemEntity(h.getLevel(), p.x, p.y, p.z, new ItemStack(Items.STICK)));
         };
-        check(h, () -> NeoForge.EVENT_BUS.addListener(listener), () -> NeoForge.EVENT_BUS.unregister(listener));
-        // No active death scope: an identical reward from the same helper must stay put.
-        try (var f = new BeltLootGameTests.Fixture(h)) {
-            f.player.setItemSlot(EquipmentSlot.LEGS, ModContent.TACTICAL_COLLECTION_BELT.toStack());
-            spawn.invoke(null, f.victim, h.getLevel(), reward());
-            h.assertTrue(f.itemsAt(f.player.position()).isEmpty() && f.itemsAt(f.victim.position()).stream().anyMatch(SpecialLootGameTests::marked),
-                    "Death context leaked beyond the synchronous death");
-        }
-        h.succeed();
-    }
-
-    @GameTest(template = "ballistics", batch = "special_loot")
-    public static void canceledDeathDoesNotCollectOrLeak(GameTestHelper h) throws Exception {
-        if (!ModList.get().isLoaded("champions")) { h.succeed(); return; }
-        var type = Class.forName("top.theillusivec4.champions.common.champion.ChampionLootHandler");
-        var spawn = type.getDeclaredMethod("spawnDrop", LivingEntity.class, ServerLevel.class, ItemStack.class);
-        spawn.setAccessible(true);
-        try (var f = new BeltLootGameTests.Fixture(h)) {
-            f.player.setItemSlot(EquipmentSlot.LEGS, ModContent.TACTICAL_COLLECTION_BELT.toStack());
-            Consumer<LivingDeathEvent> cancel = event -> {
-                if (event.getEntity() != f.victim) return;
-                try { spawn.invoke(null, f.victim, h.getLevel(), reward()); }
-                catch (ReflectiveOperationException e) { throw new RuntimeException(e); }
-                event.setCanceled(true);
-            };
-            NeoForge.EVENT_BUS.addListener(cancel);
-            try { f.victim.die(f.source()); }
-            finally { NeoForge.EVENT_BUS.unregister(cancel); }
-            h.assertTrue(f.itemsAt(f.player.position()).stream().noneMatch(SpecialLootGameTests::marked)
-                    && f.itemsAt(f.victim.position()).stream().anyMatch(SpecialLootGameTests::marked),
-                    "Canceled death transferred rewards despite not completing");
-            f.itemsAt(f.victim.position()).forEach(ItemEntity::discard);
-            spawn.invoke(null, f.victim, h.getLevel(), reward());
-            h.assertTrue(f.itemsAt(f.player.position()).isEmpty(), "Canceled death leaked its collector");
+        try {
+            fake.set(null, true); scaling.set(null, false); allowList.set(null, false);
+            source.set(null, source.getType().getField("CONFIG").get(null));
+            drops.clear(); for (int i = 0; i <= 20; i++) drops.put(i, List.of(deterministic));
+            check(h, () -> MinecraftForge.EVENT_BUS.addListener(unrelated), () -> MinecraftForge.EVENT_BUS.unregister(unrelated));
+            try (var f = new BeltLootGameTests.Fixture(h)) {
+                f.player.setItemSlot(EquipmentSlot.LEGS, new ItemStack(ModContent.TACTICAL_COLLECTION_BELT.get()));
+                Consumer<LivingDeathEvent> cancel = e -> { if(e.getEntity() == f.victim) e.setCanceled(true); };
+                MinecraftForge.EVENT_BUS.addListener(cancel);
+                try { f.victim.die(f.source()); } finally { MinecraftForge.EVENT_BUS.unregister(cancel); }
+                h.assertTrue(f.itemsAt(f.player.position()).stream().noneMatch(SpecialLootGameTests::marked)
+                        && f.itemsAt(f.victim.position()).stream().noneMatch(SpecialLootGameTests::marked), "Canceled death produced champion reward");
+            }
+        } finally {
+            drops.clear(); drops.putAll(previous); fake.set(null, oldFake); scaling.set(null, oldScaling); source.set(null, oldSource); allowList.set(null, oldAllowList);
         }
         h.succeed();
     }
