@@ -21,9 +21,8 @@ public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targ
                     || !OcclusionShapes.textured(state)) throw new IllegalArgumentException("Invalid textured occluder");
         }
     }
-    public record Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes,List<Textured> textured,boolean complete) {
+    public record Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes,List<Textured> textured) {
         public Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes) { this(id,uuid,origin,boxes,List.of()); }
-        public Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes,List<Textured> textured) { this(id,uuid,origin,boxes,textured,true); }
         public Target {
             origin=origin.immutable();boxes=List.copyOf(boxes);textured=List.copyOf(textured);
             if(textured.size()>MAX_TEXTURED_PER_TARGET)throw new IllegalArgumentException("Too many textured occluders");
@@ -51,7 +50,7 @@ public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targ
                 if(plants<0 || plants>MAX_TEXTURED_PER_TARGET || totalTextured>MAX_TEXTURED)throw new IllegalArgumentException("Invalid textured count");
                 var textured=new ArrayList<Textured>();
                 for(int j=0;j<plants;j++)textured.add(new Textured(b.readBlockPos(),Block.stateById(b.readVarInt())));
-                targets.add(new Target(id,uuid,origin,boxes,textured,b.readBoolean()));
+                targets.add(new Target(id,uuid,origin,boxes,textured));
             }
             return new ScopeOcclusionPayload(dim,targets);
         }
@@ -59,7 +58,7 @@ public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targ
             b.writeResourceLocation(p.dimension);b.writeVarInt(p.targets.size());
             for(var t:p.targets){b.writeVarInt(t.id);b.writeUUID(t.uuid);b.writeBlockPos(t.origin);b.writeVarInt(t.boxes.size());
                 for(var a:t.boxes){b.writeFloat((float)a.minX());b.writeFloat((float)a.minY());b.writeFloat((float)a.minZ());b.writeFloat((float)a.maxX());b.writeFloat((float)a.maxY());b.writeFloat((float)a.maxZ());}
-                b.writeVarInt(t.textured.size());for(var plant:t.textured){b.writeBlockPos(plant.offset);b.writeVarInt(Block.getId(plant.state));}b.writeBoolean(t.complete);}
+                b.writeVarInt(t.textured.size());for(var plant:t.textured){b.writeBlockPos(plant.offset);b.writeVarInt(Block.getId(plant.state));}}
         }
     };
     public Type<? extends ModPayload> type(){return TYPE;}
