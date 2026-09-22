@@ -199,10 +199,15 @@ public final class OcclusionGameTests {
         var cow=net.minecraft.world.entity.EntityType.COW.create(level);cow.setPos(h.absoluteVec(new Vec3(14,5,8.5)));
         var unseen=net.minecraft.world.entity.EntityType.COW.create(level);unseen.setPos(h.absoluteVec(new Vec3(15,5,9)));
         h.setBlock(new BlockPos(10,5,8),Blocks.OAK_LOG);h.setBlock(new BlockPos(10,6,8),Blocks.OAK_LOG);
+        // This cover misses the initial silhouette but intersects a nearby future walking position.
+        h.setBlock(new BlockPos(12,5,10),Blocks.OAK_LOG);
         ScopeOcclusion.clear();ScopeOcclusion.beginTick(100,Set.of(player.getUUID()));
         ScopeOcclusion.update(player,List.of(cow));
         var first=packets.get(packets.size()-1).targets().get(0);
         h.assertTrue(first.complete() && !first.boxes().isEmpty(),"Real log cover was skipped based on native tracking radius");
+        var future=h.absoluteVec(new Vec3(12.5,5.5,10.5)).subtract(Vec3.atLowerCornerOf(first.origin()));
+        h.assertTrue(first.boxes().stream().anyMatch(b->new AABB(b.minX(),b.minY(),b.minZ(),b.maxX(),b.maxY(),b.maxZ()).contains(future)),
+                "Walking envelope omitted cover outside the initial silhouette");
         // Exhaust the global budget using unrelated unknown observations; the old geometry must remain valid.
         var pressure=new net.minecraftforge.common.util.FakePlayer(level,new com.mojang.authlib.GameProfile(UUID.randomUUID(),"cover-pressure"));
         var distractions=new ArrayList<net.minecraft.world.entity.Entity>();
@@ -217,7 +222,19 @@ public final class OcclusionGameTests {
         h.assertTrue(next.stream().anyMatch(t->t.id()==cow.getId() && t.complete() && t.boxes().equals(first.boxes())),
                 "Aim order/budget pressure cleared a still valid log mask");
         h.assertTrue(next.stream().anyMatch(t->t.id()==unseen.getId() && !t.complete()),"Unchecked new entity became visible without cover");
+        for(int step=1;step<=4;step++) {
+            cow.setPos(h.absoluteVec(new Vec3(14,5,8.5+step*.4)));
+            ScopeOcclusion.update(player,List.of(unseen,cow));
+            var moving=packets.get(packets.size()-1).targets().stream().filter(t->t.id()==cow.getId()).findFirst().orElseThrow();
+            h.assertTrue(moving.complete() && moving.boxes().equals(first.boxes()),"Normal walking caused pending/visible flicker at step "+step);
+        }
+        cow.setPos(h.absoluteVec(new Vec3(14,5,14)));
+        ScopeOcclusion.update(player,List.of(unseen,cow));
+        h.assertTrue(packets.get(packets.size()-1).targets().stream().anyMatch(t->t.id()==cow.getId() && !t.complete()),
+                "Leaving the verified envelope bypassed real cover checks");
+        cow.setPos(h.absoluteVec(new Vec3(14,5,8.5)));
         h.setBlock(new BlockPos(10,5,8),Blocks.AIR);h.setBlock(new BlockPos(10,6,8),Blocks.AIR);
+        h.setBlock(new BlockPos(12,5,10),Blocks.AIR);
         ScopeOcclusion.beginTick(102,Set.of(player.getUUID()));ScopeOcclusion.update(player,List.of(cow));
         var clear=packets.get(packets.size()-1).targets().get(0);
         h.assertTrue(clear.complete() && clear.boxes().isEmpty(),"Removing actual cover failed to publish a verified clear corridor");

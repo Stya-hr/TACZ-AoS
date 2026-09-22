@@ -45,6 +45,8 @@ public final class LongRangeClientTest {
     private static boolean coverBaselineCaptured;
     private static int coverBaselinePixels,coverPartialPixels,coverFullPixels=-1,coverRestoredPixels;
     private static boolean partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored;
+    private static int movingVisibleFrames,movingHiddenFrames,movingDropouts,movingLeaks;
+    private static double movingMinZ=Double.POSITIVE_INFINITY,movingMaxZ=Double.NEGATIVE_INFINITY;
     private static com.mojang.blaze3d.platform.NativeImage beforeEntities;
     private static volatile boolean readyToFire, hitConfirmed;
     private static com.tacz.guns.entity.EntityKineticBullet shotBullet;
@@ -92,6 +94,13 @@ public final class LongRangeClientTest {
                     if(before.getPixelRGBA(x,y)!=after.getPixelRGBA(x,y))samples++;
             }
             beforeEntities=null;
+            if((coverPhase==8 || coverPhase==9) && ticks-coverTick>=12) {
+                var animal=Minecraft.getInstance().level.getEntity(animalId);
+                if(animal!=null){movingMinZ=Math.min(movingMinZ,animal.getZ());movingMaxZ=Math.max(movingMaxZ,animal.getZ());}
+                if(!ScopedRendering.drewExtra(animalId))movingDropouts++;
+                if(coverPhase==8){movingVisibleFrames++;if(samples==0)movingDropouts++;}
+                else {movingHiddenFrames++;if(samples>0)movingLeaks++;}
+            }
             if(ticks-coverTick>=12 && ScopedRendering.drewExtra(animalId)) {
                 int boxes=tacz.aos.client.ScopedOcclusion.boxCount(animalId);
                 if(coverPhase==1){coverBaselinePixels=Math.max(coverBaselinePixels,samples);baselineBoxes=boxes;}
@@ -200,6 +209,9 @@ public final class LongRangeClientTest {
                     return;
                 }
                 if(!occlusionFinished) {occlusionRequested=true;return;}
+                if(movingVisibleFrames<20 || movingHiddenFrames<20 || movingDropouts!=0 || movingLeaks!=0 || movingMaxZ-movingMinZ<1) {
+                    finish(false,"Moving cover: visibleFrames="+movingVisibleFrames+", hiddenFrames="+movingHiddenFrames+", dropouts="+movingDropouts+", leaks="+movingLeaks+", travel="+(movingMaxZ-movingMinZ));return;
+                }
                 if(!logCoverSeen || !offAxisLogCoverSeen || !offAxisRestored || !partialCoverSeen || !fullCoverSeen || !removedCoverSeen || coverBaselinePixels<=0 || coverPartialPixels<=0 || coverPartialPixels>=coverBaselinePixels || coverFullPixels!=0 || coverRestoredPixels<=0) {finish(false,"Remote cover failed: logs="+logCoverSeen+"/"+offAxisLogCoverSeen+"/"+offAxisRestored+", partial="+partialCoverSeen+", full="+fullCoverSeen+", removed="+removedCoverSeen+", GPU="+coverBaselinePixels+"/"+coverPartialPixels+"/"+coverFullPixels+"/"+coverRestoredPixels);return;}
                 if(!readyToFire) TaczArtOfSniping.LOGGER.info("RENDER_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
                 if(!readyToFire) Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
@@ -278,14 +290,16 @@ public final class LongRangeClientTest {
                 }
                 if(occlusionRequested && !occlusionFinished && restored instanceof Cow coverCow) {
                     coverCow.setNoAi(true);coverCow.setNoGravity(true);coverCow.getNavigation().stop();coverCow.setPos(888,80,8);
+                    if(coverPhase==8 || coverPhase==9)coverCow.setPos(888,80,8+1.5*Math.sin((ticks-coverTick)*.15));
                     if(coverPhase==0){coverPhase=1;coverTick=ticks;var other=level.getEntity(cartUuid);if(other!=null)other.setInvisible(true);}
-                    if(ticks-coverTick>=30) {
+                    if(ticks-coverTick>=(coverPhase==8 || coverPhase==9?90:30)) {
                         coverTick=ticks;coverPhase++;
                         for(int y=80;y<=82;y++)for(int z=5;z<=11;z++)
                             level.setBlockAndUpdate(new BlockPos(884,y,z),coverPhase==2 && y==80 ? Blocks.STONE.defaultBlockState()
                                     : coverPhase==3 ? Blocks.OAK_LEAVES.defaultBlockState().setValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT,true)
-                                    : coverPhase==4 ? Blocks.GLASS.defaultBlockState() : coverPhase==5 || coverPhase==6 ? Blocks.OAK_LOG.defaultBlockState() : Blocks.AIR.defaultBlockState());
-                        if(coverPhase>=8){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT stonePartial={}, leavesHidden={}, glassVisible={}, logsHidden={}, offAxisLogsHidden={}, offAxisRestored={}, pixels={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);}
+                                    : coverPhase==4 ? Blocks.GLASS.defaultBlockState() : coverPhase==5 || coverPhase==6 || coverPhase==9 ? Blocks.OAK_LOG.defaultBlockState() : Blocks.AIR.defaultBlockState());
+                        if(coverPhase>=10){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT stonePartial={}, leavesHidden={}, glassVisible={}, logsHidden={}, offAxisLogsHidden={}, offAxisRestored={}, pixels={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);
+                            TaczArtOfSniping.LOGGER.info("MOVING_OCCLUSION_CLIENT visibleFrames={}, hiddenFrames={}, dropouts={}, leaks={}, travel={}",movingVisibleFrames,movingHiddenFrames,movingDropouts,movingLeaks,movingMaxZ-movingMinZ);}
                     }
                 }
                 if (level.getChunkSource().getChunkNow(30,0)!=null) throw new AssertionError("Scoping loaded the flight corridor");

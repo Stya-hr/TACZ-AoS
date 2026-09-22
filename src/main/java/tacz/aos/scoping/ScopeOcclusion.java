@@ -20,13 +20,13 @@ public final class ScopeOcclusion {
     private record Sent(ScopeOcclusionPayload payload,long tick) {}
     public record Plant(BlockPos pos, BlockState state) {}
     public record Geometry(List<OccluderBox> boxes, List<Plant> plants, boolean complete) {}
-    private record Cached(ScopeOcclusionPayload.Target data, Vec3 eye, AABB entity, long checked) {
+    private record Cached(ScopeOcclusionPayload.Target data, Vec3 eye, AABB coverage, long checked) {
         boolean usable(Entity target, Vec3 currentEye) {
-            var b=target.getBoundingBox();
             return data.uuid().equals(target.getUUID()) && tick-checked<=20 && eye.distanceToSqr(currentEye)<=.0625
-                    && Math.abs(b.minX-entity.minX)<=.25 && Math.abs(b.minY-entity.minY)<=.25 && Math.abs(b.minZ-entity.minZ)<=.25
-                    && Math.abs(b.maxX-entity.maxX)<=.25 && Math.abs(b.maxY-entity.maxY)<=.25 && Math.abs(b.maxZ-entity.maxZ)<=.25;
+                    && covers(target.getBoundingBox());
         }
+        boolean covers(AABB b) { return b.minX>=coverage.minX && b.minY>=coverage.minY && b.minZ>=coverage.minZ
+                && b.maxX<=coverage.maxX && b.maxY<=coverage.maxY && b.maxZ<=coverage.maxZ; }
     }
     private record Observations(ServerLevel level, Map<Integer,Cached> targets, Map<Integer,Long> attempts) {}
     private static final Map<UUID,Observations> observations=new HashMap<>();
@@ -51,25 +51,27 @@ public final class ScopeOcclusion {
         int[] budget={Math.min(remaining,cfg.cellsPerPlayer())};int initial=budget[0];
         var reader=new Resident(player.serverLevel(),budget);
         var eye=player.getEyePosition();
-        // Refresh the oldest observations first, not whichever entity is nearest the crosshair this time.
+        // Renew moving observations before they leave their verified volume, then use fair age order.
         var schedule=new ArrayList<Entity>(targets);
-        schedule.sort(Comparator.<Entity>comparingLong(e->attempts.getOrDefault(e.getId(),Long.MIN_VALUE))
+        schedule.sort(Comparator.<Entity>comparingInt(e->{var c=cache.get(e.getId());
+                    return c!=null && (!c.usable(e,eye) || !c.covers(e.getBoundingBox().inflate(.75)))?0:1;})
+                .thenComparingLong(e->attempts.getOrDefault(e.getId(),Long.MIN_VALUE))
                 .thenComparingInt(Entity::getId));
         if(cfg.enabled())for(var target:schedule) {
             if(budget[0]<=0)break;
             attempts.put(target.getId(),tick);
-            var geometry=collectGeometry(reader,eye,target.getBoundingBox(),cfg.radius(),ScopeOcclusionPayload.MAX_PER_TARGET,
+            var coverage=motionCoverage(target);
+            var geometry=collectGeometry(reader,eye,coverage,cfg.radius(),ScopeOcclusionPayload.MAX_PER_TARGET,
                     ScopeOcclusionPayload.MAX_TEXTURED_PER_TARGET);
             var origin=target.blockPosition();
             if(geometry.complete) {
                 var data=new ScopeOcclusionPayload.Target(target.getId(),target.getUUID(),origin,
                         geometry.boxes.stream().map(b->b.move(-origin.getX(),-origin.getY(),-origin.getZ())).toList(),
                         geometry.plants.stream().map(p->new ScopeOcclusionPayload.Textured(p.pos.subtract(origin),p.state)).toList());
-                cache.put(target.getId(),new Cached(data,eye,target.getBoundingBox(),tick));
-            } else if(!reader.exhausted) {
-                // Missing real chunks or a geometry cap is not proof of a clear sightline.
-                cache.remove(target.getId());
+                cache.put(target.getId(),new Cached(data,eye,coverage,tick));
             }
+            // A failed replacement does not invalidate a still-covered position. Packing below checks
+            // identity, coverage, camera movement and age; no unchecked geometry becomes visible.
         }
         remaining-=initial-budget[0];
         int boxes=0,plants=0;
@@ -87,6 +89,12 @@ public final class ScopeOcclusion {
         if(previous==null || !previous.payload.equals(payload) || tick-previous.tick>=20) {
             PacketDelivery.sendToPlayer(player,payload);sent.put(player.getUUID(),new Sent(payload,tick));
         }
+    }
+    private static AABB motionCoverage(Entity target) {
+        // Cover normal walking during a skipped refresh, including client interpolation behind the server pose.
+        // Faster entities get up to four blocks of horizontal look-ahead; this does not relax the proof.
+        double horizontal=Math.min(4,Math.max(2,target.getDeltaMovement().horizontalDistance()*8));
+        return target.getBoundingBox().inflate(horizontal,1,horizontal);
     }
     public static List<OccluderBox> collect(ServerLevel level,Vec3 eye,AABB entity,int radius,int[] budget,int limit) {
         return collectGeometry(level,eye,entity,radius,budget,limit,0).boxes;
