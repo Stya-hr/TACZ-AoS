@@ -18,7 +18,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.entity.monster.Zombie;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CraftingInput;
@@ -182,9 +182,12 @@ public final class BeltLootGameTests {
     static final class Fixture implements AutoCloseable {
         final GameTestHelper h;
         final FakePlayer player;
-        final Zombie victim;
+        final Mob victim;
         final EntityKineticBullet bullet;
         Fixture(GameTestHelper h) {
+            this(h, EntityType.ZOMBIE);
+        }
+        Fixture(GameTestHelper h, EntityType<? extends Mob> victimType) {
             this.h = h;
             player = new FakePlayer(h.getLevel(), new GameProfile(UUID.randomUUID(), "belt-test"));
             player.setPos(h.absoluteVec(new Vec3(4, 4, 4)));
@@ -194,7 +197,7 @@ public final class BeltLootGameTests {
             var data = TimelessAPI.getCommonGunIndex(id).orElseThrow().getGunData();
             var operator = IGunOperator.fromLivingEntity(player); operator.initialData();
             var cache = new AttachmentCacheProperty(); cache.eval(stack, data); operator.updateCacheProperty(cache); operator.aim(false);
-            victim = h.spawn(EntityType.ZOMBIE, new Vec3(12, 4, 4)); victim.setNoAi(true); victim.setHealth(1);
+            victim = h.spawn(victimType, new Vec3(12, 4, 4)); victim.setNoAi(true); victim.setHealth(1);
             victim.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.DIAMOND_HELMET)); victim.setDropChance(EquipmentSlot.HEAD, 2);
             bullet = new EntityKineticBullet(h.getLevel(), player, stack, data.getAmmoId(), id, false, data, data.getBulletData());
             bullet.setPos(player.position().add(0, .7, 0)); bullet.setDeltaMovement(10, 0, 0);

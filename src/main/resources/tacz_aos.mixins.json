@@ -15,7 +15,8 @@
     "DistantGunshotMixin",
     "ScopedDeathMessageMixin",
     "BeltExperienceMixin",
-    "BeltSpecialLootMixin"
+    "BeltSpecialLootMixin",
+    "MaidPowerPointMixin"
   ],
   "client": [
     "ProneIdleAnimationMixin",

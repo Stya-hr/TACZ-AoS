@@ -32,3 +32,21 @@ gradlew runGameTestServer -Penable_loot_compat_runtime=true -Pgametest_namespace
 The tests exercise the real Lightman's Currency death listener (with its supported loot modifier producing a deterministic reward), the real Collectors Album death injection (with a deterministic drop provider), and the real Champions spawn helper used by both reward sources. They cover native and managed TACZ shots, unequipped and melee cases, unchanged item data/counts, unrelated items, canceled deaths and scope cleanup. They do not assert the mods' random loot probabilities or separately exercise every wallet rule.
 
 Ordinary tests without these mods use the default `runGameTestServer` configuration.
+
+## Touhou Little Maid P points
+
+Audited release: [1.5.3-neoforge+mc1.21.1](https://modrinth.com/mod/touhou-little-maid/version/tXG1TkGx).
+
+Fairies implement `IHasPowerPoint`. Their `tickDeath` calls `dropPowerPoint`, which creates `EntityPowerPoint` at death tick 20 if `doMobLoot` permits it. These entities are neither items nor vanilla experience orbs, and are generated after the synchronous death scope has ended.
+
+The successful fatal TACZ hit records the eligible belt wearer on the dying entity. An optional Mixin changes only the spawn position and initial velocity of the original P-point entities before insertion into the world. Adult/baby amounts, the original splitting into point entities, death-animation delay, pickup behavior and power-cap handling remain owned by Touhou Little Maid.
+
+The destination is the shooter's current position when points appear. Taking off the belt after the eligible kill does not lose the reward. If the shooter is dead, removed/disconnected or in another dimension, points remain at the fairy. Non-gun deaths and kills without an equipped belt retain normal behavior. Canceled P-point spawns and `doMobLoot=false` are respected.
+
+The recipient reference exists only on the dying entity; there is no global search, timer queue, or saved NBT. If the dying entity is saved/unloaded and reconstructed before its points appear, the transient ownership is not restored and points use the original location.
+
+```text
+gradlew runGameTestServer -Penable_maid_compat_runtime=true -Pgametest_namespaces=tacz_aos_lootcompat
+```
+
+Three maid-specific tests use the real fairy/P-point classes and death animation code: native and managed TACZ kills of adult/baby fairies, no points before tick 20, unchanged total P value, moved/unequipped shooter, ineligible deaths, removed shooter, mob-loot rules and canceled entity spawns. Without the maid mod, these tests skip their optional class references. Both runtime flags can be enabled to test all four integrations together.

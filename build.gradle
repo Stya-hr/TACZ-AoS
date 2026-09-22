@@ -130,6 +130,11 @@ dependencies {
     compileOnly("maven.modrinth:lightmans-currency:${lightmans_currency_version}") { transitive = false }
     compileOnly("maven.modrinth:collectors-album:${collectors_album_version}") { transitive = false }
     compileOnly("maven.modrinth:champions-unofficial:${champions_unofficial_version}") { transitive = false }
+    compileOnly("maven.modrinth:touhou-little-maid:${touhou_little_maid_version}") { transitive = false }
+    gameTestCompileOnly("maven.modrinth:touhou-little-maid:${touhou_little_maid_version}") { transitive = false }
+    if (providers.gradleProperty('enable_maid_compat_runtime').orElse('false').get().toBoolean()) {
+        localRuntime("maven.modrinth:touhou-little-maid:${touhou_little_maid_version}") { transitive = false }
+    }
     // Explicitly opt in only when testing the real loot producers and their required libraries.
     if (providers.gradleProperty('enable_loot_compat_runtime').orElse('false').get().toBoolean()) {
         localRuntime("maven.modrinth:lightmans-currency:${lightmans_currency_version}") { transitive = false }
