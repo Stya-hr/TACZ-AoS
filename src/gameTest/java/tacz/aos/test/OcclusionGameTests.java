@@ -269,7 +269,8 @@ public final class OcclusionGameTests {
             var e=net.minecraft.world.entity.EntityType.COW.create(level);e.setPos(13000000+i*128,80,13000000);
             e.setBoundingBox(e.getBoundingBox().inflate(6));distractions.add(e);
         }
-        ScopeOcclusion.beginTick(101,Set.of(player.getUUID(),pressure.getUUID()));
+        // Even a stationary entity used to disappear here solely because its one-second cache expired.
+        ScopeOcclusion.beginTick(141,Set.of(player.getUUID(),pressure.getUUID()));
         for(int i=0;i<4;i++)ScopeOcclusion.update(pressure,distractions);
         player.setYRot(90);ScopeOcclusion.update(player,List.of(unseen,cow));
         var next=packets.get(packets.size()-1).targets();
@@ -289,10 +290,27 @@ public final class OcclusionGameTests {
         cow.setPos(h.absoluteVec(new Vec3(14,5,8.5)));
         h.setBlock(new BlockPos(10,5,8),Blocks.AIR);h.setBlock(new BlockPos(10,6,8),Blocks.AIR);
         h.setBlock(new BlockPos(12,5,10),Blocks.AIR);
-        ScopeOcclusion.beginTick(102,Set.of(player.getUUID()));ScopeOcclusion.update(player,List.of(cow));
+        ScopeOcclusion.beginTick(142,Set.of(player.getUUID()));ScopeOcclusion.update(player,List.of(cow));
         var clear=packets.get(packets.size()-1).targets().get(0);
         h.assertTrue(clear.complete() && clear.boxes().isEmpty(),"Removing actual cover failed to publish a verified clear corridor");
         ScopeOcclusion.clear();h.succeed();
+    }
+
+    @GameTest(setupTicks=20,template="ballistics",batch="occlusion_revision")
+    public static void sectionRevisionsTrackRealEditsWithoutInvalidatingOtherHeights(GameTestHelper h) {
+        var pos=h.absolutePos(new BlockPos(8,5,8));var level=h.getLevel();
+        var chunk=level.getChunkAt(pos);var revisions=(tacz.aos.occlusion.OcclusionRevision)chunk;
+        int section=chunk.getSectionIndex(pos.getY());long before=revisions.tacz_aos$occlusionRevision(section);
+        level.setBlockAndUpdate(pos,Blocks.OAK_LOG.defaultBlockState());
+        h.assertTrue(revisions.tacz_aos$occlusionRevision(section)>before,"Block placement did not invalidate real cover");
+        long placed=revisions.tacz_aos$occlusionRevision(section);
+        level.setBlockAndUpdate(pos,Blocks.OAK_LOG.defaultBlockState());
+        h.assertTrue(revisions.tacz_aos$occlusionRevision(section)==placed,"Writing an unchanged state invalidated cover");
+        level.setBlockAndUpdate(pos.above(32),Blocks.STONE.defaultBlockState());
+        h.assertTrue(revisions.tacz_aos$occlusionRevision(section)==placed,"Unrelated-height block invalidated observed cover");
+        level.setBlockAndUpdate(pos,Blocks.AIR.defaultBlockState());
+        h.assertTrue(revisions.tacz_aos$occlusionRevision(section)>placed,"Block removal did not invalidate real cover");
+        h.succeed();
     }
 
     @GameTest(setupTicks=20, template="empty",batch="occlusion")

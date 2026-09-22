@@ -47,6 +47,8 @@ public final class LongRangeClientTest {
     private static boolean partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored;
     private static int movingVisibleFrames,movingHiddenFrames,movingDropouts,movingLeaks;
     private static int aimVisibleFrames,aimDropouts,retainedAnimalId=-1;
+    private static tacz.aos.config.ServerConfig.Occlusion normalOcclusion;
+    private static int budgetPressureTicks;
     private static double movingMinZ=Double.POSITIVE_INFINITY,movingMaxZ=Double.NEGATIVE_INFINITY;
     private static com.mojang.blaze3d.platform.NativeImage beforeEntities;
     private static volatile boolean readyToFire, hitConfirmed;
@@ -158,6 +160,7 @@ public final class LongRangeClientTest {
 
         if (stage>=3 && frames%40==0) TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT visual active={}, targets={}, entity={}, draws={}, eligibility={}, pos={}",ScopedRendering.active(),ScopedRendering.targetCount(),mc.level.getEntity(animalId),draws,
                 tacz.aos.client.TaczClientBridge.evaluateForDisplay(mc.player),mc.player.position());
+        if(stage>=3 && frames%40==0)TaczArtOfSniping.LOGGER.info("LONG_RANGE_RETICLE distance={}",tacz.aos.client.VisibleTargetReporter.lastDistance);
         mc.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.HIDDEN);
         if (++frames > 2400) { finish(false,"Client timed out, stage="+stage); return; }
         float aimYaw=coverPhase==6 || coverPhase==7 ? -89.4f : coverPhase==10 && (frames/8)%2==0 ? -89.4f : -90;
@@ -303,15 +306,27 @@ public final class LongRangeClientTest {
                     coverCow.setNoAi(true);coverCow.setNoGravity(true);coverCow.getNavigation().stop();coverCow.setPos(888,80,8);
                     if(coverPhase==8 || coverPhase==9)coverCow.setPos(888,80,8+1.5*Math.sin((ticks-coverTick)*.15));
                     if(coverPhase==0){coverPhase=1;coverTick=ticks;retainedAnimalId=coverCow.getId();var other=level.getEntity(cartUuid);if(other!=null)other.setInvisible(true);}
+                    if(coverPhase==10 && ticks-coverTick>=20) {
+                        if(normalOcclusion==null) {
+                            normalOcclusion=tacz.aos.config.ServerConfig.occlusion();
+                            var field=tacz.aos.config.ServerConfig.class.getDeclaredField("occlusion");field.setAccessible(true);
+                            field.set(null,new tacz.aos.config.ServerConfig.Occlusion(true,normalOcclusion.radius(),0,
+                                    normalOcclusion.cellsPerTick(),normalOcclusion.boxesPerPlayer()));
+                        }
+                        budgetPressureTicks++;
+                    }
                     if(ticks-coverTick>=(coverPhase==10?180:coverPhase>=6?90:30)) {
                         coverTick=ticks;coverPhase++;
                         for(int y=80;y<=82;y++)for(int z=5;z<=11;z++)
                             level.setBlockAndUpdate(new BlockPos(884,y,z),coverPhase==2 && y==80 ? Blocks.STONE.defaultBlockState()
                                     : coverPhase==3 ? Blocks.OAK_LEAVES.defaultBlockState().setValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT,true)
                                     : coverPhase==4 ? Blocks.GLASS.defaultBlockState() : coverPhase==5 || coverPhase==6 || coverPhase==9 ? Blocks.OAK_LOG.defaultBlockState() : Blocks.AIR.defaultBlockState());
-                        if(coverPhase>=11){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT stonePartial={}, leavesHidden={}, glassVisible={}, logsHidden={}, offAxisLogsHidden={}, offAxisRestored={}, pixels={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);
+                        if(coverPhase>=11){
+                            var field=tacz.aos.config.ServerConfig.class.getDeclaredField("occlusion");field.setAccessible(true);field.set(null,normalOcclusion);
+                            if(budgetPressureTicks<100)throw new AssertionError("Stationary budget-pressure phase did not run");
+                            occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT stonePartial={}, leavesHidden={}, glassVisible={}, logsHidden={}, offAxisLogsHidden={}, offAxisRestored={}, pixels={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);
                             TaczArtOfSniping.LOGGER.info("MOVING_OCCLUSION_CLIENT visibleFrames={}, hiddenFrames={}, dropouts={}, leaks={}, travel={}",movingVisibleFrames,movingHiddenFrames,movingDropouts,movingLeaks,movingMaxZ-movingMinZ);
-                            TaczArtOfSniping.LOGGER.info("AIM_RETENTION_CLIENT visibleFrames={}, dropouts={}, retainedEntityId={}",aimVisibleFrames,aimDropouts,retainedAnimalId);}
+                            TaczArtOfSniping.LOGGER.info("AIM_RETENTION_CLIENT visibleFrames={}, dropouts={}, retainedEntityId={}, zeroScanBudgetTicks={}",aimVisibleFrames,aimDropouts,retainedAnimalId,budgetPressureTicks);}
                     }
                 }
                 if (level.getChunkSource().getChunkNow(30,0)!=null) throw new AssertionError("Scoping loaded the flight corridor");
@@ -356,6 +371,7 @@ public final class LongRangeClientTest {
                 }
                 if (ticks%40==0) TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT prediction={}, activity={}, entity={}, movement={}, generation={}",
                         ScopeActivity.INSTANCE.predictionStatus(player.getUUID()),ScopeActivity.INSTANCE.status(),restored,movement,GeneratedChunks.INSTANCE.status());
+                if(ticks%40==0)TaczArtOfSniping.LOGGER.info("LONG_RANGE_CORES aim={}, bounds={}",tacz.aos.scoping.ScopeAim.target(player),ScopeActivity.INSTANCE.observationBounds(player));
                 if (ticks-stageTick>1050) throw new AssertionError("Target not restored/rendered: "+ScopeActivity.INSTANCE.predictionStatus(player.getUUID())+" "+ScopeActivity.INSTANCE.status());
             }
             if (ticks>1800) throw new AssertionError("Preparation timed out at stage "+stage+" "+GeneratedChunks.INSTANCE.status());

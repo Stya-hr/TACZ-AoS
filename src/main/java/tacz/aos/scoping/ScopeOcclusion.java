@@ -8,6 +8,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.*;
 import tacz.aos.network.PacketDelivery;
 import tacz.aos.config.ServerConfig;
@@ -20,10 +21,18 @@ public final class ScopeOcclusion {
     private record Sent(ScopeOcclusionPayload payload,long tick) {}
     public record Plant(BlockPos pos, BlockState state) {}
     public record Geometry(List<OccluderBox> boxes, List<Plant> plants, boolean complete) {}
-    private record Cached(ScopeOcclusionPayload.Target data, Vec3 eye, AABB coverage, long checked) {
+    private record Section(LevelChunk chunk,int index) {
+        long revision(){return ((OcclusionRevision)chunk).tacz_aos$occlusionRevision(index);}
+    }
+    private record Cached(ScopeOcclusionPayload.Target data, Vec3 eye, AABB coverage, Map<Section,Long> revisions) {
         boolean usable(Entity target, Vec3 currentEye) {
-            return data.uuid().equals(target.getUUID()) && tick-checked<=20 && eye.distanceToSqr(currentEye)<=.0625
-                    && covers(target.getBoundingBox());
+            if(!data.uuid().equals(target.getUUID()) || eye.distanceToSqr(currentEye)>.0625 || !covers(target.getBoundingBox()))return false;
+            var level=(ServerLevel)target.level();
+            for(var entry:revisions.entrySet()) {
+                var section=entry.getKey();var pos=section.chunk.getPos();
+                if(level.getChunkSource().getChunkNow(pos.x,pos.z)!=section.chunk || section.revision()!=entry.getValue())return false;
+            }
+            return true;
         }
         boolean covers(AABB b) { return b.minX>=coverage.minX && b.minY>=coverage.minY && b.minZ>=coverage.minZ
                 && b.maxX<=coverage.maxX && b.maxY<=coverage.maxY && b.maxZ<=coverage.maxZ; }
@@ -60,6 +69,8 @@ public final class ScopeOcclusion {
                             -(urgent?ServerConfig.current().scopeRendering().intervalTicks():0);})
                 .thenComparingInt(Entity::getId));
         if(cfg.enabled())for(var target:schedule) {
+            var known=cache.get(target.getId());
+            if(known!=null && known.usable(target,eye) && known.covers(target.getBoundingBox().inflate(.75)))continue;
             if(budget[0]<=0)break;
             attempts.put(target.getId(),tick);
             var coverage=motionCoverage(target);
@@ -77,10 +88,10 @@ public final class ScopeOcclusion {
                 var data=new ScopeOcclusionPayload.Target(target.getId(),target.getUUID(),origin,
                         geometry.boxes.stream().map(b->b.move(-origin.getX(),-origin.getY(),-origin.getZ())).toList(),
                         geometry.plants.stream().map(p->new ScopeOcclusionPayload.Textured(p.pos.subtract(origin),p.state)).toList());
-                cache.put(target.getId(),new Cached(data,eye,coverage,tick));
+                cache.put(target.getId(),new Cached(data,eye,coverage,Map.copyOf(reader.revisions)));
             }
             // A failed replacement does not invalidate a still-covered position. Packing below checks
-            // identity, coverage, camera movement and age; no unchecked geometry becomes visible.
+            // identity, coverage, camera movement, chunk residency and real section revisions.
         }
         remaining-=initial-budget[0];
         int boxes=0,plants=0;
@@ -112,7 +123,7 @@ public final class ScopeOcclusion {
         return collectGeometry(new Resident(level,budget),eye,entity,radius,limit,plantLimit);
     }
     private static Geometry collectGeometry(Resident getter,Vec3 eye,AABB entity,int radius,int limit,int plantLimit) {
-        getter.incomplete=false;getter.exhausted=false;
+        getter.incomplete=false;getter.exhausted=false;getter.revisions.clear();
         var center=entity.getCenter();var forward=eye.subtract(center).normalize();
         var end=center.add(forward.scale(Math.min(radius,eye.distanceTo(center))));
         // Thin local corridor encloses the target silhouette and nearby cover, with a motion margin.
@@ -192,15 +203,27 @@ public final class ScopeOcclusion {
         private final int[] budget;
         private final Map<Long,BlockState> cells=new HashMap<>();
         private final Set<Long> missing=new HashSet<>();
+        private final Map<Section,Long> revisions=new HashMap<>();
+        private final Map<Long,LevelChunk> chunks=new HashMap<>();
         private boolean incomplete,exhausted;
         Resident(ServerLevel level,int[] budget){this.level=level;this.budget=budget;}
+        private LevelChunk observe(BlockPos pos) {
+            long key=net.minecraft.world.level.ChunkPos.asLong(pos.getX()>>4,pos.getZ()>>4);
+            if(!chunks.containsKey(key))chunks.put(key,level.getChunkSource().getChunkNow(pos.getX()>>4,pos.getZ()>>4));
+            var chunk=chunks.get(key);
+            if(chunk!=null) {
+                var section=new Section(chunk,chunk.getSectionIndex(pos.getY()));
+                revisions.putIfAbsent(section,section.revision());
+            }
+            return chunk;
+        }
         public BlockState getBlockState(BlockPos pos) {
             if(level.isOutsideBuildHeight(pos))return Blocks.AIR.defaultBlockState();
+            var chunk=observe(pos);
             long key=pos.asLong();var known=cells.get(key);
             if(known!=null){if(missing.contains(key))incomplete=true;return known;}
             if(budget[0]<=0){incomplete=true;exhausted=true;return Blocks.AIR.defaultBlockState();}
             budget[0]--;
-            var chunk=level.getChunkSource().getChunkNow(pos.getX()>>4,pos.getZ()>>4);
             if(chunk==null){incomplete=true;missing.add(key);known=Blocks.AIR.defaultBlockState();}
             else known=chunk.getBlockState(pos);
             cells.put(key,known);return known;
