@@ -77,4 +77,39 @@ public final class OcclusionGameTests {
             h.assertTrue(rejected,"Unbounded region allocation accepted");
         } finally {wire.release();}h.succeed();
     }
+
+    @GameTest(setupTicks=20,template="ballistics",batch="occlusion")
+    public static void preparationCoversPlayerTurnsBoundariesAndJumpingButNotTeleports(GameTestHelper h) {
+        var player=net.minecraftforge.common.util.FakePlayerFactory.get(h.getLevel(),new com.mojang.authlib.GameProfile(UUID.randomUUID(),"cover-mover"));
+        var eye=new Vec3(8,81.62,8);var random=new Random(53791);
+        for(int n=0;n<120;n++) {
+            player.setPos(880+random.nextDouble()*32,78+random.nextDouble()*8,-4+random.nextDouble()*24);
+            var box=player.getBoundingBox();var prepared=new HashSet<>(OcclusionCoverage.prefetch(eye,box,96,-4,20,8));
+            // All directions, independent of previous velocity: includes sprinting, reversals and vertical motion.
+            for(int move=0;move<12;move++) {
+                var delta=new Vec3(random.nextDouble()*2-1,random.nextDouble()*2-1,random.nextDouble()*2-1).normalize().scale(random.nextDouble()*7);
+                var actual=OcclusionCoverage.required(eye,box.move(delta),96,-4,20);
+                h.assertTrue(prepared.containsAll(actual),"Preparation missed an unpredictable nearby player position: "+delta);
+            }
+            h.assertTrue(!prepared.containsAll(OcclusionCoverage.required(eye,box.move(128,0,128),96,-4,20)),"Teleport incorrectly inherited old coverage");
+        }
+        var before=new AABB(887.55,80,12.95,888.45,81.4,13.85);
+        var after=before.move(0,0,.2);
+        h.assertTrue(OcclusionCoverage.required(eye,before,96,-4,20).equals(OcclusionCoverage.required(eye,after,96,-4,20)),"Old preparation-boundary move still gates actual coverage");
+        h.succeed();
+    }
+    @GameTest(setupTicks=20,template="empty",batch="occlusion")
+    public static void reversalsPreservePublishedSectionsAndScanProgressWithinBudget(GameTestHelper h) {
+        var jobs=new LinkedHashMap<Long,ScopeOcclusion.Job>();
+        ScopeOcclusion.retainJobs(jobs,Set.of(1L),Set.of(2L),0,3,60);
+        var original=jobs.get(1L);original.published=7;
+        ScopeOcclusion.retainJobs(jobs,Set.of(2L),Set.of(3L),4,3,60);
+        h.assertTrue(jobs.get(1L)==original&&jobs.get(1L).published==7,"Short movement evicted acknowledged cover");
+        ScopeOcclusion.retainJobs(jobs,Set.of(1L),Set.of(2L),8,3,60);
+        h.assertTrue(jobs.get(1L)==original,"Reversal restarted the section job");
+        ScopeOcclusion.retainJobs(jobs,Set.of(4L),Set.of(5L,6L,7L),12,3,60);
+        h.assertTrue(jobs.size()==3&&jobs.containsKey(4L),"Preparation/retention exceeded budget or evicted mandatory cover");
+        ScopeOcclusion.retainJobs(jobs,Set.of(4L),Set.of(),100,3,60);
+        h.assertTrue(jobs.keySet().equals(Set.of(4L)),"Unused sections did not expire");h.succeed();
+    }
 }

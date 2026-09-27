@@ -11,12 +11,12 @@ public final class ServerConfig {
     private static final HumidityConfig HUMIDITY;
     private static volatile tacz.aos.humidity.HumiditySettings humidity = tacz.aos.humidity.HumiditySettings.DISABLED;
     public static tacz.aos.humidity.HumiditySettings humidity() { return humidity; }
-    public record Occlusion(boolean enabled,int radius,int cellsPerPlayer,int cellsPerTick,int maxSections,int maxFaces,int refreshTicks,int sectionsPerPacket) {}
-    public static final Occlusion DEFAULT_OCCLUSION=new Occlusion(true,96,32768,131072,128,100000,10,4);
+    public record Occlusion(boolean enabled,int radius,int cellsPerPlayer,int cellsPerTick,int maxSections,int maxFaces,int refreshTicks,int sectionsPerPacket,int prefetchMargin,int maxPrefetchMargin,int prefetchTicks,int retentionTicks) {}
+    public static final Occlusion DEFAULT_OCCLUSION=new Occlusion(true,96,32768,131072,128,100000,10,4,8,24,12,60);
     private static volatile Occlusion occlusion=DEFAULT_OCCLUSION;
     public static Occlusion occlusion(){return occlusion;}
     private static final ForgeConfigSpec.BooleanValue OCCLUSION_ENABLED;
-    private static final ForgeConfigSpec.IntValue OCCLUSION_RADIUS,OCCLUSION_CELLS,OCCLUSION_GLOBAL,OCCLUSION_SECTIONS,OCCLUSION_FACES,OCCLUSION_REFRESH,OCCLUSION_PACKETS;
+    private static final ForgeConfigSpec.IntValue OCCLUSION_RADIUS,OCCLUSION_CELLS,OCCLUSION_GLOBAL,OCCLUSION_SECTIONS,OCCLUSION_FACES,OCCLUSION_REFRESH,OCCLUSION_PACKETS,OCCLUSION_PREFETCH,OCCLUSION_PREFETCH_MAX,OCCLUSION_LOOKAHEAD,OCCLUSION_RETAIN;
 
     public record DistantGunshots(boolean enabled, double speed, int minDistance, int maxDistance, double volume) {}
     private static final DistantGunshots SILENT_GUNSHOTS = new DistantGunshots(false, 343, 128, 0, .65);
@@ -106,6 +106,10 @@ public final class ServerConfig {
         OCCLUSION_FACES=builder.comment("GPU mask face budget; exceeding it defers drawing instead of dropping cover.").defineInRange("maxFacesPerFrame",100000,4096,200000);
         OCCLUSION_REFRESH=builder.defineInRange("refreshTicks",10,1,100);
         OCCLUSION_PACKETS=builder.defineInRange("maxSectionsPerPacket",4,1,8);
+        OCCLUSION_PREFETCH=builder.comment("All-direction preparation margin in blocks; unfinished preparation never hides an entity.").defineInRange("prefetchMargin",8,2,32);
+        OCCLUSION_PREFETCH_MAX=builder.comment("Maximum all-direction preparation margin for fast movers; existing scan/section limits still apply.").defineInRange("maxPrefetchMargin",24,2,48);
+        OCCLUSION_LOOKAHEAD=builder.comment("Observed speed times this many ticks sizes preparation; does not predict direction or teleport paths.").defineInRange("prefetchTicks",12,1,40);
+        OCCLUSION_RETAIN=builder.comment("Keep unused visual sections briefly for reversals, within the same section budget; no chunk tickets.").defineInRange("retentionTicks",60,0,200);
         builder.pop();
         builder.comment("Delayed distant gunfire for accepted AoS shots only. Nearby TACZ audio remains native.",
                         "Distance/delay/volume use listener position at firing; no terrain occlusion or extra chunk loading.",
@@ -290,7 +294,7 @@ public final class ServerConfig {
             humidity = tacz.aos.humidity.HumiditySettings.DISABLED;
             TaczArtOfSniping.LOGGER.error("Invalid humidity config; humidity disabled: {}", exception.getMessage());
         }
-        occlusion=new Occlusion(OCCLUSION_ENABLED.get(),OCCLUSION_RADIUS.get(),OCCLUSION_CELLS.get(),OCCLUSION_GLOBAL.get(),OCCLUSION_SECTIONS.get(),OCCLUSION_FACES.get(),OCCLUSION_REFRESH.get(),OCCLUSION_PACKETS.get());
+        occlusion=new Occlusion(OCCLUSION_ENABLED.get(),OCCLUSION_RADIUS.get(),OCCLUSION_CELLS.get(),OCCLUSION_GLOBAL.get(),OCCLUSION_SECTIONS.get(),OCCLUSION_FACES.get(),OCCLUSION_REFRESH.get(),OCCLUSION_PACKETS.get(),OCCLUSION_PREFETCH.get(),Math.max(OCCLUSION_PREFETCH.get(),OCCLUSION_PREFETCH_MAX.get()),OCCLUSION_LOOKAHEAD.get(),OCCLUSION_RETAIN.get());
         distantGunshots = new DistantGunshots(DISTANT_SOUND.get(), SOUND_SPEED.get(), SOUND_MIN.get(), SOUND_MAX.get(), SOUND_VOLUME.get());
         targeting = new Targeting(TARGET_SPEED.get(),TARGET_INTERVAL.get(),TARGET_CHECKS.get(),TARGET_CONCURRENT.get(),TARGET_QUEUE.get(),TARGET_INDEX.get(),TARGET_NEW_REGION_INTERVAL.get());
         try {

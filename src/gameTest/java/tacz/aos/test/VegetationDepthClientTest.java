@@ -92,7 +92,7 @@ final class VegetationDepthClientTest {
         var c=tacz.aos.config.ServerConfig.occlusion();
         try {
             var field=tacz.aos.config.ServerConfig.class.getDeclaredField("occlusion");field.setAccessible(true);
-            field.set(null,new tacz.aos.config.ServerConfig.Occlusion(c.enabled(),c.radius(),c.cellsPerPlayer(),c.cellsPerTick(),c.maxSections(),1,c.refreshTicks(),c.sectionsPerPacket()));
+            field.set(null,new tacz.aos.config.ServerConfig.Occlusion(c.enabled(),c.radius(),c.cellsPerPlayer(),c.cellsPerTick(),c.maxSections(),1,c.refreshTicks(),c.sectionsPerPacket(),c.prefetchMargin(),c.maxPrefetchMargin(),c.prefetchTicks(),c.retentionTicks()));
             target.clear(Minecraft.ON_OSX);target.bindWrite(true);
             try(var mask=OcclusionMesh.render(List.of(solid(BlockPos.ZERO)),new PoseStack(),Vec3.ZERO)) {
                 if(mask.ready())throw new AssertionError("Face budget accepted a partial mask");

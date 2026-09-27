@@ -21,9 +21,10 @@ public final class ScopedOcclusion {
     private static final Map<Integer,ScopeOcclusionPayload.Target> targets=new HashMap<>();
     private static final Map<Long,Long> required=new HashMap<>();
     private static final Map<Long,OcclusionMesh.Section> sections=new HashMap<>();
+    private static final Map<Integer,List<Long>> frameCoverage=new HashMap<>();
     private ScopedOcclusion(){}
     public static void setup(FMLClientSetupEvent event){event.enqueueWork(()->ScopeNetworking.setOcclusionReceiver(ScopedOcclusion::receive));}
-    private static void reset(){targets.clear();required.clear();sections.clear();}
+    private static void reset(){targets.clear();required.clear();sections.clear();frameCoverage.clear();}
     private static void receive(ScopeOcclusionPayload payload) {
         var mc=Minecraft.getInstance();if(mc.level==null || !mc.level.dimension().location().equals(payload.dimension()))return;
         if(level!=mc.level)reset();
@@ -40,21 +41,35 @@ public final class ScopedOcclusion {
         // references those versions without resending unchanged geometry (TCP already delivered it).
         else if(level.getGameTime()-received>40)targets.clear();
     }
-    private static boolean ready(ScopeOcclusionPayload.Target target) {
-        return target!=null&&target.admitted()&&target.required().stream().allMatch(key->{
+    private static boolean complete(List<Long> keys) {
+        return keys.stream().allMatch(key->{
             var section=sections.get(key);return section!=null&&section.revision()==required.getOrDefault(key,0L)&&section.revision()>0;
         });
     }
     public static boolean ready(Entity entity) {
         if(!ServerConfig.occlusion().enabled())return true;
-        var target=targets.get(entity.getId());return level==entity.level()&&ready(target)&&target.uuid().equals(entity.getUUID());
+        var target=targets.get(entity.getId());
+        return level==entity.level()&&target!=null&&target.admitted()&&target.uuid().equals(entity.getUUID())&&frameCoverage.containsKey(entity.getId());
     }
-    public static OcclusionMesh.Mask render(com.mojang.blaze3d.vertex.PoseStack pose,net.minecraft.world.phys.Vec3 eye,net.minecraft.client.renderer.culling.Frustum frustum) {
-        var needed=new HashSet<Long>();
+    public static OcclusionMesh.Mask render(com.mojang.blaze3d.vertex.PoseStack pose,net.minecraft.world.phys.Vec3 eye,net.minecraft.client.renderer.culling.Frustum frustum,float partial) {
+        frameCoverage.clear();var needed=new HashSet<Long>();
         if(ServerConfig.occlusion().enabled()&&level!=null)for(var target:targets.values()) {
             var entity=level.getEntity(target.id());
-            if(entity!=null&&ready(entity)&&frustum.isVisible(entity.getBoundingBox()))needed.addAll(target.required());
+            if(entity==null||!target.admitted()||!entity.getUUID().equals(target.uuid())||!frustum.isVisible(entity.getBoundingBox()))continue;
+            // Remote players can turn, sprint or teleport independently of the last server mask roster.
+            // Check the actual interpolated draw position every frame, not predicted motion or only the packet's old box.
+            var position=new net.minecraft.world.phys.Vec3(
+                    net.minecraft.util.Mth.lerp(partial,entity.xOld,entity.getX()),
+                    net.minecraft.util.Mth.lerp(partial,entity.yOld,entity.getY()),
+                    net.minecraft.util.Mth.lerp(partial,entity.zOld,entity.getZ()));
+            var bounds=entity.getBoundingBox().move(position.subtract(entity.position()));
+            var keys=tacz.aos.occlusion.OcclusionCoverage.required(eye,bounds,ServerConfig.occlusion().radius(),level.getMinSection(),level.getMaxSection());
+            if(complete(keys)){frameCoverage.put(entity.getId(),keys);needed.addAll(keys);}
         }
+        // Known preparation/retained cover must not disappear when the entity crosses a section edge.
+        // It can add occlusion, but missing optional sections never gate the entity's actual coverage.
+        if(!frameCoverage.isEmpty())for(var entry:sections.entrySet())
+            if(entry.getValue().revision()>0&&entry.getValue().revision()==required.getOrDefault(entry.getKey(),0L))needed.add(entry.getKey());
         return OcclusionMesh.render(needed.stream().map(sections::get).toList(),pose,eye);
     }
     public static int solidCount(int id){var target=targets.get(id);if(target==null)return 0;return target.required().stream().map(sections::get).filter(Objects::nonNull).mapToInt(s->s.mask().solid().stream().mapToInt(Long::bitCount).sum()).sum();}
