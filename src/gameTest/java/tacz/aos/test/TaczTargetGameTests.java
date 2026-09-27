@@ -33,7 +33,7 @@ public final class TaczTargetGameTests {
         h.assertTrue(level.getBlockState(pos).getValue(TargetBlock.OUTPUT_POWER)>0,"Native target score missing");
         var next=f.bullet(new Vec3(4,6.32,4.5),new Vec3(24,0,0));
         var fallen=TargetBallistics.tick(level,next,1024,new TargetCollisionSource(level,List.of(new AABB(pos).inflate(3))));
-        h.assertTrue(fallen.termination()==null,"Fallen upper target remained solid");next.discard();
+        h.assertTrue("TARGET_AREA_EXIT".equals(fallen.termination()),"Fallen upper target should be passed before stopping at the region boundary: "+fallen);next.discard();
         h.runAfterDelay(105,()->{
             h.assertTrue(level.getBlockState(pos).getValue(TargetBlock.STAND) && level.getBlockState(pos.above()).getValue(TargetBlock.STAND),"Scheduled native reset failed");
             h.assertTrue(level.getBlockState(pos).getValue(TargetBlock.OUTPUT_POWER)==0,"Redstone did not reset");h.succeed();

@@ -7,7 +7,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import tacz.aos.terrain.CollisionCell;
 import tacz.aos.terrain.StaticCollisionShapes;
 import java.util.*;
-/** Per-query live geometry. Everything outside selected cores intentionally has no collision. */
+/** Per-query live geometry. Transit outside cores is air; unavailable selected terrain is unknown. */
 public final class TargetCollisionSource implements SegmentTrace.Source {
     private final ServerLevel level;
     private final List<AABB> regions;
@@ -26,6 +26,7 @@ public final class TargetCollisionSource implements SegmentTrace.Source {
     };
     private final IdentityHashMap<BlockState,CollisionCell> palette=new IdentityHashMap<>();
     public TargetCollisionSource(ServerLevel level,List<AABB> regions) { this.level=level;this.regions=List.copyOf(regions); }
+    public List<AABB> regions(){return regions;}
     public boolean contains(Vec3 p) {return contains(p.x,p.y,p.z);}
     private boolean contains(double x,double y,double z) {
         for(var b:regions) if(x>=b.minX && x<b.maxX && y>=b.minY && y<b.maxY && z>=b.minZ && z<b.maxZ) return true;
@@ -39,7 +40,7 @@ public final class TargetCollisionSource implements SegmentTrace.Source {
     public CollisionCell cell(int x,int y,int z) {
         if(!contains(x+.5,y+.5,z+.5)) return CollisionCell.AIR;
         var chunk=level.getChunkSource().getChunkNow(x>>4,z>>4);
-        if(chunk==null) return CollisionCell.AIR;
+        if(chunk==null) return null;
         var pos=new BlockPos(x,y,z);var state=chunk.getBlockState(pos);
         var cached=palette.computeIfAbsent(state,StaticCollisionShapes::classify);
         // Dynamic/modded shapes are queried only in the target, through a getter that cannot load neighbors.

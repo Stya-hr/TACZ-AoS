@@ -15,7 +15,12 @@ public final class TargetBallistics {
     public record Step(String termination, double distance) {}
     private TargetBallistics() {}
 
+    /** Single-step convenience; ongoing flights must supply their persistent boundary state. */
     public static Step tick(ServerLevel level, EntityKineticBullet bullet, double remaining, TargetCollisionSource source) {
+        return tick(level,bullet,remaining,source,new TargetFlightBoundary());
+    }
+
+    public static Step tick(ServerLevel level,EntityKineticBullet bullet,double remaining,TargetCollisionSource source,TargetFlightBoundary boundary) {
         Vec3 start = bullet.position(), velocity = bullet.getDeltaMovement();
         double length = velocity.length();
         if (!Double.isFinite(start.lengthSqr()) || Math.abs(start.x)>30_000_000 || Math.abs(start.y)>30_000_000 || Math.abs(start.z)>30_000_000
@@ -24,10 +29,13 @@ public final class TargetBallistics {
         }
         boolean rangeEnd = length >= remaining;
         Vec3 movement = rangeEnd && length > 0 ? velocity.scale(remaining / length) : velocity;
+        var limit=boundary.limit(start,movement,source.regions());
+        if(limit.stop()&&limit.fraction()==0)return stop(bullet,"TARGET_AREA_EXIT",0);
+        movement=movement.scale(limit.fraction());
         var trace = source.trace(start, movement);
         double fraction = trace.fraction();
         // Keep the endpoint strictly inside the covered prefix. A block/unknown tie cannot hit an entity behind it.
-        if (trace.end() != SegmentTrace.End.CLEAR && movement.length() > 0) {
+        if ((trace.end() != SegmentTrace.End.CLEAR || limit.stop()) && movement.length() > 0) {
             fraction = Math.max(0, fraction - 1.0e-6 / movement.length());
         }
         Vec3 end = start.add(movement.scale(fraction));
@@ -59,6 +67,7 @@ public final class TargetBallistics {
         double distance = end.distanceTo(start);
         if (trace.end() == SegmentTrace.End.BLOCK) BlockImpactEffects.targetHit(level, bullet, start, movement, trace.fraction());
         if (trace.end() != SegmentTrace.End.CLEAR) return stop(bullet, trace.end().name(), distance);
+        if (limit.stop()) return stop(bullet,"TARGET_AREA_EXIT",distance);
         if (rangeEnd) return stop(bullet, "RANGE_LIMIT", distance);
 
         // Same order and float rounding as official TACZ Forge 1.1.8-hotfix: move, drag, gravity, then lifetime.

@@ -34,6 +34,7 @@ public final class LocalBallistics {
         final ShotContext context;
         final ServerConfig.Ballistics limits;
         final ScopeActivity.FlightLease lease;
+        final TargetFlightBoundary boundary=new TargetFlightBoundary();
         final java.util.Set<UUID> heardBy = new java.util.HashSet<>();
         final int originalLife, installedLife;
         double traveled;
@@ -182,7 +183,7 @@ public final class LocalBallistics {
         flight.visualStart = bullet.position();
         flight.visualSpeed = (float) bullet.getDeltaMovement().length();
         var step = ScopedDeathMessages.duringShot(bullet, () -> TargetBallistics.tick(level, bullet,
-                flight.limits.maxDistance()-flight.traveled, new TargetCollisionSource(level,flight.lease.bounds())));
+                flight.limits.maxDistance()-flight.traveled, new TargetCollisionSource(level,flight.lease.bounds()),flight.boundary));
         flight.visualEnd=bullet.position();
         flight.traveled+=step.distance();
         if ("RANGE_LIMIT".equals(step.termination())) rangeLimited++;
