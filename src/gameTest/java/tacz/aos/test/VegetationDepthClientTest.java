@@ -4,7 +4,11 @@ import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexSorting;
-import java.util.Map;
+import java.util.*;
+import net.minecraft.core.SectionPos;
+import tacz.aos.network.ScopeOcclusionPayload;
+import tacz.aos.occlusion.SectionMask;
+import tacz.aos.occlusion.OcclusionShapes;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.core.BlockPos;
@@ -17,7 +21,7 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11C;
 import static org.lwjgl.opengl.GL33C.*;
 import tacz.aos.TaczArtOfSniping;
-import tacz.aos.client.VegetationOcclusion;
+import tacz.aos.client.OcclusionMesh;
 
 /** Exercises the actual model, atlas alpha, depth-only write mask, and GL state in a real client. */
 final class VegetationDepthClientTest {
@@ -31,7 +35,11 @@ final class VegetationDepthClientTest {
         RenderSystem.backupProjectionMatrix();modelView.pushPose();modelView.setIdentity();RenderSystem.applyModelViewMatrix();
         try {
             RenderSystem.setProjectionMatrix(new Matrix4f().setOrtho(-.25f,1.25f,-.25f,1.25f,-10,10),VertexSorting.ORTHOGRAPHIC_Z);
+            verifyBudgetDefersCompleteMask(framebuffer);
             int stone=sample(framebuffer,Blocks.STONE.defaultBlockState());
+            int leaves=sample(framebuffer,Blocks.OAK_LEAVES.defaultBlockState());
+            int glass=sample(framebuffer,Blocks.GLASS.defaultBlockState());
+            if(leaves!=stone||glass!=stone)throw new AssertionError("Solid-cell depth differed for leaves/glass");
             int grass=sample(framebuffer,Blocks.GRASS.defaultBlockState());
             int young=sample(framebuffer,Blocks.WHEAT.defaultBlockState().setValue(CropBlock.AGE,0));
             int mature=sample(framebuffer,Blocks.WHEAT.defaultBlockState().setValue(CropBlock.AGE,7));
@@ -65,7 +73,8 @@ final class VegetationDepthClientTest {
                 glReadBuffer(attachment);var color=BufferUtils.createFloatBuffer(32*32*4);glReadPixels(x,y,32,32,GL_RGBA,GL_FLOAT,color);colors.put(attachment,color);
             }
             var pos=BlockPos.containing(eye.add(mc.player.getViewVector(1).scale(4)));
-            try(var mask=VegetationOcclusion.renderBlocks(Map.of(pos,Blocks.GRASS.defaultBlockState()),pose,eye)) {}
+            try(var mask=OcclusionMesh.render(List.of(solid(pos)),pose,eye)) {}
+            try(var mask=OcclusionMesh.renderBlocks(Map.of(pos,Blocks.GRASS.defaultBlockState()),pose,eye)) {}
             var after=BufferUtils.createFloatBuffer(32*32);glReadPixels(x,y,32,32,GL_DEPTH_COMPONENT,GL_FLOAT,after);
             if(!depths.equals(after))throw new AssertionError("Plant mask changed persistent world depth");
             for(var entry:colors.entrySet()) {
@@ -79,9 +88,29 @@ final class VegetationDepthClientTest {
         }
     }
 
+    private static void verifyBudgetDefersCompleteMask(TextureTarget target) {
+        var c=tacz.aos.config.ServerConfig.occlusion();
+        try {
+            var field=tacz.aos.config.ServerConfig.class.getDeclaredField("occlusion");field.setAccessible(true);
+            field.set(null,new tacz.aos.config.ServerConfig.Occlusion(c.enabled(),c.radius(),c.cellsPerPlayer(),c.cellsPerTick(),c.maxSections(),1,c.refreshTicks(),c.sectionsPerPacket()));
+            target.clear(Minecraft.ON_OSX);target.bindWrite(true);
+            try(var mask=OcclusionMesh.render(List.of(solid(BlockPos.ZERO)),new PoseStack(),Vec3.ZERO)) {
+                if(mask.ready())throw new AssertionError("Face budget accepted a partial mask");
+                var depth=BufferUtils.createFloatBuffer(128*128);glReadPixels(0,0,128,128,GL_DEPTH_COMPONENT,GL_FLOAT,depth);
+                for(int i=0;i<depth.limit();i++)if(depth.get(i)!=1)throw new AssertionError("Rejected mask changed depth");
+            } finally {field.set(null,c);}
+        } catch(ReflectiveOperationException error){throw new RuntimeException(error);}
+    }
+    private static OcclusionMesh.Section solid(BlockPos pos) {
+        var bits=new ArrayList<>(Collections.nCopies(64,0L));int i=(pos.getX()&15)+16*(pos.getZ()&15)+256*(pos.getY()&15);
+        bits.set(i>>>6,1L<<(i&63));
+        return new OcclusionMesh.Section(new ScopeOcclusionPayload.Update(SectionPos.of(pos).asLong(),1,new SectionMask(bits,Map.of())));
+    }
     private static int sample(TextureTarget target,BlockState state) {
         target.setClearColor(0,0,0,1);target.clear(Minecraft.ON_OSX);target.bindWrite(true);
-        var mask=VegetationOcclusion.renderBlocks(Map.of(BlockPos.ZERO,state),new PoseStack(),Vec3.ZERO);
+        var mask=OcclusionShapes.textured(state)
+                ? OcclusionMesh.renderBlocks(Map.of(BlockPos.ZERO,state),new PoseStack(),Vec3.ZERO)
+                : OcclusionMesh.render(List.of(solid(BlockPos.ZERO)),new PoseStack(),Vec3.ZERO);
         try {
         var depth=BufferUtils.createFloatBuffer(128*128);
         GL11C.glReadPixels(0,0,128,128,GL11C.GL_DEPTH_COMPONENT,GL11C.GL_FLOAT,depth);

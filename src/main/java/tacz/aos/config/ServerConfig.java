@@ -11,12 +11,12 @@ public final class ServerConfig {
     private static final HumidityConfig HUMIDITY;
     private static volatile tacz.aos.humidity.HumiditySettings humidity = tacz.aos.humidity.HumiditySettings.DISABLED;
     public static tacz.aos.humidity.HumiditySettings humidity() { return humidity; }
-    public record Occlusion(boolean enabled,int radius,int cellsPerPlayer,int cellsPerTick,int boxesPerPlayer,int planeTestsPerFrame) {}
-    public static final Occlusion DEFAULT_OCCLUSION=new Occlusion(true,96,8192,32768,256,500000);
+    public record Occlusion(boolean enabled,int radius,int cellsPerPlayer,int cellsPerTick,int maxSections,int maxFaces,int refreshTicks,int sectionsPerPacket) {}
+    public static final Occlusion DEFAULT_OCCLUSION=new Occlusion(true,96,32768,131072,128,100000,10,4);
     private static volatile Occlusion occlusion=DEFAULT_OCCLUSION;
     public static Occlusion occlusion(){return occlusion;}
     private static final ForgeConfigSpec.BooleanValue OCCLUSION_ENABLED;
-    private static final ForgeConfigSpec.IntValue OCCLUSION_RADIUS,OCCLUSION_CELLS,OCCLUSION_GLOBAL,OCCLUSION_BOXES,OCCLUSION_PLANES;
+    private static final ForgeConfigSpec.IntValue OCCLUSION_RADIUS,OCCLUSION_CELLS,OCCLUSION_GLOBAL,OCCLUSION_SECTIONS,OCCLUSION_FACES,OCCLUSION_REFRESH,OCCLUSION_PACKETS;
 
     public record DistantGunshots(boolean enabled, double speed, int minDistance, int maxDistance, double volume) {}
     private static final DistantGunshots SILENT_GUNSHOTS = new DistantGunshots(false, 343, 128, 0, .65);
@@ -97,15 +97,15 @@ public final class ServerConfig {
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
         HUMIDITY = new HumidityConfig(builder);
-        builder.comment("Remote occlusion: solid blocks, including glass, leaves, slabs and stairs, cover whole cells.",
-                "Thin vegetation uses client model texture alpha. Air, fluids and invisible utility cells do not occlude. No client terrain chunks are installed.",
-                "Refresh follows scopeRendering.intervalTicks. Entity observation does not wait for occlusion data. Incomplete scans retain known cover; new unchecked cover may remain visible.").push("occlusion");
+        builder.comment("Shared temporary visual section masks. Missing initial coverage defers remote drawing; simulation continues.").push("occlusion");
         OCCLUSION_ENABLED=builder.define("enabled",true);
-        OCCLUSION_RADIUS=builder.comment("Maximum sight corridor length within the selected core and the entity's 5x5 chunk neighborhood (3x3 plus a guard ring). Does not load more terrain.").defineInRange("radius",96,48,96);
-        OCCLUSION_CELLS=builder.defineInRange("maxCellsPerPlayer",8192,256,65536);
-        OCCLUSION_GLOBAL=builder.defineInRange("maxCellsPerTick",32768,256,262144);
-        OCCLUSION_BOXES=builder.defineInRange("maxBoxesPerPlayer",256,16,256);
-        OCCLUSION_PLANES=builder.comment("Client polygon clipping work cap per frame, divided independently among observed occluded entities; does not affect bullet collision.").defineInRange("maxPlaneTestsPerFrame",500000,10000,2000000);
+        OCCLUSION_RADIUS=builder.comment("Target-side coverage distance, clipped to the entity's 5x5 chunk neighbourhood; reads resident terrain only.").defineInRange("radius",96,16,128);
+        OCCLUSION_CELLS=builder.defineInRange("maxCellsPerPlayer",32768,256,262144);
+        OCCLUSION_GLOBAL=builder.defineInRange("maxCellsPerTick",131072,256,1048576);
+        OCCLUSION_SECTIONS=builder.defineInRange("maxSectionsPerPlayer",128,8,128);
+        OCCLUSION_FACES=builder.comment("GPU mask face budget; exceeding it defers drawing instead of dropping cover.").defineInRange("maxFacesPerFrame",100000,4096,200000);
+        OCCLUSION_REFRESH=builder.defineInRange("refreshTicks",10,1,100);
+        OCCLUSION_PACKETS=builder.defineInRange("maxSectionsPerPacket",4,1,8);
         builder.pop();
         builder.comment("Delayed distant gunfire for accepted AoS shots only. Nearby TACZ audio remains native.",
                         "Distance/delay/volume use listener position at firing; no terrain occlusion or extra chunk loading.",
@@ -290,7 +290,7 @@ public final class ServerConfig {
             humidity = tacz.aos.humidity.HumiditySettings.DISABLED;
             TaczArtOfSniping.LOGGER.error("Invalid humidity config; humidity disabled: {}", exception.getMessage());
         }
-        occlusion=new Occlusion(OCCLUSION_ENABLED.get(),OCCLUSION_RADIUS.get(),OCCLUSION_CELLS.get(),OCCLUSION_GLOBAL.get(),OCCLUSION_BOXES.get(),OCCLUSION_PLANES.get());
+        occlusion=new Occlusion(OCCLUSION_ENABLED.get(),OCCLUSION_RADIUS.get(),OCCLUSION_CELLS.get(),OCCLUSION_GLOBAL.get(),OCCLUSION_SECTIONS.get(),OCCLUSION_FACES.get(),OCCLUSION_REFRESH.get(),OCCLUSION_PACKETS.get());
         distantGunshots = new DistantGunshots(DISTANT_SOUND.get(), SOUND_SPEED.get(), SOUND_MIN.get(), SOUND_MAX.get(), SOUND_VOLUME.get());
         targeting = new Targeting(TARGET_SPEED.get(),TARGET_INTERVAL.get(),TARGET_CHECKS.get(),TARGET_CONCURRENT.get(),TARGET_QUEUE.get(),TARGET_INDEX.get(),TARGET_NEW_REGION_INTERVAL.get());
         try {

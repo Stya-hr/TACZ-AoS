@@ -5,9 +5,9 @@ import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 import static org.lwjgl.opengl.GL33C.*;
 
-/** A transient alpha mask. Invisible plants never become terrain for shader post-processing.
+/** A transient solid/alpha mask. Invisible occluders never become terrain for shader post-processing.
  * Raw, isolated programs deliberately bypass Oculus material substitution and MRT lighting outputs. */
-final class PlantDepthPass implements AutoCloseable {
+final class OcclusionDepthPass implements AutoCloseable {
     private static int plantProgram, restoreProgram, vao, vbo;
     private static final int[] textures = new int[3];
     private static int capacityWidth, capacityHeight;
@@ -28,7 +28,7 @@ final class PlantDepthPass implements AutoCloseable {
             #version 330 core
             uniform sampler2D atlas;
             in vec2 texCoord;
-            void main() { if(texture(atlas,texCoord).a<0.1) discard; }
+            void main() { if(texCoord.x>=0.0 && texture(atlas,texCoord).a<0.1) discard; }
             """;
     private static final String SCREEN = """
             #version 330 core
@@ -54,7 +54,7 @@ final class PlantDepthPass implements AutoCloseable {
             }
             """;
 
-    PlantDepthPass(FloatBuffer vertices, Matrix4f matrix) {
+    OcclusionDepthPass(FloatBuffer vertices, Matrix4f matrix) {
         framebuffer=glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
         glGetIntegerv(GL_VIEWPORT,viewport);
         // Copy only the on-screen plant footprint, not three full-resolution scene buffers.

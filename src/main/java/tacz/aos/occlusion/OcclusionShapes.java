@@ -14,13 +14,17 @@ public final class OcclusionShapes {
     private OcclusionShapes() {}
 
     public static List<AABB> boxes(BlockState state, BlockGetter level, BlockPos pos) {
+        return solid(state) ? FULL_BLOCK : List.of();
+    }
+
+    public static boolean solid(BlockState state) {
         var block = state.getBlock();
         // Empty/invisible utility cells and fluids are not solid block cover.
         if (state.isAir() || textured(state) || block instanceof LiquidBlock || block instanceof BaseFireBlock
                 || block == Blocks.LIGHT || block == Blocks.STRUCTURE_VOID || block == Blocks.BARRIER)
-            return List.of();
+            return false;
         // Includes glass, leaves, slabs, stairs and open doors. Do not query selection/collision shapes.
-        return FULL_BLOCK;
+        return true;
     }
 
     public static boolean textured(BlockState state) {

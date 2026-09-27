@@ -36,7 +36,7 @@ import java.util.*;
 public final class LongRangeClientTest {
     private static final boolean ENABLED = Boolean.getBoolean("tacz_aos.longRangeTest");
     // Shader integration exercises depth picking, remote entities/targets, damage and smoke.
-    // The separate occlusion stress suite targets the renderer that was deliberately rolled back.
+    // Both shader and non-shader runs exercise shared-depth cover and live refreshes.
     private static final boolean SHADER_TEST = Boolean.getBoolean("tacz_aos.shaderCompatibilityTest");
     private static final TicketType<ChunkPos> EXPLORE = TicketType.create("long_range_fixture", Comparator.comparingLong(ChunkPos::toLong));
     private static final List<ChunkPos> visited = new ArrayList<>();
@@ -59,6 +59,7 @@ public final class LongRangeClientTest {
     }
     private static double movingMinZ=Double.POSITIVE_INFINITY,movingMaxZ=Double.NEGATIVE_INFINITY;
     private static com.mojang.blaze3d.platform.NativeImage beforeEntities;
+    private static java.nio.FloatBuffer beforeDepth;
     private static volatile boolean readyToFire, hitConfirmed;
     private static com.tacz.guns.entity.EntityKineticBullet shotBullet;
     private static Cow shotTarget;
@@ -84,8 +85,10 @@ public final class LongRangeClientTest {
                 && stage != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_PARTICLES
                 && stage != net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
         queryKind = stage == net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES ? 1 : stage == net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES ? 3 : 2;
-        if(queryKind==1 && occlusionRequested && !occlusionFinished)
-            beforeEntities=Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
+        if(queryKind==1 && occlusionRequested && !occlusionFinished) {
+            if(SHADER_TEST)beforeDepth=readDepth();
+            else beforeEntities=Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
+        }
         query = org.lwjgl.opengl.GL15C.glGenQueries();
         org.lwjgl.opengl.GL15C.glBeginQuery(org.lwjgl.opengl.GL15C.GL_SAMPLES_PASSED, query);
     }
@@ -96,10 +99,16 @@ public final class LongRangeClientTest {
         int samples = org.lwjgl.opengl.GL15C.glGetQueryObjecti(query, org.lwjgl.opengl.GL15C.GL_QUERY_RESULT);
         org.lwjgl.opengl.GL15C.glDeleteQueries(query); query = 0;
         if (queryKind == 1 && animalId >= 0) entitySamples = Math.max(entitySamples, samples);
-        if(beforeEntities!=null) {
+        if(beforeEntities!=null||beforeDepth!=null) {
             // Depth-only cover contributes to GL_SAMPLES_PASSED but never to visible entity pixels.
             // Compare actual color output, so drawing an invisible cover wall cannot make this test pass.
-            try(var before=beforeEntities;var after=Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget())) {
+            // Photon writes deferred material targets, not the final display color at this stage.
+            // Its shared world depth retains only surviving entity fragments after our mask cleanup.
+            if(beforeDepth!=null) {
+                var after=readDepth();samples=0;
+                for(int i=0;i<after.limit();i++)if(beforeDepth.get(i)!=after.get(i))samples++;
+                beforeDepth=null;
+            } else try(var before=beforeEntities;var after=Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget())) {
                 samples=0;
                 for(int y=0;y<after.getHeight();y++)for(int x=0;x<after.getWidth();x++)
                     if(before.getPixelRGBA(x,y)!=after.getPixelRGBA(x,y))samples++;
@@ -121,7 +130,7 @@ public final class LongRangeClientTest {
                 else {movingHiddenFrames++;if(samples>0)movingLeaks++;}
             }
             if(ticks-coverTick>=12 && ScopedRendering.drewExtra(animalId)) {
-                int boxes=tacz.aos.client.ScopedOcclusion.boxCount(animalId);
+                int boxes=tacz.aos.client.ScopedOcclusion.solidCount(animalId);
                 if(coverPhase==1){coverBaselinePixels=Math.max(coverBaselinePixels,samples);baselineBoxes=boxes;}
                 if(coverPhase==2 && boxes>baselineBoxes && samples>0 && samples<coverBaselinePixels){coverPartialPixels=Math.max(coverPartialPixels,samples);partialCoverSeen=true;}
                 if(coverPhase==3 && boxes>baselineBoxes && samples==0){coverFullPixels=0;fullCoverSeen=true;}
@@ -133,6 +142,16 @@ public final class LongRangeClientTest {
         }
         if (queryKind == 3 && stage >= 3) blockSamples = Math.max(blockSamples, samples);
         if (queryKind == 2 && shotStarted) trailSamples = Math.max(trailSamples, samples);
+    }
+    private static java.nio.FloatBuffer readDepth() {
+        var target=Minecraft.getInstance().getMainRenderTarget();
+        int prior=org.lwjgl.opengl.GL30C.glGetInteger(org.lwjgl.opengl.GL30C.GL_READ_FRAMEBUFFER_BINDING);
+        try {
+            org.lwjgl.opengl.GL30C.glBindFramebuffer(org.lwjgl.opengl.GL30C.GL_READ_FRAMEBUFFER,target.frameBufferId);
+            var data=org.lwjgl.BufferUtils.createFloatBuffer(target.width*target.height);
+            org.lwjgl.opengl.GL11C.glReadPixels(0,0,target.width,target.height,org.lwjgl.opengl.GL11C.GL_DEPTH_COMPONENT,org.lwjgl.opengl.GL11C.GL_FLOAT,data);
+            return data;
+        } finally {org.lwjgl.opengl.GL30C.glBindFramebuffer(org.lwjgl.opengl.GL30C.GL_READ_FRAMEBUFFER,prior);}
     }
     private static volatile boolean missedInitialSpawn;
     @SubscribeEvent public static void missingSpawn(net.minecraftforge.event.entity.EntityJoinLevelEvent event) {
@@ -243,7 +262,7 @@ public final class LongRangeClientTest {
                     mc.createWorldOpenFlows().loadLevel(new net.minecraft.client.gui.screens.TitleScreen(), worldName);
                     return;
                 }
-                if (!SHADER_TEST) {
+                {
                 if(!occlusionFinished) {occlusionRequested=true;return;}
                 if(aimVisibleFrames<20 || aimDropouts!=0) {
                     finish(false,"Aim return caused invisible frames: "+aimDropouts+" / "+aimVisibleFrames);return;
@@ -343,7 +362,7 @@ public final class LongRangeClientTest {
                         coverTick=ticks;coverPhase++;
                         if(coverPhase==6) {
                             savedOcclusion=ServerConfig.occlusion();var c=savedOcclusion;
-                            setOcclusion(new ServerConfig.Occlusion(c.enabled(),c.radius(),1,c.cellsPerTick(),c.boxesPerPlayer(),c.planeTestsPerFrame()));
+                            setOcclusion(new ServerConfig.Occlusion(c.enabled(),c.radius(),1,c.cellsPerTick(),c.maxSections(),c.maxFaces(),c.refreshTicks(),c.sectionsPerPacket()));
                         } else if(coverPhase==7 && savedOcclusion!=null) {setOcclusion(savedOcclusion);savedOcclusion=null;}
                         for(int y=80;y<=82;y++)for(int z=5;z<=11;z++)
                             level.setBlockAndUpdate(new BlockPos(852,y,z),coverPhase==2 && y==80 ? Blocks.STONE.defaultBlockState()

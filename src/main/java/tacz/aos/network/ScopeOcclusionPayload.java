@@ -1,77 +1,43 @@
 package tacz.aos.network;
-
 import java.util.*;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
-import tacz.aos.network.PayloadCodec;
-import tacz.aos.network.ModPayload;
 import net.minecraft.resources.ResourceLocation;
-import tacz.aos.occlusion.OccluderBox;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
-import tacz.aos.occlusion.OcclusionShapes;
-
-/** Bounded refresh with an authoritative target roster; incomplete scans do not erase known cover. */
-public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targets) implements ModPayload {
-    public static final int MAX_BOXES=256, MAX_PER_TARGET=32, MAX_TEXTURED=256, MAX_TEXTURED_PER_TARGET=64;
-    public record Textured(BlockPos offset, BlockState state) {
-        public Textured {
-            offset=offset.immutable();
-            if(Math.abs((long)offset.getX())>128 || Math.abs((long)offset.getY())>128 || Math.abs((long)offset.getZ())>128
-                    || !OcclusionShapes.textured(state)) throw new IllegalArgumentException("Invalid textured occluder");
-        }
-    }
-    public record Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes,List<Textured> textured,boolean complete) {
-        public Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes) { this(id,uuid,origin,boxes,List.of(),true); }
-        public Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes,List<Textured> textured) { this(id,uuid,origin,boxes,textured,true); }
-        public Target {
-            origin=origin.immutable();boxes=List.copyOf(boxes);textured=List.copyOf(textured);
-            if(textured.size()>MAX_TEXTURED_PER_TARGET)throw new IllegalArgumentException("Too many textured occluders");
-            if(boxes.size()>MAX_PER_TARGET)throw new IllegalArgumentException("Too many target occluders");
-            for(var b:boxes)if(Math.max(Math.abs(b.minX()),Math.abs(b.maxX()))>128 || Math.max(Math.abs(b.minY()),Math.abs(b.maxY()))>128
-                    || Math.max(Math.abs(b.minZ()),Math.abs(b.maxZ()))>128)throw new IllegalArgumentException("Occluder outside local region");
-        }
-    }
-    public static final Type<ScopeOcclusionPayload> TYPE=new Type<>(new ResourceLocation("tacz_aos","scope_occlusion"), ScopeOcclusionPayload.class);
+import tacz.aos.occlusion.SectionMask;
+/** Full bounded roster plus atomic changed sections. No normal terrain chunks are installed. */
+public record ScopeOcclusionPayload(ResourceLocation dimension,List<Region> regions,List<Target> targets,List<Update> updates) implements ModPayload {
+    public static final int MAX_REGIONS=128, MAX_UPDATES=8;
+    public record Region(long key,long revision) {}
+    public record Target(int id,UUID uuid,boolean admitted,List<Long> required) { public Target {required=List.copyOf(required);if(required.size()>MAX_REGIONS)throw new IllegalArgumentException();} }
+    public record Update(long key,long revision,SectionMask mask) {}
     public ScopeOcclusionPayload {
-        targets=List.copyOf(targets);
-        if(targets.size()>256 || targets.stream().mapToInt(t->t.boxes.size()).sum()>MAX_BOXES
-                || targets.stream().mapToInt(t->t.textured.size()).sum()>MAX_TEXTURED)throw new IllegalArgumentException("Occlusion budget exceeded");
+        regions=List.copyOf(regions);targets=List.copyOf(targets);updates=List.copyOf(updates);
+        if(regions.size()>MAX_REGIONS||targets.size()>256||updates.size()>MAX_UPDATES)throw new IllegalArgumentException("Occlusion packet limit");
+        var keys=new HashMap<Long,Long>();for(var r:regions)if(r.revision<0||keys.put(r.key,r.revision)!=null)throw new IllegalArgumentException("Invalid region");
+        for(var t:targets)if(!keys.keySet().containsAll(t.required))throw new IllegalArgumentException("Unknown required region");
+        var changed=new HashSet<Long>();for(var u:updates)if(u.revision<=0||!Objects.equals(keys.get(u.key),u.revision)||!changed.add(u.key))throw new IllegalArgumentException("Invalid update");
     }
+    public static final Type<ScopeOcclusionPayload> TYPE=new Type<>(new ResourceLocation("tacz_aos","scope_occlusion"),ScopeOcclusionPayload.class);
+    private static int count(FriendlyByteBuf b,int max){int n=b.readVarInt();if(n<0||n>max)throw new IllegalArgumentException("Invalid count");return n;}
     public static final PayloadCodec<FriendlyByteBuf,ScopeOcclusionPayload> STREAM_CODEC=new PayloadCodec<>() {
         public ScopeOcclusionPayload decode(FriendlyByteBuf b) {
-            var dim=b.readResourceLocation();int n=b.readVarInt(),total=0,totalTextured=0;if(n<0 || n>256)throw new IllegalArgumentException("Invalid count");
-            var targets=new ArrayList<Target>();
-            for(int i=0;i<n;i++) {
-                int id=b.readVarInt();var uuid=b.readUUID();var origin=b.readBlockPos();int count=b.readVarInt();total+=count;
-                if(count<0 || count>MAX_PER_TARGET || total>MAX_BOXES)throw new IllegalArgumentException("Invalid box count");
-                var boxes=new ArrayList<OccluderBox>();
-                for(int j=0;j<count;j++)boxes.add(new OccluderBox(b.readFloat(),b.readFloat(),b.readFloat(),b.readFloat(),b.readFloat(),b.readFloat()));
-                int plants=b.readVarInt();totalTextured+=plants;
-                if(plants<0 || plants>MAX_TEXTURED_PER_TARGET || totalTextured>MAX_TEXTURED)throw new IllegalArgumentException("Invalid textured count");
-                var textured=new ArrayList<Textured>();
-                for(int j=0;j<plants;j++)textured.add(new Textured(b.readBlockPos(),Block.stateById(b.readVarInt())));
-                targets.add(new Target(id,uuid,origin,boxes,textured,b.readBoolean()));
-            }
-            return new ScopeOcclusionPayload(dim,targets);
+            var dim=b.readResourceLocation();var regions=new ArrayList<Region>();int n=count(b,MAX_REGIONS);
+            for(int i=0;i<n;i++)regions.add(new Region(b.readLong(),b.readVarLong()));
+            var targets=new ArrayList<Target>();n=count(b,256);
+            for(int i=0;i<n;i++){int id=b.readVarInt();var uuid=b.readUUID();boolean admitted=b.readBoolean();int k=count(b,MAX_REGIONS);var required=new ArrayList<Long>();
+                for(int j=0;j<k;j++){int index=count(b,regions.size()-1);required.add(regions.get(index).key);}
+                targets.add(new Target(id,uuid,admitted,required));}
+            var updates=new ArrayList<Update>();n=count(b,MAX_UPDATES);
+            for(int i=0;i<n;i++){int index=count(b,regions.size()-1);var r=regions.get(index);var bits=new ArrayList<Long>();for(int j=0;j<64;j++)bits.add(b.readLong());
+                int k=count(b,4096);var plants=new HashMap<Integer,Integer>();for(int j=0;j<k;j++){int cell=b.readUnsignedShort(),state=b.readVarInt();if(cell>=4096||plants.put(cell,state)!=null)throw new IllegalArgumentException("Invalid plant");}
+                updates.add(new Update(r.key,r.revision,new SectionMask(bits,plants)));}
+            return new ScopeOcclusionPayload(dim,regions,targets,updates);
         }
         public void encode(FriendlyByteBuf b,ScopeOcclusionPayload p) {
-            b.writeResourceLocation(p.dimension);b.writeVarInt(p.targets.size());
-            for(var t:p.targets){b.writeVarInt(t.id);b.writeUUID(t.uuid);b.writeBlockPos(t.origin);b.writeVarInt(t.boxes.size());
-                for(var a:t.boxes){b.writeFloat((float)a.minX());b.writeFloat((float)a.minY());b.writeFloat((float)a.minZ());b.writeFloat((float)a.maxX());b.writeFloat((float)a.maxY());b.writeFloat((float)a.maxZ());}
-                b.writeVarInt(t.textured.size());for(var plant:t.textured){b.writeBlockPos(plant.offset);b.writeVarInt(Block.getId(plant.state));}b.writeBoolean(t.complete);}
+            b.writeResourceLocation(p.dimension);b.writeVarInt(p.regions.size());var indices=new HashMap<Long,Integer>();
+            for(int i=0;i<p.regions.size();i++){var r=p.regions.get(i);indices.put(r.key,i);b.writeLong(r.key);b.writeVarLong(r.revision);}
+            b.writeVarInt(p.targets.size());for(var t:p.targets){b.writeVarInt(t.id);b.writeUUID(t.uuid);b.writeBoolean(t.admitted);b.writeVarInt(t.required.size());for(long k:t.required)b.writeVarInt(indices.get(k));}
+            b.writeVarInt(p.updates.size());for(var u:p.updates){b.writeVarInt(indices.get(u.key));for(long bits:u.mask.solid())b.writeLong(bits);b.writeVarInt(u.mask.plants().size());u.mask.plants().forEach((cell,state)->{b.writeShort(cell);b.writeVarInt(state);});}
         }
     };
-    /** A complete empty result clears removed cover. An unscanned target keeps its last known geometry.
-     * Absence from the roster removes subscriptions immediately; IDs cannot carry cover across UUIDs. */
-    public Map<Integer,Target> merge(Map<Integer,Target> previous) {
-        var next=new HashMap<Integer,Target>();
-        for(var target:targets) {
-            var old=previous.get(target.id);
-            next.put(target.id,!target.complete && old!=null && old.uuid.equals(target.uuid)
-                    && (!old.boxes.isEmpty() || !old.textured.isEmpty()) ? old : target);
-        }
-        return next;
-    }
     public Type<? extends ModPayload> type(){return TYPE;}
 }

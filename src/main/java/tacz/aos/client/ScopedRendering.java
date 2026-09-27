@@ -153,11 +153,12 @@ public final class ScopedRendering {
             // Dedicated buffers prevent our fog range from changing already queued vanilla entity draws.
             RenderSystem.setShaderFogStart(ServerConfig.current().maxDistance());
             RenderSystem.setShaderFogEnd(ServerConfig.current().maxDistance() + 64);
-            try(var plantMask=ScopedOcclusion.renderVegetation(event.getPoseStack(),eye)) {
+            try(var plantMask=ScopedOcclusion.render(event.getPoseStack(),eye,event.getFrustum())) {
+                if(!plantMask.ready())return;
                 for (var pose : targets.values()) {
                     Entity entity = level.getEntity(pose.target.id());
                     if (entity == null || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved()
-                            || entity.isInvisibleTo(minecraft.player) || !event.getFrustum().isVisible(entity.getBoundingBox())) continue;
+                            || !ScopedOcclusion.ready(entity) || entity.isInvisibleTo(minecraft.player) || !event.getFrustum().isVisible(entity.getBoundingBox())) continue;
                     // The server already bounded the observation. Let the actual projection clip at the screen edge,
                     // rather than hiding an authorized entity inside the lens with a second, narrower aim cone.
                     if (entity.getBoundingBox().getCenter().distanceToSqr(eye) > Math.pow(ServerConfig.current().maxDistance(), 2)) continue;
@@ -167,11 +168,8 @@ public final class ScopedRendering {
                     double x = Mth.lerp(partial, entity.xOld, entity.getX()) - eye.x;
                     double y = Mth.lerp(partial, entity.yOld, entity.getY()) - eye.y;
                     double z = Mth.lerp(partial, entity.zOld, entity.getZ()) - eye.z;
-                    var clipped=ScopedOcclusion.forEntity(entity,eye,event.getPoseStack().last().pose(),buffers);
-                    try {
-                        dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
-                                event.getPoseStack(), clipped==null?buffers:clipped, pose.target.light());
-                    } finally {if(clipped!=null)clipped.close();}
+                    dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
+                            event.getPoseStack(), buffers, pose.target.light());
                     extraDrawn.add(entity.getId());
                 }
                 buffers.endBatch();
