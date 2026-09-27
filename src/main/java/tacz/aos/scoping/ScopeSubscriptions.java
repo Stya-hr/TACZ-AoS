@@ -28,6 +28,8 @@ public final class ScopeSubscriptions {
     public static final ScopeSubscriptions INSTANCE = new ScopeSubscriptions();
     private record Lease(ServerLevel level, Map<Integer, UUID> targets) {}
     private final Map<UUID, Lease> leases = new HashMap<>();
+    private final Map<UUID, Map<UUID, Long>> lastInView = new HashMap<>();
+    private final Map<UUID, Set<UUID>> regionObserved = new HashMap<>();
     private final Map<UUID, Long> repairAttempts = new HashMap<>();
     private long tick;
     private ScopeSubscriptions() {}
@@ -74,6 +76,8 @@ public final class ScopeSubscriptions {
         double releaseAngle = ScopeCone.padded(viewAngle, ScopeCone.RELEASE_PADDING);
         var previous = leases.get(player.getUUID());
         Map<Integer, UUID> retained = previous != null && previous.level == level ? previous.targets : Map.of();
+        var seenAt = lastInView.computeIfAbsent(player.getUUID(), ignored -> new HashMap<>());
+        var linked=regionObserved.computeIfAbsent(player.getUUID(),ignored->new HashSet<>());
         double radius = distance * Math.tan(releaseAngle) + 4;
         AABB bounds = new AABB(start, end).inflate(radius);
         var candidates = new ArrayList<Entity>();
@@ -82,12 +86,23 @@ public final class ScopeSubscriptions {
         java.util.function.Consumer<Entity> inspect = entity -> {
             var box = entity.getBoundingBox();
             Vec3 offset = box.getCenter().subtract(start);
-            double angle = entity.getUUID().equals(retained.get(entity.getId())) ? releaseAngle : acquireAngle;
-            if (entity != player && entity.isAlive() && !entity.isInvisibleTo(player) && entity.broadcastToPlayer(player)
-                    && !entity.isSpectator()
-                    && level.getChunkSource().getChunkNow(entity.chunkPosition().x, entity.chunkPosition().z) != null
-                    && ScopeCone.containsAtAngle(offset.x, offset.y, offset.z, direction.x, direction.y, direction.z,
-                    ScopeCone.radius(box.getXsize(), box.getYsize(), box.getZsize()), distance, angle)) candidates.add(entity);
+            boolean retainedEntity=entity.getUUID().equals(retained.get(entity.getId()));
+            double angle = retainedEntity ? releaseAngle : acquireAngle;
+            if (entity == player || !entity.isAlive() || entity.isRemoved() || entity.isInvisibleTo(player)
+                    || !entity.broadcastToPlayer(player) || entity.isSpectator()
+                    || offset.lengthSqr()>distance*distance
+                    || level.getChunkSource().getChunkNow(entity.chunkPosition().x, entity.chunkPosition().z)==null) return;
+            boolean inside=ScopeCone.containsAtAngle(offset.x,offset.y,offset.z,direction.x,direction.y,direction.z,
+                    ScopeCone.radius(box.getXsize(),box.getYsize(),box.getZsize()),distance,angle);
+            if(inside)seenAt.put(entity.getUUID(),tick);
+            boolean regionHeld=ScopeActivity.INSTANCE.retainsObservation(player,entity);
+            if(regionHeld)linked.add(entity.getUUID());
+            // Follow actual leases, not a second countdown; tracking never renews terrain tickets.
+            // Native targets with no AoS lease use the same configured grace duration.
+
+            Long lastSeen=seenAt.get(entity.getUUID());
+            if(inside || retainedEntity && (regionHeld || !linked.contains(entity.getUUID()) && lastSeen!=null
+                    && tick-lastSeen<settings.activity().retentionTicks())) candidates.add(entity);
         };
         // Recheck existing observations first so a wider broad-phase scan does not arbitrarily lose them.
         // They share the same candidate/visibility/count budgets, and can still be displaced by more central targets.
@@ -134,6 +149,14 @@ public final class ScopeSubscriptions {
         var level = player.serverLevel();
         var ids = new LinkedHashMap<Integer, UUID>();
         for (var target : targets) ids.put(target.getId(), target.getUUID());
+        var seenAt=lastInView.get(player.getUUID());
+        if(seenAt!=null) {
+            if(previous!=null && previous.level!=level)seenAt.clear();
+            seenAt.keySet().retainAll(ids.values());
+            if(seenAt.isEmpty())lastInView.remove(player.getUUID());
+        }
+        var linked=regionObserved.get(player.getUUID());
+        if(linked!=null){linked.retainAll(ids.values());if(linked.isEmpty() || previous!=null && previous.level!=level)regionObserved.remove(player.getUUID());}
         if (ServerConfig.current().diagnostics() && (previous == null ? !ids.isEmpty() : !previous.targets.equals(ids))) {
             tacz.aos.TaczArtOfSniping.LOGGER.info("Scoped entity subscription for {}: {} targets in {}",
                     player.getGameProfile().getName(), ids.size(), level.dimension().location());
@@ -200,10 +223,10 @@ public final class ScopeSubscriptions {
         return (TrackedEntityAccessor) ((ChunkMapAccessor)(Object) level.getChunkSource().chunkMap).tacz_aos$trackers().get(id);
     }
     public int count(ServerPlayer player) { var lease = leases.get(player.getUUID()); return lease == null ? 0 : lease.targets.size(); }
-    @SubscribeEvent public void logout(PlayerEvent.PlayerLoggedOutEvent event) { leases.remove(event.getEntity().getUUID()); repairAttempts.remove(event.getEntity().getUUID()); }
+    @SubscribeEvent public void logout(PlayerEvent.PlayerLoggedOutEvent event) { leases.remove(event.getEntity().getUUID()); lastInView.remove(event.getEntity().getUUID()); regionObserved.remove(event.getEntity().getUUID()); repairAttempts.remove(event.getEntity().getUUID()); }
     @SubscribeEvent public void dimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {replace(player, List.of());ScopeBlockTargets.clear(player);}
     }
     @SubscribeEvent public void unload(LevelEvent.Unload event) { leases.values().removeIf(lease -> lease.level == event.getLevel()); }
-    @SubscribeEvent public void stopped(ServerStoppedEvent event) { leases.clear(); repairAttempts.clear(); ScopeOcclusion.clear(); tick = 0; }
+    @SubscribeEvent public void stopped(ServerStoppedEvent event) { leases.clear(); lastInView.clear(); regionObserved.clear(); repairAttempts.clear(); ScopeOcclusion.clear(); tick = 0; }
 }

@@ -235,6 +235,13 @@ public final class ScopeActivity {
         return result;
     }
 
+    /** Observation follows this player's existing region lease, including in-flight holds; never renews it. */
+    public boolean retainsObservation(ServerPlayer player, Entity entity) {
+        if(entity.level()!=player.serverLevel())return false;
+        var address=new Address(player.serverLevel(),entity.chunkPosition().x,entity.chunkPosition().z);
+        return regions.values().stream().anyMatch(r->ownedBy(r,player.getUUID()) && contains(r.key,address,r.key.radius));
+    }
+
     public boolean active(Entity entity) {
         var settings = ServerConfig.current();
         return settings.available() && settings.activity().enabled() && settings.scopeRendering().enabled()

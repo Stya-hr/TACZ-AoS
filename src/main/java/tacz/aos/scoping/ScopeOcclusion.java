@@ -80,7 +80,9 @@ public final class ScopeOcclusion {
             roster.add(new ScopeOcclusionPayload.Target(entity.getId(),entity.getUUID(),admitted,admitted?needs:List.of()));
         }
         s.motion.keySet().retainAll(ordered.stream().map(Entity::getUUID).collect(java.util.stream.Collectors.toSet()));
-        if(targets.isEmpty()||!cfg.enabled())s.jobs.clear();
+        boolean keepSession=cfg.enabled() && tacz.aos.config.ServerConfig.current().scopeRendering().enabled()
+                && tacz.aos.compat.tacz.TaczBridge.evaluate(player).eligible();
+        if(!keepSession)s.jobs.clear();
         else {
             // Under pressure prepare the nearest section ring on every side first, not X-order slices.
             // Prefer acknowledged data among equally close candidates to avoid optional-cache churn.
@@ -111,6 +113,6 @@ public final class ScopeOcclusion {
         var packet=new ScopeOcclusionPayload(player.level().dimension().location(),regions,roster,updates);
         var manifest=new ScopeOcclusionPayload(packet.dimension(),regions,roster,List.of());
         if(!updates.isEmpty()||!manifest.equals(s.last)||tick-s.sent>=20){PacketDelivery.sendToPlayer(player,packet);s.last=manifest;s.sent=tick;}
-        if(targets.isEmpty()||!cfg.enabled())sessions.remove(player.getUUID());
+        if(!keepSession)sessions.remove(player.getUUID());
     }
 }

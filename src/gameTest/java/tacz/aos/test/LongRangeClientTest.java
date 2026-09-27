@@ -368,6 +368,18 @@ public final class LongRangeClientTest {
                 if(occlusionRequested && !occlusionFinished && restored instanceof Cow coverCow) {
                     coverCow.setNoAi(true);coverCow.setNoGravity(true);coverCow.getNavigation().stop();coverCow.setPos(888,80,8);
                     if(coverPhase==8 || coverPhase==9)coverCow.setPos(888,80,16+6*Math.sin((ticks-coverTick)*.23));
+                    // Deliberate server/camera disagreement: recoil may reject a target still visible in the lens.
+                    // Keep the real camera unchanged so GPU checks detect even a single blank return frame.
+                    if(coverPhase==10 && (ticks-coverTick)%16==8) {
+                        float pitch=player.getXRot();
+                        try {
+                            player.setXRot(-35);
+                            var subscriptions=tacz.aos.scoping.ScopeSubscriptions.INSTANCE;
+                            var selected=subscriptions.select(player,25);
+                            if(!selected.contains(coverCow))throw new AssertionError("Recoil removed an already visible target");
+                            subscriptions.replace(player,selected);
+                        } finally {player.setXRot(pitch);}
+                    }
                     if(coverPhase==0){coverPhase=1;coverTick=ticks;retainedAnimalId=coverCow.getId();var other=level.getEntity(cartUuid);if(other!=null)other.setInvisible(true);}
                     if(ticks-coverTick>=(coverPhase==10?180:coverPhase>=6?90:30)) {
                         coverTick=ticks;coverPhase++;

@@ -56,7 +56,7 @@ public final class ScopeViewGameTests {
             helper.assertTrue(selected.size() == 1 && selected.contains(center), "Retained edge target displaced center or exceeded cap");
             center.discard();
             target.setPos(player.getX() + 10, player.getEyeY(), player.getZ() + width * 1.5);
-            helper.assertTrue(!subscriptions.select(player, 25).contains(target), "Target outside release margin survived");
+            helper.assertTrue(subscriptions.select(player, 25).contains(target), "Brief departure bypassed time grace");
             subscriptions.replace(player, List.of());
             target.setPos(player.getX() + 10, player.getEyeY(), player.getZ() + width * 1.25);
             helper.assertTrue(!subscriptions.select(player, 25).contains(target), "New target used retention margin");
