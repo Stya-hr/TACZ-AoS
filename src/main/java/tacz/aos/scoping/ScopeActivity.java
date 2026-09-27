@@ -106,7 +106,7 @@ public final class ScopeActivity {
                     ServerConfig.targeting().stableDegreesPerSecond(),config.stableTicks());
             Vec3 target=ScopeAim.target(player);
             // Read the current aim only; metadata completion never schedules an obsolete target.
-            if(target!=null) consider(player,target,stable);
+            if(stable && target!=null) consider(player,target);
         }
         stability.keySet().removeIf(id->net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(id)==null);
         throttles.keySet().removeIf(id->net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(id)==null);
@@ -125,7 +125,6 @@ public final class ScopeActivity {
         long started = System.nanoTime();
         var shot = tacz.aos.compat.tacz.BallisticPreview.read(player).orElse(null);
         Vec3 target = null;
-        var crossed = new HashSet<Region>();
         String reason = "UNSUPPORTED_PARAMETERS";
         if (shot != null) {
             var limits = settings.ballistics();
@@ -133,18 +132,12 @@ public final class ScopeActivity {
             int ticks = limits.enabled() && limits.extendLifetime() ? limits.maxFlightTicks()
                     : Math.min(life, limits.maxFlightTicks());
             double distance = limits.enabled() ? Math.min(settings.maxDistance(), limits.maxDistance()) : settings.maxDistance();
-            var observed=new LinkedHashMap<Region,AABB>();
-            for(var region:regions.values()) if(region.key.level==player.serverLevel() && region.owners.containsKey(id))
-                observed.put(region,bounds(region.key));
-            var targetBounds=List.copyOf(observed.values());
+            var targetBounds=observationBounds(player);
             var boxes = visible.stream().filter(e -> !e.isRemoved() && e != player && e.isPickable() && targetBounds.stream().anyMatch(b->b.intersects(e.getBoundingBox())))
                     .limit(settings.maxTrackedEntities()).map(Entity::getBoundingBox).toList();
             var result = ImpactPrediction.predict(shot, new tacz.aos.ballistics.TargetCollisionSource(player.serverLevel(),targetBounds),
                     boxes, distance, ticks, settings.scopeRendering().maxTraceCells(),
-                    settings.prediction().maxEntityChecks(), started + budget - predictionNanos, (from,to)-> {
-                        for(var entry:observed.entrySet()) if(!crossed.contains(entry.getKey())
-                                && (entry.getValue().contains(from) || entry.getValue().clip(from,to).isPresent())) crossed.add(entry.getKey());
-                    });
+                    settings.prediction().maxEntityChecks(), started + budget - predictionNanos);
             target = result.target(); reason = result.end().name();
         }
         predictionNanos += System.nanoTime() - started;
@@ -153,8 +146,6 @@ public final class ScopeActivity {
                     player.getGameProfile().getName(), reason, target);
         }
         predictions.put(id, new PredictionState(player.serverLevel(), clock + settings.prediction().intervalTicks(), reason));
-        // A path through air still keeps its already-owned core alive. Prediction never admits new terrain.
-        for(var region:crossed) region.owners.put(id,clock+settings.activity().retentionTicks());
         if(target!=null) for(var region:regions.values()) {
             var k=region.key;
             if(k.level==player.serverLevel() && region.owners.containsKey(id)
@@ -165,9 +156,6 @@ public final class ScopeActivity {
 
     /** Admission entry point for server-validated candidates. Every new region requires generated terrain metadata. */
     public void consider(ServerPlayer player, Vec3 target) {
-        consider(player,target,true);
-    }
-    private void consider(ServerPlayer player, Vec3 target, boolean allowNewRegion) {
         var id = player.getUUID();
         if (!enabled(player) || target == null || !Double.isFinite(target.x + target.y + target.z)
                 || target.distanceToSqr(player.getEyePosition()) > Math.pow(ServerConfig.current().maxDistance(), 2)) {
@@ -176,26 +164,23 @@ public final class ScopeActivity {
         var config = ServerConfig.current().activity();
         var pos = new ChunkPos(BlockPos.containing(target));
         Key key = new Key(player.serverLevel(), pos.x, pos.z, config.radius());
+        // All attempts, even unknown terrain or budget refusals, share the short check interval.
+        var throttle=throttles.computeIfAbsent(id,ignored->new ScopeLoadThrottle());
+        var targeting=ServerConfig.targeting();
+        if(!throttle.tryCheck(clock,targeting.requestIntervalTicks()))return;
         Region retained=null;
         for(var region:regions.values()) if(ownedBy(region,id)
                 && contains(region.key,new Address(key.level,key.x,key.z),region.key.radius)) {retained=region;break;}
         var shared=regions.get(key);
-        // Fast movement blocks new admission, not renewal of the region we already own.
-        // Reusing tickets needs neither disk metadata nor another request cooldown.
+        // Cheap reuse keeps observed entities alive even when a new region would still be on cooldown.
+        if(retained==null && shared==null && !throttle.canStart(clock,targeting.newRegionIntervalTicks()))return;
+        var generated=tacz.aos.terrain.GeneratedChunks.INSTANCE;
+        if(generated.path(player.serverLevel(),player.getEyePosition(),target)!=tacz.aos.terrain.GeneratedChunks.State.FULL) {unknown++;return;}
         if(retained!=null) {
             retained.owners.put(id,clock+config.retentionTicks());
             retained.views.put(id,new View(player.getEyePosition(),player.getViewVector(1)));
             return;
         }
-        if(!allowNewRegion)return;
-        // All new attempts, even unknown terrain or budget refusals, share the short check interval.
-        var throttle=throttles.computeIfAbsent(id,ignored->new ScopeLoadThrottle());
-        var targeting=ServerConfig.targeting();
-        if(!throttle.tryCheck(clock,targeting.requestIntervalTicks()))return;
-        // Cheap reuse keeps observed entities alive even when a new region would still be on cooldown.
-        if(retained==null && shared==null && !throttle.canStart(clock,targeting.newRegionIntervalTicks()))return;
-        var generated=tacz.aos.terrain.GeneratedChunks.INSTANCE;
-        if(generated.path(player.serverLevel(),player.getEyePosition(),target)!=tacz.aos.terrain.GeneratedChunks.State.FULL) {unknown++;return;}
         long owned = regions.values().stream().filter(r -> ownedBy(r, id)).count();
         if (owned >= config.maxRegionsPerPlayer()) { budgetDenied++; return; }
         if (shared != null) {
@@ -244,33 +229,10 @@ public final class ScopeActivity {
         for (var region : regions.values()) {
             var k=region.key;
             if (k.level != player.serverLevel() || !region.owners.containsKey(player.getUUID())) continue;
-            result.add(bounds(k));
+            result.add(new AABB((k.x-k.radius)*16,k.level.getMinBuildHeight(),(k.z-k.radius)*16,
+                    (k.x+k.radius+1)*16,k.level.getMaxBuildHeight(),(k.z+k.radius+1)*16));
         }
         return result;
-    }
-    private static AABB bounds(Key k) {
-        return new AABB((k.x-k.radius)*16,k.level.getMinBuildHeight(),(k.z-k.radius)*16,
-                (k.x+k.radius+1)*16,k.level.getMaxBuildHeight(),(k.z+k.radius+1)*16);
-    }
-
-    /** A displayable remote body must fit wholly in this observer's collision cores.
-     * Readiness checks never acquire terrain; dependency halos alone cannot authorize display.
-     */
-    public boolean observable(ServerPlayer player, AABB body) {
-        var level=player.serverLevel();
-        boolean covered=false;
-        for(var region:regions.values()) {
-            if(region.key.level!=level || !region.owners.containsKey(player.getUUID()))continue;
-            var core=bounds(region.key);
-            if(body.minX>=core.minX && body.maxX<core.maxX && body.minY>=core.minY && body.maxY<core.maxY
-                    && body.minZ>=core.minZ && body.maxZ<core.maxZ && ready(region.key)) {covered=true;break;}
-        }
-        if(!covered)return false;
-        int x0=net.minecraft.util.Mth.floor(body.minX)>>4,x1=net.minecraft.util.Mth.floor(body.maxX)>>4;
-        int z0=net.minecraft.util.Mth.floor(body.minZ)>>4,z1=net.minecraft.util.Mth.floor(body.maxZ)>>4;
-        for(int x=x0-1;x<=x1+1;x++)for(int z=z0-1;z<=z1+1;z++)
-            if(level.getChunkSource().getChunkNow(x,z)==null)return false;
-        return true;
     }
 
     public boolean active(Entity entity) {

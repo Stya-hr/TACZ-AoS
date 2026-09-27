@@ -11,24 +11,25 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import tacz.aos.occlusion.OcclusionShapes;
 
-/** Bounded replacement of short-lived visual occluders; never inserts client chunks. */
+/** Bounded refresh with an authoritative target roster; incomplete scans do not erase known cover. */
 public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targets) implements ModPayload {
     public static final int MAX_BOXES=256, MAX_PER_TARGET=32, MAX_TEXTURED=256, MAX_TEXTURED_PER_TARGET=64;
     public record Textured(BlockPos offset, BlockState state) {
         public Textured {
             offset=offset.immutable();
-            if(Math.abs((long)offset.getX())>64 || Math.abs((long)offset.getY())>64 || Math.abs((long)offset.getZ())>64
+            if(Math.abs((long)offset.getX())>128 || Math.abs((long)offset.getY())>128 || Math.abs((long)offset.getZ())>128
                     || !OcclusionShapes.textured(state)) throw new IllegalArgumentException("Invalid textured occluder");
         }
     }
-    public record Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes,List<Textured> textured) {
-        public Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes) { this(id,uuid,origin,boxes,List.of()); }
+    public record Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes,List<Textured> textured,boolean complete) {
+        public Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes) { this(id,uuid,origin,boxes,List.of(),true); }
+        public Target(int id,UUID uuid,BlockPos origin,List<OccluderBox> boxes,List<Textured> textured) { this(id,uuid,origin,boxes,textured,true); }
         public Target {
             origin=origin.immutable();boxes=List.copyOf(boxes);textured=List.copyOf(textured);
             if(textured.size()>MAX_TEXTURED_PER_TARGET)throw new IllegalArgumentException("Too many textured occluders");
             if(boxes.size()>MAX_PER_TARGET)throw new IllegalArgumentException("Too many target occluders");
-            for(var b:boxes)if(Math.max(Math.abs(b.minX()),Math.abs(b.maxX()))>64 || Math.max(Math.abs(b.minY()),Math.abs(b.maxY()))>64
-                    || Math.max(Math.abs(b.minZ()),Math.abs(b.maxZ()))>64)throw new IllegalArgumentException("Occluder outside local region");
+            for(var b:boxes)if(Math.max(Math.abs(b.minX()),Math.abs(b.maxX()))>128 || Math.max(Math.abs(b.minY()),Math.abs(b.maxY()))>128
+                    || Math.max(Math.abs(b.minZ()),Math.abs(b.maxZ()))>128)throw new IllegalArgumentException("Occluder outside local region");
         }
     }
     public static final Type<ScopeOcclusionPayload> TYPE=new Type<>(new ResourceLocation("tacz_aos","scope_occlusion"), ScopeOcclusionPayload.class);
@@ -50,7 +51,7 @@ public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targ
                 if(plants<0 || plants>MAX_TEXTURED_PER_TARGET || totalTextured>MAX_TEXTURED)throw new IllegalArgumentException("Invalid textured count");
                 var textured=new ArrayList<Textured>();
                 for(int j=0;j<plants;j++)textured.add(new Textured(b.readBlockPos(),Block.stateById(b.readVarInt())));
-                targets.add(new Target(id,uuid,origin,boxes,textured));
+                targets.add(new Target(id,uuid,origin,boxes,textured,b.readBoolean()));
             }
             return new ScopeOcclusionPayload(dim,targets);
         }
@@ -58,8 +59,19 @@ public record ScopeOcclusionPayload(ResourceLocation dimension,List<Target> targ
             b.writeResourceLocation(p.dimension);b.writeVarInt(p.targets.size());
             for(var t:p.targets){b.writeVarInt(t.id);b.writeUUID(t.uuid);b.writeBlockPos(t.origin);b.writeVarInt(t.boxes.size());
                 for(var a:t.boxes){b.writeFloat((float)a.minX());b.writeFloat((float)a.minY());b.writeFloat((float)a.minZ());b.writeFloat((float)a.maxX());b.writeFloat((float)a.maxY());b.writeFloat((float)a.maxZ());}
-                b.writeVarInt(t.textured.size());for(var plant:t.textured){b.writeBlockPos(plant.offset);b.writeVarInt(Block.getId(plant.state));}}
+                b.writeVarInt(t.textured.size());for(var plant:t.textured){b.writeBlockPos(plant.offset);b.writeVarInt(Block.getId(plant.state));}b.writeBoolean(t.complete);}
         }
     };
+    /** A complete empty result clears removed cover. An unscanned target keeps its last known geometry.
+     * Absence from the roster removes subscriptions immediately; IDs cannot carry cover across UUIDs. */
+    public Map<Integer,Target> merge(Map<Integer,Target> previous) {
+        var next=new HashMap<Integer,Target>();
+        for(var target:targets) {
+            var old=previous.get(target.id);
+            next.put(target.id,!target.complete && old!=null && old.uuid.equals(target.uuid)
+                    && (!old.boxes.isEmpty() || !old.textured.isEmpty()) ? old : target);
+        }
+        return next;
+    }
     public Type<? extends ModPayload> type(){return TYPE;}
 }

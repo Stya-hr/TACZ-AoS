@@ -28,7 +28,7 @@ import java.util.UUID;
 @GameTestHolder(TaczArtOfSniping.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class ScopeViewGameTests {
-    @GameTest(setupTicks = 20, template = "ballistics", batch = "lensMarginRetainsTargetsWithoutCorridorQueriesOrExceedingCountLimit")
+    @GameTest(setupTicks = 20, template = "ballistics", batch = "scope_views")
     public static void lensMarginRetainsTargetsWithoutCorridorQueriesOrExceedingCountLimit(GameTestHelper helper) {
         var level = helper.getLevel();
         var player = FakePlayerFactory.get(level, new GameProfile(UUID.randomUUID(), "scope-margin"));
@@ -42,38 +42,36 @@ public final class ScopeViewGameTests {
         target.setPos(player.getX() + 10, player.getEyeY(), player.getZ() + width * 1.05);
         level.addFreshEntity(target);
         var subscriptions = ScopeSubscriptions.INSTANCE;
-        ObservationFixture.ready(helper, player, target.position(), () -> {
-            int loaded = level.getChunkSource().getLoadedChunksCount();
-            try {
-                LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(original.available(), original.policy(), 20, 1, original.diagnostics(), original.ballistics(), original.scopeRendering(), original.activity(), ServerConfig.DEFAULT_PREDICTION));
-                ScopeViews.INSTANCE.receive(player, new ScopeViewPayload(level.dimension().location(), 25, 0.1f));
-                helper.assertTrue(subscriptions.select(player, 25).contains(target), "Prefetch outside viewport failed");
-                subscriptions.replace(player, List.of(target));
-                target.setPos(player.getX() + 10, player.getEyeY(), player.getZ() + width * 1.25);
-                helper.assertTrue(subscriptions.select(player, 25).contains(target), "Release margin dropped existing target");
-                center.setPos(player.getX() + 10, player.getEyeY(), player.getZ());
-                level.addFreshEntity(center);
-                var selected = subscriptions.select(player, 25);
-                helper.assertTrue(selected.size() == 1 && selected.contains(center), "Retained edge target displaced center or exceeded cap");
-                center.discard();
-                target.setPos(player.getX() + 10, player.getEyeY(), player.getZ() + width * 1.5);
-                helper.assertTrue(!subscriptions.select(player, 25).contains(target), "Target outside release margin survived");
-                subscriptions.replace(player, List.of());
-                target.setPos(player.getX() + 10, player.getEyeY(), player.getZ() + width * 1.25);
-                helper.assertTrue(!subscriptions.select(player, 25).contains(target), "New target used retention margin");
-                subscriptions.replace(player, List.of(target));
-                helper.setBlock(new BlockPos(9, 5, 4), Blocks.STONE);
-                helper.assertTrue(subscriptions.select(player, 25).contains(target), "Selection unexpectedly required corridor visibility");
-                helper.assertTrue(level.getChunkSource().getLoadedChunksCount() == loaded, "Expanded selection loaded chunks");
-            } finally {
-                IGunOperator.fromLivingEntity(player).aim(false);
-                subscriptions.replace(player, List.of());
-                ScopeViews.INSTANCE.logout(new PlayerEvent.PlayerLoggedOutEvent(player));
-                target.discard(); center.discard();
-                LocalBallisticsGameTests.setSettings(original);
-            }
-            helper.succeed();
-        });
+        int loaded = level.getChunkSource().getLoadedChunksCount();
+        try {
+            LocalBallisticsGameTests.setSettings(new ServerConfig.Settings(original.available(), original.policy(), 20, 1, original.diagnostics(), original.ballistics(), original.scopeRendering(), original.activity(), ServerConfig.DEFAULT_PREDICTION));
+            ScopeViews.INSTANCE.receive(player, new ScopeViewPayload(level.dimension().location(), 25, 0.1f));
+            helper.assertTrue(subscriptions.select(player, 25).contains(target), "Prefetch outside viewport failed");
+            subscriptions.replace(player, List.of(target));
+            target.setPos(player.getX() + 10, player.getEyeY(), player.getZ() + width * 1.25);
+            helper.assertTrue(subscriptions.select(player, 25).contains(target), "Release margin dropped existing target");
+            center.setPos(player.getX() + 10, player.getEyeY(), player.getZ());
+            level.addFreshEntity(center);
+            var selected = subscriptions.select(player, 25);
+            helper.assertTrue(selected.size() == 1 && selected.contains(center), "Retained edge target displaced center or exceeded cap");
+            center.discard();
+            target.setPos(player.getX() + 10, player.getEyeY(), player.getZ() + width * 1.5);
+            helper.assertTrue(!subscriptions.select(player, 25).contains(target), "Target outside release margin survived");
+            subscriptions.replace(player, List.of());
+            target.setPos(player.getX() + 10, player.getEyeY(), player.getZ() + width * 1.25);
+            helper.assertTrue(!subscriptions.select(player, 25).contains(target), "New target used retention margin");
+            subscriptions.replace(player, List.of(target));
+            helper.setBlock(new BlockPos(9, 5, 4), Blocks.STONE);
+            helper.assertTrue(subscriptions.select(player, 25).contains(target), "Selection unexpectedly required corridor visibility");
+            helper.assertTrue(level.getChunkSource().getLoadedChunksCount() == loaded, "Expanded selection loaded chunks");
+        } finally {
+            IGunOperator.fromLivingEntity(player).aim(false);
+            subscriptions.replace(player, List.of());
+            ScopeViews.INSTANCE.logout(new PlayerEvent.PlayerLoggedOutEvent(player));
+            target.discard(); center.discard();
+            LocalBallisticsGameTests.setSettings(original);
+        }
+        helper.succeed();
     }
 
     @GameTest(setupTicks = 20, template = "ballistics", batch = "scope_views")

@@ -27,8 +27,7 @@ public final class ScopeBlockTargets {
                     var chunk=level.getChunkSource().getChunkNow(x,z);if(chunk==null)continue;
                     for(var be:chunk.getBlockEntities().values()) {
                         if(++visited>settings.scopeRendering().maxCandidates())break outer;
-                        if(!(be instanceof TargetBlockEntity target) || target.isRemoved()
-                                || !ScopeActivity.INSTANCE.observable(player,new net.minecraft.world.phys.AABB(be.getBlockPos()).expandTowards(0,1,0)))continue;
+                        if(!(be instanceof TargetBlockEntity target) || target.isRemoved())continue;
                         var offset=Vec3.atBottomCenterOf(be.getBlockPos()).add(0,1,0).subtract(eye);
                         if(ScopeCone.containsAtAngle(offset.x,offset.y,offset.z,direction.x,direction.y,direction.z,1.3,settings.maxDistance(),angle))found.add(target);
                     }

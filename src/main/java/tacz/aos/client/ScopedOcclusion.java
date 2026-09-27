@@ -12,6 +12,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -26,7 +27,7 @@ public final class ScopedOcclusion {
     private static ClientLevel level;
     private static long received;
     private static final Map<Integer,ScopeOcclusionPayload.Target> targets=new HashMap<>();
-    private static ShadowClipper.Budget budget=new ShadowClipper.Budget(0);
+    private static int budgetPerEntity;
     private static int inputPolygons,outputPolygons;
     public record Stats(int input,int output,int clipped) {}
     private static final Map<Integer,Stats> stats=new HashMap<>();
@@ -36,24 +37,25 @@ public final class ScopedOcclusion {
     public static int inputPolygons(){return inputPolygons;}
     public static int outputPolygons(){return outputPolygons;}
     private ScopedOcclusion(){}
-    static void install(ScopeOcclusionPayload payload) {
+    public static void setup(FMLClientSetupEvent event){event.enqueueWork(()->ScopeNetworking.setOcclusionReceiver(ScopedOcclusion::receive));}
+    private static void receive(ScopeOcclusionPayload payload) {
         var mc=Minecraft.getInstance();if(mc.level==null || !mc.level.dimension().location().equals(payload.dimension()))return;
-        level=mc.level;received=level.getGameTime();targets.clear();for(var target:payload.targets())targets.put(target.id(),target);
-    }
-    public static boolean ready(Entity entity) {
-        var mask=targets.get(entity.getId());
-        return level==entity.level() && mask!=null && mask.uuid().equals(entity.getUUID());
+        if(level!=mc.level)targets.clear();
+        level=mc.level;received=level.getGameTime();var next=payload.merge(targets);targets.clear();targets.putAll(next);
     }
     public static void beginFrame() {
-        stats.clear();inputPolygons=outputPolygons=0;budget=new ShadowClipper.Budget(ServerConfig.occlusion().planeTestsPerFrame());
+        stats.clear();inputPolygons=outputPolygons=0;
         var mc=Minecraft.getInstance();if(level!=mc.level || level==null || level.getGameTime()-received>40){targets.clear();level=mc.level;}
+        // Each entity has an independent share. Draw order cannot consume a neighbour's clipping work.
+        long count=targets.values().stream().filter(t->!t.boxes().isEmpty()).count();
+        budgetPerEntity=ServerConfig.occlusion().planeTestsPerFrame()/(int)Math.max(1,count);
     }
-    public static void renderVegetation(com.mojang.blaze3d.vertex.PoseStack pose, Vec3 eye) {
-        if(ServerConfig.occlusion().enabled()) VegetationOcclusion.render(targets.values(),pose,eye);
+    public static VegetationOcclusion.Mask renderVegetation(com.mojang.blaze3d.vertex.PoseStack pose, Vec3 eye) {
+        return VegetationOcclusion.render(ServerConfig.occlusion().enabled()?targets.values():List.of(),pose,eye);
     }
     public static ClippedSource forEntity(Entity entity,Vec3 camera,Matrix4f pose,MultiBufferSource source) {
         var t=targets.get(entity.getId());
-        if(!ServerConfig.occlusion().enabled() || t==null || !t.uuid().equals(entity.getUUID()) || level!=entity.level() || budget.remaining()==0)return null;
+        if(!ServerConfig.occlusion().enabled() || t==null || !t.uuid().equals(entity.getUUID()) || level!=entity.level())return null;
         var inverseTranspose=new Matrix4f(pose).invert().transpose();
         var shadows=new ArrayList<List<ShadowClipper.Plane>>();
         for(var box:t.boxes()) {
@@ -66,7 +68,7 @@ public final class ScopedOcclusion {
             }
             if(!planes.isEmpty())shadows.add(planes);
         }
-        return shadows.isEmpty()?null:new ClippedSource(source,shadows,budget,entity.getId());
+        return shadows.isEmpty()?null:new ClippedSource(source,shadows,new ShadowClipper.Budget(budgetPerEntity),entity.getId());
     }
     public static final class ClippedSource implements MultiBufferSource,AutoCloseable {
         private final MultiBufferSource source;
@@ -125,5 +127,5 @@ public final class ScopedOcclusion {
             }
         }
     }
-    @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event){targets.clear();level=null;received=0;}
+    @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut event){targets.clear();level=null;received=0;VegetationOcclusion.clear();}
 }

@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.UUID;
 
 /** Bounded render leases and poses. Native tracking supplies spawn/type/metadata/equipment/removal packets. */
-public record ScopeTargetsPayload(ResourceLocation dimension, int interval, List<Target> targets, ScopeOcclusionPayload occlusion) implements ModPayload {
+public record ScopeTargetsPayload(ResourceLocation dimension, int interval, List<Target> targets) implements ModPayload {
     public record Target(int id, UUID uuid, double x, double y, double z, float yaw, float pitch,
                          float headYaw, float bodyYaw, int light, boolean extra) {}
     public static final int MAX_TARGETS = 256;
@@ -26,7 +26,7 @@ public record ScopeTargetsPayload(ResourceLocation dimension, int interval, List
                 targets.add(new Target(buf.readVarInt(), buf.readUUID(), buf.readDouble(), buf.readDouble(), buf.readDouble(),
                         buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readInt(), buf.readBoolean()));
             }
-            return new ScopeTargetsPayload(dimension, interval, targets, ScopeOcclusionPayload.STREAM_CODEC.decode(buf));
+            return new ScopeTargetsPayload(dimension, interval, targets);
         }
         @Override public void encode(FriendlyByteBuf buf, ScopeTargetsPayload payload) {
             buf.writeResourceLocation(payload.dimension);
@@ -38,18 +38,10 @@ public record ScopeTargetsPayload(ResourceLocation dimension, int interval, List
                 buf.writeFloat(target.yaw); buf.writeFloat(target.pitch); buf.writeFloat(target.headYaw); buf.writeFloat(target.bodyYaw);
                 buf.writeInt(target.light); buf.writeBoolean(target.extra);
             }
-            ScopeOcclusionPayload.STREAM_CODEC.encode(buf,payload.occlusion);
         }
     };
     public ScopeTargetsPayload {
         targets = List.copyOf(targets);
-        if(!dimension.equals(occlusion.dimension()) || targets.size()!=occlusion.targets().size())
-            throw new IllegalArgumentException("Mismatched observation geometry");
-        var masks=new java.util.HashMap<Integer,UUID>();
-        for(var mask:occlusion.targets())if(masks.put(mask.id(),mask.uuid())!=null)
-            throw new IllegalArgumentException("Duplicate observation geometry");
-        for(var target:targets)if(!target.uuid().equals(masks.remove(target.id())))
-            throw new IllegalArgumentException("Pose without matching geometry");
         if (interval < 2 || interval > 20 || targets.size() > MAX_TARGETS) throw new IllegalArgumentException("Invalid scope lease bounds");
         for (var target : targets) {
             if (!Double.isFinite(target.x + target.y + target.z + target.yaw + target.pitch + target.headYaw + target.bodyYaw)

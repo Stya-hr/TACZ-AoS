@@ -13,7 +13,9 @@ import java.util.function.Consumer;
 /** Client installation supplies the receiver; this class never links client-only Minecraft classes. */
 public final class ScopeNetworking {
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
-            new ResourceLocation("tacz_aos", "main"), () -> "forge-5", "forge-5"::equals, "forge-5"::equals);
+            new ResourceLocation("tacz_aos", "main"), () -> "forge-9", "forge-9"::equals, "forge-9"::equals);
+    private static Consumer<ScopeOcclusionPayload> occlusionReceiver = ignored -> {};
+    public static void setOcclusionReceiver(Consumer<ScopeOcclusionPayload> handler){occlusionReceiver=handler;}
     private static Consumer<ScopeTargetsPayload> receiver = ignored -> {};
     private static Consumer<ScopeBlockTargetsPayload> blockTargetReceiver = ignored -> {};
     public static void setBlockTargetReceiver(Consumer<ScopeBlockTargetsPayload> handler){blockTargetReceiver=handler;}
@@ -29,6 +31,7 @@ public final class ScopeNetworking {
     public static void setTrailReceiver(Consumer<ShotTrailsPayload> handler) { trailReceiver = handler; }
     public static void register() {
         var registrar = new Registrar();
+        registrar.playToClient(ScopeOcclusionPayload.TYPE,ScopeOcclusionPayload.STREAM_CODEC,(payload,context)->occlusionReceiver.accept(payload));
         registrar.playToClient(DistantGunshotPayload.TYPE, DistantGunshotPayload.STREAM_CODEC,
                 (payload, context) -> distantGunshotReceiver.accept(payload));
         registrar.playToClient(ScopeBlockTargetsPayload.TYPE, ScopeBlockTargetsPayload.STREAM_CODEC,

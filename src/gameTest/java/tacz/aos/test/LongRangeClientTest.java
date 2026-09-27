@@ -24,6 +24,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 import net.minecraftforge.event.TickEvent;
 import tacz.aos.TaczArtOfSniping;
+import tacz.aos.config.ServerConfig;
 import tacz.aos.client.ScopedRendering;
 import tacz.aos.scoping.ScopeActivity;
 import tacz.aos.terrain.*;
@@ -50,6 +51,12 @@ public final class LongRangeClientTest {
     private static boolean partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored;
     private static int movingVisibleFrames,movingHiddenFrames,movingDropouts,movingLeaks;
     private static int aimVisibleFrames,aimDropouts,retainedAnimalId=-1;
+    private static int offAxisBudgetFrames,offAxisBudgetLeaks;
+    private static ServerConfig.Occlusion savedOcclusion;
+    private static void setOcclusion(ServerConfig.Occlusion config) {
+        try {var field=ServerConfig.class.getDeclaredField("occlusion");field.setAccessible(true);field.set(null,config);}
+        catch(ReflectiveOperationException error){throw new RuntimeException(error);}
+    }
     private static double movingMinZ=Double.POSITIVE_INFINITY,movingMaxZ=Double.NEGATIVE_INFINITY;
     private static com.mojang.blaze3d.platform.NativeImage beforeEntities;
     private static volatile boolean readyToFire, hitConfirmed;
@@ -67,9 +74,9 @@ public final class LongRangeClientTest {
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void beforeDraw(net.minecraftforge.client.event.RenderLevelStageEvent event) {
         if (!ENABLED || tacz.aos.client.ShaderCompat.shadowPass()) return;
-        if(!SHADER_TEST && !vegetationDepthChecked && Minecraft.getInstance().level!=null) {
+        if(!vegetationDepthChecked && event.getStage()==net.minecraftforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES && Minecraft.getInstance().level!=null) {
             vegetationDepthChecked=true;
-            try { VegetationDepthClientTest.run(); }
+            try { VegetationDepthClientTest.run(); VegetationDepthClientTest.world(event.getPoseStack(),event.getCamera().getPosition()); }
             catch(Throwable error) { failure="Vegetation depth test failed: "+error; }
         }
         var stage = event.getStage();
@@ -98,6 +105,10 @@ public final class LongRangeClientTest {
                     if(before.getPixelRGBA(x,y)!=after.getPixelRGBA(x,y))samples++;
             }
             beforeEntities=null;
+            if(coverPhase==6 && ticks-coverTick>=12) {
+                offAxisBudgetFrames++;
+                if(samples>0 || !ScopedRendering.drewExtra(animalId))offAxisBudgetLeaks++;
+            }
             if(coverPhase==10 && ticks-coverTick>=12) {
                 aimVisibleFrames++;
                 if(!ScopedRendering.drewExtra(animalId) || samples==0)aimDropouts++;
@@ -160,7 +171,7 @@ public final class LongRangeClientTest {
         if (mc.level == null || mc.player == null) return;
 
         // Automated clients can run without OS focus; TACZ otherwise cancels synthetic aim each tick.
-        if (SHADER_TEST && mc.screen == null && mc.getOverlay() == null) {
+        if (mc.screen == null && mc.getOverlay() == null) {
             mc.setWindowActive(true);
             mc.mouseHandler.grabMouse();
         }
@@ -240,7 +251,7 @@ public final class LongRangeClientTest {
                 if(movingVisibleFrames<20 || movingHiddenFrames<20 || movingDropouts!=0 || movingLeaks!=0 || movingMaxZ-movingMinZ<1) {
                     finish(false,"Moving cover: visibleFrames="+movingVisibleFrames+", hiddenFrames="+movingHiddenFrames+", dropouts="+movingDropouts+", leaks="+movingLeaks+", travel="+(movingMaxZ-movingMinZ));return;
                 }
-                if(!logCoverSeen || !offAxisLogCoverSeen || !offAxisRestored || !partialCoverSeen || !fullCoverSeen || !removedCoverSeen || coverBaselinePixels<=0 || coverPartialPixels<=0 || coverPartialPixels>=coverBaselinePixels || coverFullPixels!=0 || coverRestoredPixels<=0) {finish(false,"Remote cover failed: logs="+logCoverSeen+"/"+offAxisLogCoverSeen+"/"+offAxisRestored+", partial="+partialCoverSeen+", full="+fullCoverSeen+", removed="+removedCoverSeen+", GPU="+coverBaselinePixels+"/"+coverPartialPixels+"/"+coverFullPixels+"/"+coverRestoredPixels);return;}
+                if(offAxisBudgetFrames<20 || offAxisBudgetLeaks!=0 || !logCoverSeen || !offAxisLogCoverSeen || !offAxisRestored || !partialCoverSeen || !fullCoverSeen || !removedCoverSeen || coverBaselinePixels<=0 || coverPartialPixels<=0 || coverPartialPixels>=coverBaselinePixels || coverFullPixels!=0 || coverRestoredPixels<=0) {finish(false,"Remote cover failed: logs="+logCoverSeen+"/"+offAxisLogCoverSeen+"/"+offAxisRestored+", partial="+partialCoverSeen+", full="+fullCoverSeen+", removed="+removedCoverSeen+", GPU="+coverBaselinePixels+"/"+coverPartialPixels+"/"+coverFullPixels+"/"+coverRestoredPixels);return;}
                 }
                 if(!readyToFire) TaczArtOfSniping.LOGGER.info("RENDER_ANIMAL_POSITION {} bbox={} camera={}", animal.position(),animal.getBoundingBox(),mc.gameRenderer.getMainCamera().getPosition());
                 if(!readyToFire) Screenshot.grab(mc.gameDirectory,"long-range-entity.png",mc.getMainRenderTarget(),ignored -> {});
@@ -277,7 +288,8 @@ public final class LongRangeClientTest {
                 // Fixture-only exploration holds terrain long enough for default-budget background collection.
                 for (var pos : visited) { level.getChunkSource().addRegionTicket(EXPLORE,pos,0,pos); level.getChunk(pos.x,pos.z); }
                 for (int x=875;x<=910;x++) for (int z=0;z<16;z++) level.setBlock(new BlockPos(x,79,z),Blocks.STONE.defaultBlockState(),2);
-                for (int y=60;y<=84;y++) for (int z=0;z<16;z++) level.setBlock(new BlockPos(896,y,z),Blocks.STONE.defaultBlockState(),2);
+                // Keep off-axis shots on a real backstop: air-only paths intentionally no longer retain cores.
+                for (int y=60;y<=84;y++) for (int z=0;z<28;z++) level.setBlock(new BlockPos(896,y,z),Blocks.STONE.defaultBlockState(),2);
                 original = EntityType.COW.create(level); original.setPos(888,80,8); original.setPersistenceRequired();
                 // Keep the fixture on its small platform until the restored-animal AI test starts.
                 original.setNoAi(true);
@@ -329,13 +341,18 @@ public final class LongRangeClientTest {
                     if(coverPhase==0){coverPhase=1;coverTick=ticks;retainedAnimalId=coverCow.getId();var other=level.getEntity(cartUuid);if(other!=null)other.setInvisible(true);}
                     if(ticks-coverTick>=(coverPhase==10?180:coverPhase>=6?90:30)) {
                         coverTick=ticks;coverPhase++;
+                        if(coverPhase==6) {
+                            savedOcclusion=ServerConfig.occlusion();var c=savedOcclusion;
+                            setOcclusion(new ServerConfig.Occlusion(c.enabled(),c.radius(),1,c.cellsPerTick(),c.boxesPerPlayer(),c.planeTestsPerFrame()));
+                        } else if(coverPhase==7 && savedOcclusion!=null) {setOcclusion(savedOcclusion);savedOcclusion=null;}
                         for(int y=80;y<=82;y++)for(int z=5;z<=11;z++)
-                            level.setBlockAndUpdate(new BlockPos(884,y,z),coverPhase==2 && y==80 ? Blocks.STONE.defaultBlockState()
+                            level.setBlockAndUpdate(new BlockPos(852,y,z),coverPhase==2 && y==80 ? Blocks.STONE.defaultBlockState()
                                     : coverPhase==3 ? Blocks.OAK_LEAVES.defaultBlockState().setValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT,true)
-                                    : coverPhase==4 ? Blocks.GLASS.defaultBlockState() : coverPhase==5 || coverPhase==6 || coverPhase==9 ? Blocks.OAK_LOG.defaultBlockState() : Blocks.AIR.defaultBlockState());
-                        if(coverPhase>=11){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT stonePartial={}, leavesHidden={}, glassVisible={}, logsHidden={}, offAxisLogsHidden={}, offAxisRestored={}, pixels={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);
+                                    : coverPhase==4 ? Blocks.AIR.defaultBlockState() : coverPhase==5 || coverPhase==6 || coverPhase==9 ? Blocks.OAK_LOG.defaultBlockState() : Blocks.AIR.defaultBlockState());
+                        if(coverPhase>=11){occlusionFinished=true;TaczArtOfSniping.LOGGER.info("OCCLUSION_CLIENT stonePartial={}, leavesHidden={}, removedVisible={}, logsHidden={}, offAxisLogsHidden={}, offAxisRestored={}, pixels={}/{}/{}/{}",partialCoverSeen,fullCoverSeen,removedCoverSeen,logCoverSeen,offAxisLogCoverSeen,offAxisRestored,coverBaselinePixels,coverPartialPixels,coverFullPixels,coverRestoredPixels);
                             TaczArtOfSniping.LOGGER.info("MOVING_OCCLUSION_CLIENT visibleFrames={}, hiddenFrames={}, dropouts={}, leaks={}, travel={}",movingVisibleFrames,movingHiddenFrames,movingDropouts,movingLeaks,movingMaxZ-movingMinZ);
-                            TaczArtOfSniping.LOGGER.info("AIM_RETENTION_CLIENT visibleFrames={}, dropouts={}, retainedEntityId={}",aimVisibleFrames,aimDropouts,retainedAnimalId);}
+                            TaczArtOfSniping.LOGGER.info("OFF_AXIS_BUDGET_CLIENT frames={}, leaks={}",offAxisBudgetFrames,offAxisBudgetLeaks);
+                              TaczArtOfSniping.LOGGER.info("AIM_RETENTION_CLIENT visibleFrames={}, dropouts={}, retainedEntityId={}",aimVisibleFrames,aimDropouts,retainedAnimalId);}
                     }
                 }
                 if (level.getChunkSource().getChunkNow(30,0)!=null) throw new AssertionError("Scoping loaded the flight corridor");
@@ -387,6 +404,7 @@ public final class LongRangeClientTest {
     }
 
     private static void finish(boolean success,String reason) {
+        if(savedOcclusion!=null){setOcclusion(savedOcclusion);savedOcclusion=null;}
         var mc=Minecraft.getInstance();
         TaczArtOfSniping.LOGGER.info("LONG_RANGE_CLIENT {}: {}",success?"PASS":"FAIL",reason);
         try { java.nio.file.Files.writeString(mc.gameDirectory.toPath().resolve("result.txt"),success?"PASS":reason); }

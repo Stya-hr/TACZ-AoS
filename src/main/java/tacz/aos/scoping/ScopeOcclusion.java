@@ -8,8 +8,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.*;
+import net.minecraft.world.level.chunk.LevelChunk;
+import tacz.aos.network.PacketDelivery;
 import tacz.aos.config.ServerConfig;
 import tacz.aos.network.ScopeOcclusionPayload;
 import tacz.aos.occlusion.*;
@@ -17,126 +18,78 @@ import tacz.aos.occlusion.*;
 /** Bounded, live target-side visual geometry. Does not traverse the distant corridor or request chunks. */
 public final class ScopeOcclusion {
     private static final AABB FULL_BLOCK=new AABB(0,0,0,1,1,1);
+    private record Sent(ScopeOcclusionPayload payload,long tick) {}
     public record Plant(BlockPos pos, BlockState state) {}
     public record Geometry(List<OccluderBox> boxes, List<Plant> plants, boolean complete) {}
-    private record Section(LevelChunk chunk,int index) {
-        long revision(){return ((OcclusionRevision)chunk).tacz_aos$occlusionRevision(index);}
-    }
-    private record Cached(ScopeOcclusionPayload.Target data, Vec3 eye, AABB coverage, Map<Section,Long> revisions) {
-        boolean usable(Entity target, Vec3 currentEye) {
-            if(!data.uuid().equals(target.getUUID()) || !eye.equals(currentEye) || !covers(target.getBoundingBox()))return false;
-            var level=(ServerLevel)target.level();
-            for(var entry:revisions.entrySet()) {
-                var section=entry.getKey();var pos=section.chunk.getPos();
-                if(level.getChunkSource().getChunkNow(pos.x,pos.z)!=section.chunk || section.revision()!=entry.getValue())return false;
-            }
-            return true;
-        }
-        boolean covers(AABB b) { return b.minX>=coverage.minX && b.minY>=coverage.minY && b.minZ>=coverage.minZ
-                && b.maxX<=coverage.maxX && b.maxY<=coverage.maxY && b.maxZ<=coverage.maxZ; }
-    }
-    private record Observations(ServerLevel level, Map<Integer,Cached> targets, Map<Integer,Long> attempts, Set<Integer> published) {}
-    private static final Map<UUID,Observations> observations=new HashMap<>();
+    private static final Map<UUID,Sent> sent=new HashMap<>();
+    private static final Map<UUID,Integer> cursors=new HashMap<>();
     private static int remaining;
     private static long tick;
     private ScopeOcclusion(){}
     public static void beginTick(long time,Set<UUID> online) {
-        tick=time;remaining=ServerConfig.occlusion().cellsPerTick();
-        observations.keySet().removeIf(id->!online.contains(id));
+        tick=time;remaining=ServerConfig.occlusion().cellsPerTick();sent.keySet().removeIf(id->!online.contains(id));cursors.keySet().retainAll(online);
     }
-    public static void clear(){observations.clear();remaining=0;}
-    public static ScopeOcclusionPayload prepare(ServerPlayer player,List<? extends Entity> targets) {
+    public static void clear(){sent.clear();cursors.clear();remaining=0;}
+    public static void update(ServerPlayer player,List<? extends Entity> targets) {
         var cfg=ServerConfig.occlusion();var entries=new ArrayList<ScopeOcclusionPayload.Target>();
-        var state=observations.get(player.getUUID());
-        if(state==null || state.level!=player.serverLevel()) {
-            state=new Observations(player.serverLevel(),new HashMap<>(),new HashMap<>(),new HashSet<>());observations.put(player.getUUID(),state);
-        }
-        var cache=state.targets;var attempts=state.attempts;
-        var selected=new HashSet<Integer>();for(var target:targets)selected.add(target.getId());
-        cache.keySet().retainAll(selected);attempts.keySet().retainAll(selected);
-        int[] budget={Math.min(remaining,cfg.cellsPerPlayer())};int initial=budget[0];
+        int[] budget={Math.min(remaining,cfg.cellsPerPlayer())};int initial=budget[0],boxes=0,plants=0;
         var reader=new Resident(player.serverLevel(),budget);
-        var eye=player.getEyePosition();
-        // Give urgent observations one refresh of priority, never an absolute priority tier that can
-        // permanently starve newly visible entities when existing ones keep approaching their margins.
-        var schedule=new ArrayList<Entity>(targets);
-        schedule.sort(Comparator.<Entity>comparingLong(e->{var c=cache.get(e.getId());
-                    boolean urgent=c==null || !c.usable(e,eye) || !c.covers(e.getBoundingBox().inflate(.75));
-                    return attempts.getOrDefault(e.getId(),Long.MIN_VALUE/2)
-                            -(urgent?ServerConfig.current().scopeRendering().intervalTicks():0);})
-                .thenComparingInt(Entity::getId));
-        if(cfg.enabled())for(var target:schedule) {
-            var known=cache.get(target.getId());
-            if(known!=null && known.usable(target,eye) && known.covers(target.getBoundingBox().inflate(.75)))continue;
-            if(budget[0]<=0)break;
-            attempts.put(target.getId(),tick);
-            var coverage=motionCoverage(target);
-            var geometry=collectGeometry(reader,eye,coverage,cfg.radius(),ScopeOcclusionPayload.MAX_PER_TARGET,
-                    ScopeOcclusionPayload.MAX_TEXTURED_PER_TARGET);
-            if(!geometry.complete) {
-                // Dense cover can exceed the packet cap for the optional walking margin. Retry the actual
-                // silhouette before hiding the entity; already-read cells are shared and no extra budget is granted.
-                coverage=target.getBoundingBox().inflate(.35);
-                geometry=collectGeometry(reader,eye,coverage,cfg.radius(),ScopeOcclusionPayload.MAX_PER_TARGET,
-                        ScopeOcclusionPayload.MAX_TEXTURED_PER_TARGET);
+        var cores=ScopeActivity.INSTANCE.observationBounds(player);
+        // ScopeSubscriptions is aim-sorted. Geometry refresh must not inherit that priority.
+        var ordered=new ArrayList<Entity>(targets);
+        ordered.sort(Comparator.comparingInt(Entity::getId));
+        if(!ordered.isEmpty())Collections.rotate(ordered,-Math.floorMod(cursors.merge(player.getUUID(),1,Integer::sum)-1,ordered.size()));
+        if(cfg.enabled())for(var target:ordered) {
+            if(budget[0]<=0 || boxes>=cfg.boxesPerPlayer()) {
+                entries.add(new ScopeOcclusionPayload.Target(target.getId(),target.getUUID(),target.blockPosition(),List.of(),List.of(),false));
+                continue;
             }
+            var pos=target.chunkPosition();
+            var neighborhood=new AABB((pos.x-2)*16,player.level().getMinBuildHeight(),(pos.z-2)*16,
+                    (pos.x+3)*16,player.level().getMaxBuildHeight(),(pos.z+3)*16);
+            for(var core:cores)if(core.intersects(target.getBoundingBox()))neighborhood=neighborhood.minmax(core);
+            // Include ordinary interpolation between pose packets in this live geometric query.
+            // This is not a cached readiness envelope and cannot revoke an entity subscription.
+            var geometry=collectGeometry(reader,player.getEyePosition(),target.getBoundingBox().inflate(2,1,2),cfg.radius(),
+                    Math.min(ScopeOcclusionPayload.MAX_PER_TARGET,cfg.boxesPerPlayer()-boxes),
+                    Math.min(ScopeOcclusionPayload.MAX_TEXTURED_PER_TARGET,ScopeOcclusionPayload.MAX_TEXTURED-plants),neighborhood);
             var origin=target.blockPosition();
-            if(geometry.complete) {
-                var data=new ScopeOcclusionPayload.Target(target.getId(),target.getUUID(),origin,
-                        geometry.boxes.stream().map(b->b.move(-origin.getX(),-origin.getY(),-origin.getZ())).toList(),
-                        geometry.plants.stream().map(p->new ScopeOcclusionPayload.Textured(p.pos.subtract(origin),p.state)).toList());
-                cache.put(target.getId(),new Cached(data,eye,coverage,Map.copyOf(reader.revisions)));
-            }
-            // A failed replacement does not invalidate a still-covered position. Packing below checks
-            // identity, coverage, camera movement, chunk residency and real section revisions.
+            entries.add(new ScopeOcclusionPayload.Target(target.getId(),target.getUUID(),origin,
+                    geometry.boxes.stream().map(b->b.move(-origin.getX(),-origin.getY(),-origin.getZ())).toList(),
+                    geometry.plants.stream().map(p->new ScopeOcclusionPayload.Textured(p.pos.subtract(origin),p.state)).toList(),geometry.complete));
+            boxes+=geometry.boxes.size();plants+=geometry.plants.size();
         }
         remaining-=initial-budget[0];
-        int boxes=0,plants=0;
-        // Stable packing prevents a change of aim from displacing already valid masks.
-        var published=state.published;
-        schedule.sort(Comparator.<Entity>comparingInt(e->published.contains(e.getId())?0:1).thenComparingInt(Entity::getId));
-        if(cfg.enabled())for(var target:schedule) {
-            var known=cache.get(target.getId());
-            if(known!=null && known.usable(target,eye) && boxes+known.data.boxes().size()<=cfg.boxesPerPlayer()
-                    && plants+known.data.textured().size()<=ScopeOcclusionPayload.MAX_TEXTURED) {
-                entries.add(known.data);boxes+=known.data.boxes().size();plants+=known.data.textured().size();
-            }
+        entries.sort(Comparator.comparingInt(ScopeOcclusionPayload.Target::id)); // Scheduling alone must not create packet churn.
+        var payload=new ScopeOcclusionPayload(player.level().dimension().location(),entries);var previous=sent.get(player.getUUID());
+        if(previous==null || !previous.payload.equals(payload) || tick-previous.tick>=20) {
+            PacketDelivery.sendToPlayer(player,payload);sent.put(player.getUUID(),new Sent(payload,tick));
         }
-        if(!cfg.enabled()) {
-            cache.clear();
-            for(var target:targets) entries.add(new ScopeOcclusionPayload.Target(target.getId(),target.getUUID(),target.blockPosition(),List.of()));
-        }
-        published.clear();for(var entry:entries)published.add(entry.id());
-        return new ScopeOcclusionPayload(player.level().dimension().location(),entries);
-    }
-
-    private static AABB motionCoverage(Entity target) {
-        // Cover normal walking during a skipped refresh, including client interpolation behind the server pose.
-        // Faster entities get up to four blocks of horizontal look-ahead; this does not relax the proof.
-        double horizontal=Math.min(4,Math.max(2,target.getDeltaMovement().horizontalDistance()*8));
-        return target.getBoundingBox().inflate(horizontal,1,horizontal);
     }
     public static List<OccluderBox> collect(ServerLevel level,Vec3 eye,AABB entity,int radius,int[] budget,int limit) {
         return collectGeometry(level,eye,entity,radius,budget,limit,0).boxes;
     }
     public static Geometry collectGeometry(ServerLevel level,Vec3 eye,AABB entity,int radius,int[] budget,int limit,int plantLimit) {
-        return collectGeometry(new Resident(level,budget),eye,entity,radius,limit,plantLimit);
+        return collectGeometry(new Resident(level,budget),eye,entity,radius,limit,plantLimit,null);
     }
-    private static Geometry collectGeometry(Resident getter,Vec3 eye,AABB entity,int radius,int limit,int plantLimit) {
-        getter.incomplete=false;getter.exhausted=false;getter.revisions.clear();
+    private static Geometry collectGeometry(Resident getter,Vec3 eye,AABB entity,int radius,int limit,int plantLimit,AABB neighborhood) {
+        getter.exhausted=false;getter.incomplete=false;
         var center=entity.getCenter();var forward=eye.subtract(center).normalize();
         var end=center.add(forward.scale(Math.min(radius,eye.distanceTo(center))));
         // Thin local corridor encloses the target silhouette and nearby cover, with a motion margin.
         var area=entity.minmax(entity.move(end.subtract(center))).inflate(.75);
+        // Cover the full selected core plus the entity's 5x5 neighborhood (3x3 plus a guard ring), not just 24 blocks.
+        // Clamp before reading: the expanded corridor must not require any new terrain tickets.
+        if(neighborhood!=null)area=area.intersect(neighborhood);
         var boxes=new ArrayList<OccluderBox>();var plants=new ArrayList<Plant>();
         var bounds=entity.inflate(.5);
         // The enclosing axis-aligned box grows dramatically for diagonal/elevated views. Only cells
         // intersecting the perspective cone can affect this entity, so don't read its unrelated corners.
         var sides=ShadowClipper.shadow(new OccluderBox(bounds.minX-eye.x,bounds.minY-eye.y,bounds.minZ-eye.z,
                 bounds.maxX-eye.x,bounds.maxY-eye.y,bounds.maxZ-eye.z)).stream().filter(p->p.w()==0).toList();
-        outer:for(int y=(int)Math.floor(area.minY);y<=Math.floor(area.maxY);y++)
-            for(int z=(int)Math.floor(area.minZ);z<=Math.floor(area.maxZ);z++) {
-                int run=Integer.MIN_VALUE;int xmax=(int)Math.floor(area.maxX);
+        outer:for(int y=(int)Math.floor(area.minY);y<Math.ceil(area.maxY);y++)
+            for(int z=(int)Math.floor(area.minZ);z<Math.ceil(area.maxZ);z++) {
+                int run=Integer.MIN_VALUE;int xmax=(int)Math.ceil(area.maxX)-1;
                 for(int x=(int)Math.floor(area.minX);x<=xmax+1;x++) {
                     boolean full=false;
                     if(x<=xmax && mayOcclude(sides,eye,x,y,z)) {
@@ -164,8 +117,8 @@ public final class ScopeOcclusion {
                 .toList();
         var selectedPlants=plants.stream().sorted(Comparator.comparingDouble(p->Vec3.atCenterOf(p.pos).distanceToSqr(center)))
                 .toList();
-        boolean complete=!getter.incomplete && selectedBoxes.size()<=limit && selectedPlants.size()<=plantLimit;
-        return new Geometry(selectedBoxes.stream().limit(limit).toList(),selectedPlants.stream().limit(plantLimit).toList(),complete);
+        return new Geometry(selectedBoxes.stream().limit(limit).toList(),selectedPlants.stream().limit(plantLimit).toList(),
+                !getter.exhausted && !getter.incomplete && selectedBoxes.size()<=limit && selectedPlants.size()<=plantLimit);
     }
     private static boolean mayOcclude(List<ShadowClipper.Plane> sides,Vec3 eye,int x,int y,int z) {
         // Include common model offsets and shapes protruding into adjacent cells (fences, vegetation).
@@ -202,29 +155,24 @@ public final class ScopeOcclusion {
         private final ServerLevel level;
         private final int[] budget;
         private final Map<Long,BlockState> cells=new HashMap<>();
-        private final Set<Long> missing=new HashSet<>();
-        private final Map<Section,Long> revisions=new HashMap<>();
         private final Map<Long,LevelChunk> chunks=new HashMap<>();
-        private boolean incomplete,exhausted;
+        private boolean exhausted,incomplete;
         Resident(ServerLevel level,int[] budget){this.level=level;this.budget=budget;}
         private LevelChunk observe(BlockPos pos) {
             long key=net.minecraft.world.level.ChunkPos.asLong(pos.getX()>>4,pos.getZ()>>4);
             if(!chunks.containsKey(key))chunks.put(key,level.getChunkSource().getChunkNow(pos.getX()>>4,pos.getZ()>>4));
             var chunk=chunks.get(key);
-            if(chunk!=null) {
-                var section=new Section(chunk,chunk.getSectionIndex(pos.getY()));
-                revisions.putIfAbsent(section,section.revision());
-            }
             return chunk;
         }
         public BlockState getBlockState(BlockPos pos) {
             if(level.isOutsideBuildHeight(pos))return Blocks.AIR.defaultBlockState();
             var chunk=observe(pos);
+            if(chunk==null)incomplete=true; // Unknown is not a confirmed transparent cell.
             long key=pos.asLong();var known=cells.get(key);
-            if(known!=null){if(missing.contains(key))incomplete=true;return known;}
-            if(budget[0]<=0){incomplete=true;exhausted=true;return Blocks.AIR.defaultBlockState();}
+            if(known!=null)return known;
+            if(budget[0]<=0){exhausted=true;return Blocks.AIR.defaultBlockState();}
             budget[0]--;
-            if(chunk==null){incomplete=true;missing.add(key);known=Blocks.AIR.defaultBlockState();}
+            if(chunk==null)known=Blocks.AIR.defaultBlockState();
             else known=chunk.getBlockState(pos);
             cells.put(key,known);return known;
         }

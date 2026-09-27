@@ -85,7 +85,7 @@ public final class ScopeSubscriptions {
             double angle = entity.getUUID().equals(retained.get(entity.getId())) ? releaseAngle : acquireAngle;
             if (entity != player && entity.isAlive() && !entity.isInvisibleTo(player) && entity.broadcastToPlayer(player)
                     && !entity.isSpectator()
-                    && ScopeActivity.INSTANCE.observable(player,box)
+                    && level.getChunkSource().getChunkNow(entity.chunkPosition().x, entity.chunkPosition().z) != null
                     && ScopeCone.containsAtAngle(offset.x, offset.y, offset.z, direction.x, direction.y, direction.z,
                     ScopeCone.radius(box.getXsize(), box.getYsize(), box.getZsize()), distance, angle)) candidates.add(entity);
         };
@@ -109,8 +109,7 @@ public final class ScopeSubscriptions {
             if (visited[0] >= config.maxCandidates()) break;
             if (core.intersects(bounds)) scan.accept(core.intersect(bounds));
         }
-        // Dependency halos and unrelated loaded terrain are not this observer's collision cores.
-        // No broad corridor scan is needed: every admissible body must be inside an owned core.
+        if (visited[0] < config.maxCandidates()) scan.accept(bounds);
         // Centerline targets first, then nearer targets; deterministic tie-break avoids packet churn.
         candidates.sort(Comparator.<Entity>comparingDouble(entity -> {
             Vec3 offset = entity.getBoundingBox().getCenter().subtract(start);
@@ -125,19 +124,12 @@ public final class ScopeSubscriptions {
         return lease != null && lease.level == entity.level() && lease.level == player.serverLevel()
                 && entity.getUUID().equals(lease.targets.get(entity.getId())) && entity.isAlive() && !entity.isRemoved()
                 && entity.broadcastToPlayer(player) && !entity.isInvisibleTo(player)
-                && ScopeActivity.INSTANCE.observable(player,entity.getBoundingBox())
                 && ServerConfig.current().scopeRendering().enabled() && TaczBridge.evaluate(player).eligible();
     }
 
     /** Reconciliation uses the existing native observer set, so returning to vanilla never duplicates or loses an entity. */
     public void replace(ServerPlayer player, List<? extends Entity> targets) {
-        // One manifest authorizes poses and their complete real-block cover together.
-        var candidates=targets.stream().filter(e->!e.isRemoved() && e.isAlive()
-                && tracker(player.serverLevel(),e.getId())!=null
-                && ScopeActivity.INSTANCE.observable(player,e.getBoundingBox())).toList();
-        var cover=ScopeOcclusion.prepare(player,candidates);
-        var approved=new HashSet<Integer>();for(var mask:cover.targets())approved.add(mask.id());
-        targets=candidates.stream().filter(e->approved.contains(e.getId())).toList();
+        ScopeOcclusion.update(player,targets);
         var previous = leases.remove(player.getUUID());
         var level = player.serverLevel();
         var ids = new LinkedHashMap<Integer, UUID>();
@@ -170,7 +162,7 @@ public final class ScopeSubscriptions {
                     target.getYRot(), target.getXRot(), target.getYHeadRot(), (target instanceof LivingEntity living ? living.yBodyRot : target.getYRot()), light, !normallyTracked(player, target, tracker)));
         }
         PacketDelivery.sendToPlayer(player, new ScopeTargetsPayload(level.dimension().location(),
-                ServerConfig.current().scopeRendering().intervalTicks(), poses, cover));
+                ServerConfig.current().scopeRendering().intervalTicks(), poses));
     }
 
     /** Repair a missing client object without changing observation ownership or creating chunks. */

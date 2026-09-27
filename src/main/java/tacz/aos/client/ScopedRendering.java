@@ -53,7 +53,6 @@ public final class ScopedRendering {
         var minecraft = Minecraft.getInstance();
         if (minecraft.level == null || !minecraft.level.dimension().location().equals(payload.dimension())) return;
         if (level != minecraft.level) { targets.clear(); missing.clear(); nextRepair=0; level = minecraft.level; }
-        ScopedOcclusion.install(payload.occlusion());
         var next = new HashMap<Integer, Pose>();
         for (var target : payload.targets()) {
             Entity entity = level.getEntity(target.id());
@@ -77,7 +76,7 @@ public final class ScopedRendering {
     }
     public static boolean suppressExtra(Entity entity) {
         var pose = targets.get(entity.getId());
-        return (!active || !ScopedOcclusion.ready(entity)) && pose != null && pose.target.extra() && pose.target.uuid().equals(entity.getUUID());
+        return !active && pose != null && pose.target.extra() && pose.target.uuid().equals(entity.getUUID());
     }
 
     @SubscribeEvent public static void tick(TickEvent.ClientTickEvent event) {
@@ -154,28 +153,29 @@ public final class ScopedRendering {
             // Dedicated buffers prevent our fog range from changing already queued vanilla entity draws.
             RenderSystem.setShaderFogStart(ServerConfig.current().maxDistance());
             RenderSystem.setShaderFogEnd(ServerConfig.current().maxDistance() + 64);
-            ScopedOcclusion.renderVegetation(event.getPoseStack(),eye);
-            for (var pose : targets.values()) {
-                Entity entity = level.getEntity(pose.target.id());
-                if (entity == null || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved() || !ScopedOcclusion.ready(entity)
-                        || entity.isInvisibleTo(minecraft.player) || !event.getFrustum().isVisible(entity.getBoundingBox())) continue;
-                // The server already bounded the observation. Let the actual projection clip at the screen edge,
-                // rather than hiding an authorized entity inside the lens with a second, narrower aim cone.
-                if (entity.getBoundingBox().getCenter().distanceToSqr(eye) > Math.pow(ServerConfig.current().maxDistance(), 2)) continue;
-                // Vanilla already drew this object if both its distance/frustum and section checks succeeded.
-                if (dispatcher.shouldRender(entity, event.getFrustum(), eye.x, eye.y, eye.z)
-                        && (level.isOutsideBuildHeight(entity.blockPosition()) || minecraft.levelRenderer.isChunkCompiled(entity.blockPosition()))) continue;
-                double x = Mth.lerp(partial, entity.xOld, entity.getX()) - eye.x;
-                double y = Mth.lerp(partial, entity.yOld, entity.getY()) - eye.y;
-                double z = Mth.lerp(partial, entity.zOld, entity.getZ()) - eye.z;
-                var clipped=ScopedOcclusion.forEntity(entity,eye,event.getPoseStack().last().pose(),buffers);
-                try {
-                    dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
-                            event.getPoseStack(), clipped==null?buffers:clipped, pose.target.light());
-                } finally {if(clipped!=null)clipped.close();}
-                extraDrawn.add(entity.getId());
+            try(var plantMask=ScopedOcclusion.renderVegetation(event.getPoseStack(),eye)) {
+                for (var pose : targets.values()) {
+                    Entity entity = level.getEntity(pose.target.id());
+                    if (entity == null || !entity.getUUID().equals(pose.target.uuid()) || entity.isRemoved()
+                            || entity.isInvisibleTo(minecraft.player) || !event.getFrustum().isVisible(entity.getBoundingBox())) continue;
+                    // The server already bounded the observation. Let the actual projection clip at the screen edge,
+                    // rather than hiding an authorized entity inside the lens with a second, narrower aim cone.
+                    if (entity.getBoundingBox().getCenter().distanceToSqr(eye) > Math.pow(ServerConfig.current().maxDistance(), 2)) continue;
+                    // Vanilla already drew this object if both its distance/frustum and section checks succeeded.
+                    if (dispatcher.shouldRender(entity, event.getFrustum(), eye.x, eye.y, eye.z)
+                            && (level.isOutsideBuildHeight(entity.blockPosition()) || minecraft.levelRenderer.isChunkCompiled(entity.blockPosition()))) continue;
+                    double x = Mth.lerp(partial, entity.xOld, entity.getX()) - eye.x;
+                    double y = Mth.lerp(partial, entity.yOld, entity.getY()) - eye.y;
+                    double z = Mth.lerp(partial, entity.zOld, entity.getZ()) - eye.z;
+                    var clipped=ScopedOcclusion.forEntity(entity,eye,event.getPoseStack().last().pose(),buffers);
+                    try {
+                        dispatcher.render(entity, x, y, z, Mth.rotLerp(partial, entity.yRotO, entity.getYRot()), partial,
+                                event.getPoseStack(), clipped==null?buffers:clipped, pose.target.light());
+                    } finally {if(clipped!=null)clipped.close();}
+                    extraDrawn.add(entity.getId());
+                }
+                buffers.endBatch();
             }
-            buffers.endBatch();
         } finally {
             RenderSystem.setShaderFogStart(fogStart); RenderSystem.setShaderFogEnd(fogEnd);
         }

@@ -18,7 +18,7 @@ import tacz.aos.scoping.ScopeOcclusion;
 @GameTestHolder("tacz_aos") @PrefixGameTestTemplate(false)
 public final class OcclusionGameTests {
     @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
-    public static void liveCoverTracksPlacementRemovalAndTransparentBlocksWithoutChunkLoads(GameTestHelper h) {
+    public static void liveCoverTracksPlacementRemovalAndGlassWithoutChunkLoads(GameTestHelper h) {
         for(int x=2;x<=18;x++)for(int y=4;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);
         var eye=h.absoluteVec(new Vec3(4,7,8));
         var target=new AABB(h.absoluteVec(new Vec3(14,5,7.5)),h.absoluteVec(new Vec3(15,8,8.5)));
@@ -30,7 +30,7 @@ public final class OcclusionGameTests {
         double top=h.absoluteVec(new Vec3(0,6,0)).y;
         h.assertTrue(wall.stream().allMatch(b->b.maxY()<=top+.001),"Half wall became full-height cover");
         for(int z=6;z<=10;z++)h.setBlock(new BlockPos(10,5,z),Blocks.GLASS);
-        h.assertTrue(ScopeOcclusion.collect(h.getLevel(),eye,target,12,new int[]{8192},32).isEmpty(),"Glass became opaque cover");
+        h.assertTrue(!ScopeOcclusion.collect(h.getLevel(),eye,target,12,new int[]{8192},32).isEmpty(),"Glass did not supply full-cell cover");
         for(int z=6;z<=10;z++)h.setBlock(new BlockPos(10,5,z),Blocks.AIR);
         h.assertTrue(ScopeOcclusion.collect(h.getLevel(),eye,target,12,new int[]{8192},32).isEmpty(),"Removed wall retained occlusion");
         var missing=new AABB(13000000,80,13000000,13000001,82,13000001);
@@ -45,7 +45,9 @@ public final class OcclusionGameTests {
         var target=new AABB(h.absoluteVec(new Vec3(14,5,8)),h.absoluteVec(new Vec3(15,7,9)));
         var pos=new BlockPos(10,5,8);
         for(var block:List.of(Blocks.STONE,Blocks.OAK_LEAVES,Blocks.AZALEA_LEAVES,
-                Blocks.OAK_DOOR,Blocks.OAK_TRAPDOOR,Blocks.OAK_FENCE,Blocks.IRON_BARS,Blocks.CHEST)) {
+                Blocks.OAK_DOOR,Blocks.OAK_TRAPDOOR,Blocks.OAK_FENCE,Blocks.IRON_BARS,Blocks.CHEST,
+                Blocks.GLASS,Blocks.GLASS_PANE,Blocks.TINTED_GLASS,Blocks.RED_STAINED_GLASS,Blocks.BLUE_STAINED_GLASS_PANE,
+                Blocks.ICE,Blocks.SLIME_BLOCK,Blocks.HONEY_BLOCK,Blocks.COCOA,Blocks.SPORE_BLOSSOM)) {
             h.setBlock(pos,block);
             var boxes=ScopeOcclusion.collect(h.getLevel(),eye,target,12,new int[]{8192},32);
             h.assertTrue(!boxes.isEmpty(),"Material was skipped: "+block);
@@ -57,11 +59,9 @@ public final class OcclusionGameTests {
         }
         for(var clear:List.of(Blocks.GRASS,Blocks.TALL_GRASS,Blocks.FERN,Blocks.LARGE_FERN,Blocks.WHEAT,
                 Blocks.CARROTS,Blocks.POTATOES,Blocks.BEETROOTS,Blocks.NETHER_WART,Blocks.TORCHFLOWER_CROP,
-                Blocks.PITCHER_CROP,Blocks.COCOA,Blocks.SUGAR_CANE,Blocks.SWEET_BERRY_BUSH,
+                Blocks.PITCHER_CROP,Blocks.SUGAR_CANE,Blocks.SWEET_BERRY_BUSH,
                 Blocks.DANDELION,Blocks.OAK_SAPLING,Blocks.VINE,Blocks.GLOW_LICHEN,Blocks.KELP,
-                Blocks.HANGING_ROOTS,Blocks.SPORE_BLOSSOM,Blocks.WATER,Blocks.FIRE,
-                Blocks.GLASS,Blocks.GLASS_PANE,Blocks.TINTED_GLASS,Blocks.RED_STAINED_GLASS,Blocks.BLUE_STAINED_GLASS_PANE,
-                Blocks.ICE,Blocks.SLIME_BLOCK,Blocks.HONEY_BLOCK)) {
+                Blocks.HANGING_ROOTS,Blocks.WATER,Blocks.FIRE)) {
             // Test the state directly too: unsupported plants must not pass merely by breaking into air.
             h.assertTrue(OcclusionShapes.boxes(clear.defaultBlockState(),h.getLevel(),h.absolutePos(pos)).isEmpty(),
                     "Transparent material/vegetation became a solid selection-box wall: "+clear);
@@ -97,58 +97,16 @@ public final class OcclusionGameTests {
     }
 
     @GameTest(setupTicks=20, template="empty",batch="occlusion")
-    public static void slabsStairsDoorsAndTrapdoorsKeepTheirActualOpenings(GameTestHelper h) {
-        var level=h.getLevel();var pos=h.absolutePos(BlockPos.ZERO);
-        var slab=Blocks.STONE_SLAB.defaultBlockState();
-        var bottom=OcclusionShapes.boxes(slab.setValue(SlabBlock.TYPE,SlabType.BOTTOM),level,pos);
-        var top=OcclusionShapes.boxes(slab.setValue(SlabBlock.TYPE,SlabType.TOP),level,pos);
-        h.assertTrue(contains(bottom,.5,.25,.5) && !contains(bottom,.5,.75,.5),"Bottom slab hid its upper opening");
-        h.assertTrue(!contains(top,.5,.25,.5) && contains(top,.5,.75,.5),"Top slab hid its lower opening");
-        var stair=Blocks.STONE_STAIRS.defaultBlockState().setValue(StairBlock.FACING,Direction.EAST)
-                .setValue(StairBlock.HALF,Half.BOTTOM).setValue(StairBlock.SHAPE,StairsShape.STRAIGHT);
-        var stairs=OcclusionShapes.boxes(stair,level,pos);
-        h.assertTrue(contains(stairs,.25,.25,.5) && contains(stairs,.75,.75,.5) && !contains(stairs,.25,.75,.5),
-                "Stair step became a full cube or lost its solid upper half");
-        var door=Blocks.OAK_DOOR.defaultBlockState().setValue(DoorBlock.FACING,Direction.NORTH).setValue(DoorBlock.OPEN,false);
-        var closed=OcclusionShapes.boxes(door,level,pos);
-        var open=OcclusionShapes.boxes(door.setValue(DoorBlock.OPEN,true),level,pos);
-        var face=closed.get(0);
-        h.assertTrue(closed.size()==1 && face.getXsize()==1 && face.getZsize()==3.0/16
-                        && open.size()==1 && open.get(0).getXsize()==3.0/16 && open.get(0).getZsize()==1,
-                "Door did not rotate its thin opaque panel when opened");
-        h.assertTrue(open.stream().noneMatch(b->b.contains(face.getCenter())),"Open door retained its old occlusion");
-        var trap=Blocks.OAK_TRAPDOOR.defaultBlockState().setValue(TrapDoorBlock.HALF,Half.BOTTOM).setValue(TrapDoorBlock.OPEN,false);
-        var horizontal=OcclusionShapes.boxes(trap,level,pos);
-        var vertical=OcclusionShapes.boxes(trap.setValue(TrapDoorBlock.OPEN,true),level,pos);
-        h.assertTrue(horizontal.get(0).getYsize()==3.0/16 && vertical.get(0).getYsize()==1
-                        && !contains(horizontal,.5,.5,.5) && !contains(vertical,.5,.5,.5),
-                "Trapdoor became a full cube instead of a thin panel");
-        var fence=OcclusionShapes.boxes(Blocks.OAK_FENCE.defaultBlockState(),level,pos);
-        h.assertTrue(contains(fence,.5,.5,.5) && !contains(fence,.1,.5,.1),"Fence gaps were filled");
+    public static void nonPlantShapesAlwaysCoverExactlyOneCell(GameTestHelper h) {
+        var full=List.of(new AABB(0,0,0,1,1,1));
+        for(var block:List.of(Blocks.STONE_SLAB,Blocks.STONE_STAIRS,Blocks.OAK_DOOR,Blocks.OAK_TRAPDOOR,
+                Blocks.OAK_FENCE,Blocks.CAMPFIRE,Blocks.CHEST,Blocks.OAK_LEAVES,Blocks.GLASS,Blocks.GLASS_PANE,
+                Blocks.COCOA,Blocks.AZALEA,Blocks.LILY_PAD)) {
+            for(var state:block.getStateDefinition().getPossibleStates())
+                h.assertTrue(OcclusionShapes.boxes(state,h.getLevel(),h.absolutePos(BlockPos.ZERO)).equals(full),
+                        "Non-plant cell kept shape holes or protrusions: "+state);
+        }
         h.succeed();
-    }
-
-    @GameTest(setupTicks=20, template="empty",batch="occlusion")
-    public static void complexUnknownGeometryFallsBackToWholeCellWithoutLosingProtrusions(GameTestHelper h) {
-        var shape=net.minecraft.world.phys.shapes.Shapes.empty();
-        for(int i=0;i<8;i++)shape=net.minecraft.world.phys.shapes.Shapes.or(shape,
-                net.minecraft.world.phys.shapes.Shapes.box(i*.1+.01,.2,.2,i*.1+.04,1.4,.8));
-        var simple=OcclusionShapes.parts(shape);
-        h.assertTrue(simple.size()==8 && !contains(simple,.06,.5,.5),"Simple eight-part geometry lost its holes");
-        shape=net.minecraft.world.phys.shapes.Shapes.or(shape,net.minecraft.world.phys.shapes.Shapes.box(.81,.2,.2,.84,1.4,.8));
-        h.assertTrue(shape.toAabbs().size()>OcclusionShapes.MAX_PARTS,"Test model was not complex enough");
-        var complex=OcclusionShapes.parts(shape);
-        h.assertTrue(complex.size()==1 && contains(complex,.06,.5,.5) && contains(complex,.95,.1,.95)
-                        && contains(complex,.5,1.2,.5),"Complex model left cell holes or lost protruding geometry");
-        var unknown=OcclusionShapes.parts(net.minecraft.world.phys.shapes.Shapes.empty());
-        h.assertTrue(unknown.size()==1 && contains(unknown,.5,.5,.5),"Unknown empty model failed open");
-        var campfire=OcclusionShapes.boxes(Blocks.CAMPFIRE.defaultBlockState(),h.getLevel(),h.absolutePos(BlockPos.ZERO));
-        h.assertTrue(contains(campfire,.5,.9,.5),"Complex campfire model was mistaken for its short selection box");
-        h.succeed();
-    }
-
-    private static boolean contains(List<AABB> boxes,double x,double y,double z) {
-        return boxes.stream().anyMatch(b->b.contains(x,y,z));
     }
 
     @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
@@ -163,6 +121,46 @@ public final class OcclusionGameTests {
         var p=h.absolutePos(new BlockPos(8,5,8));
         h.assertTrue(budget[0]==0 && boxes.stream().anyMatch(b->b.minX()==p.getX() && b.maxX()==p.getX()+3
                 && b.minY()==p.getY() && b.minZ()==p.getZ()),"Budget exhaustion discarded already scanned leaf cells");
+        h.succeed();
+    }
+
+    @GameTest(setupTicks=20, template="empty",batch="occlusion")
+    public static void incompleteOffAxisRefreshKeepsCoverButConfirmedRemovalClearsIt(GameTestHelper h) {
+        var dimension=h.getLevel().dimension().location();var uuid=UUID.randomUUID();
+        var known=new ScopeOcclusionPayload.Target(42,uuid,new BlockPos(900,80,8),List.of(new OccluderBox(-30,0,-1,-29,3,1)));
+        var state=new ScopeOcclusionPayload(dimension,List.of(known)).merge(Map.of());
+        var skipped=new ScopeOcclusionPayload.Target(42,uuid,new BlockPos(901,80,8),List.of(),List.of(),false);
+        var center=new ScopeOcclusionPayload.Target(43,UUID.randomUUID(),new BlockPos(900,80,10),List.of());
+        // Repeated centre-first and edge-first packets must not change stationary world cover.
+        for(int n=0;n<60;n++) {
+            var packet=new ScopeOcclusionPayload(dimension,n%2==0?List.of(center,skipped):List.of(skipped,center));
+            var wire=new FriendlyByteBuf(Unpooled.buffer());
+            try {ScopeOcclusionPayload.STREAM_CODEC.encode(wire,packet);state=ScopeOcclusionPayload.STREAM_CODEC.decode(wire).merge(state);}
+            finally {wire.release();}
+            h.assertTrue(state.get(42).equals(known),"Skipped off-axis scan cleared or translated existing cover");
+        }
+        var cleared=new ScopeOcclusionPayload.Target(42,uuid,known.origin(),List.of());
+        state=new ScopeOcclusionPayload(dimension,List.of(cleared)).merge(state);
+        h.assertTrue(state.get(42).boxes().isEmpty() && !state.containsKey(43),"Confirmed removal or unsubscription kept stale cover");
+        state=new ScopeOcclusionPayload(dimension,List.of(new ScopeOcclusionPayload.Target(42,UUID.randomUUID(),known.origin(),List.of(),List.of(),false))).merge(Map.of(42,known));
+        h.assertTrue(state.get(42).boxes().isEmpty(),"Reused entity ID inherited another entity's occlusion");
+        h.succeed();
+    }
+
+    @GameTest(setupTicks=20, template="ballistics",batch="occlusion")
+    public static void unavailableCellsAndExhaustedBudgetsAreNotConfirmedEmptyCover(GameTestHelper h) {
+        var missing=new AABB(13000000,80,13000000,13000001,82,13000001);
+        int loaded=h.getLevel().getChunkSource().getLoadedChunksCount();
+        var unknown=ScopeOcclusion.collectGeometry(h.getLevel(),new Vec3(12999980,82,13000000),missing,24,new int[]{8192},32,64);
+        h.assertTrue(!unknown.complete(),"Missing chunks were reported as confirmed air");
+        var target=new AABB(h.absoluteVec(new Vec3(14,5,8)),h.absoluteVec(new Vec3(15,7,9)));
+        var eye=h.absoluteVec(new Vec3(4,6,8.5));
+        var exhausted=ScopeOcclusion.collectGeometry(h.getLevel(),eye,target,12,new int[]{0},32,64);
+        h.assertTrue(!exhausted.complete(),"Zero scan budget was reported as confirmed clear");
+        for(int x=2;x<=18;x++)for(int y=3;y<=10;y++)for(int z=4;z<=12;z++)h.setBlock(new BlockPos(x,y,z),Blocks.AIR);
+        var clear=ScopeOcclusion.collectGeometry(h.getLevel(),eye,target,12,new int[]{8192},32,64);
+        h.assertTrue(clear.complete() && clear.boxes().isEmpty(),"Actual complete air scan could not clear stale geometry");
+        h.assertTrue(loaded==h.getLevel().getChunkSource().getLoadedChunksCount(),"Coverage check loaded unknown terrain");
         h.succeed();
     }
 

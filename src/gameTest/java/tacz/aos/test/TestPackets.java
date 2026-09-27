@@ -10,12 +10,13 @@ final class TestPackets {
         if (packet.getIdentifier().getNamespace().equals("tacz")) { if (buffer.readVarInt() == 8) return com.tacz.guns.network.message.ServerMessageSound.decode(buffer); return null; }
         if (!packet.getIdentifier().toString().equals("tacz_aos:main")) return null;
         return switch (buffer.readVarInt()) {
-            case 0 -> DistantGunshotPayload.STREAM_CODEC.decode(buffer);
-            case 1 -> ScopeBlockTargetsPayload.STREAM_CODEC.decode(buffer);
-            case 2 -> NearMissPayload.STREAM_CODEC.decode(buffer);
-            case 3 -> RangePayload.STREAM_CODEC.decode(buffer);
-            case 4 -> ScopeTargetsPayload.STREAM_CODEC.decode(buffer);
-            case 5 -> ShotTrailsPayload.STREAM_CODEC.decode(buffer);
+            case 0 -> ScopeOcclusionPayload.STREAM_CODEC.decode(buffer);
+            case 1 -> DistantGunshotPayload.STREAM_CODEC.decode(buffer);
+            case 2 -> ScopeBlockTargetsPayload.STREAM_CODEC.decode(buffer);
+            case 3 -> NearMissPayload.STREAM_CODEC.decode(buffer);
+            case 4 -> RangePayload.STREAM_CODEC.decode(buffer);
+            case 5 -> ScopeTargetsPayload.STREAM_CODEC.decode(buffer);
+            case 6 -> ShotTrailsPayload.STREAM_CODEC.decode(buffer);
             default -> null;
         };
     }

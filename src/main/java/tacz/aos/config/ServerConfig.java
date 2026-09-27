@@ -12,7 +12,7 @@ public final class ServerConfig {
     private static volatile tacz.aos.humidity.HumiditySettings humidity = tacz.aos.humidity.HumiditySettings.DISABLED;
     public static tacz.aos.humidity.HumiditySettings humidity() { return humidity; }
     public record Occlusion(boolean enabled,int radius,int cellsPerPlayer,int cellsPerTick,int boxesPerPlayer,int planeTestsPerFrame) {}
-    public static final Occlusion DEFAULT_OCCLUSION=new Occlusion(true,24,8192,32768,256,500000);
+    public static final Occlusion DEFAULT_OCCLUSION=new Occlusion(true,96,8192,32768,256,500000);
     private static volatile Occlusion occlusion=DEFAULT_OCCLUSION;
     public static Occlusion occlusion(){return occlusion;}
     private static final ForgeConfigSpec.BooleanValue OCCLUSION_ENABLED;
@@ -97,15 +97,15 @@ public final class ServerConfig {
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
         HUMIDITY = new HumidityConfig(builder);
-        builder.comment("Remote occlusion: leaves cover whole cells; known simple shapes preserve openings; complex models cover whole cells.",
-                "Vegetation uses client model texture alpha; glass remains transparent. No client terrain chunks are installed.",
-                "Refresh follows scopeRendering.intervalTicks. New remote entities wait for complete server geometry; still-valid masks are reused when the read budget is exhausted. Client clipping has its own frame budget.").push("occlusion");
+        builder.comment("Remote occlusion: solid blocks, including glass, leaves, slabs and stairs, cover whole cells.",
+                "Thin vegetation uses client model texture alpha. Air, fluids and invisible utility cells do not occlude. No client terrain chunks are installed.",
+                "Refresh follows scopeRendering.intervalTicks. Entity observation does not wait for occlusion data. Incomplete scans retain known cover; new unchecked cover may remain visible.").push("occlusion");
         OCCLUSION_ENABLED=builder.define("enabled",true);
-        OCCLUSION_RADIUS=builder.comment("Maximum length of the local sight corridor in front of each observed entity.").defineInRange("radius",24,4,32);
+        OCCLUSION_RADIUS=builder.comment("Maximum sight corridor length within the selected core and the entity's 5x5 chunk neighborhood (3x3 plus a guard ring). Does not load more terrain.").defineInRange("radius",96,48,96);
         OCCLUSION_CELLS=builder.defineInRange("maxCellsPerPlayer",8192,256,65536);
         OCCLUSION_GLOBAL=builder.defineInRange("maxCellsPerTick",32768,256,262144);
         OCCLUSION_BOXES=builder.defineInRange("maxBoxesPerPlayer",256,16,256);
-        OCCLUSION_PLANES=builder.comment("Shared client polygon clipping work cap per frame; does not affect bullet collision.").defineInRange("maxPlaneTestsPerFrame",500000,10000,2000000);
+        OCCLUSION_PLANES=builder.comment("Client polygon clipping work cap per frame, divided independently among observed occluded entities; does not affect bullet collision.").defineInRange("maxPlaneTestsPerFrame",500000,10000,2000000);
         builder.pop();
         builder.comment("Delayed distant gunfire for accepted AoS shots only. Nearby TACZ audio remains native.",
                         "Distance/delay/volume use listener position at firing; no terrain occlusion or extra chunk loading.",
