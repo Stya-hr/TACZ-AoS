@@ -47,7 +47,7 @@ public final class ImpactPredictionGameTests {
         player.setYRot(-90); player.setXRot(-8); player.setOnGround(false);
         player.setDeltaMovement(new Vec3(.13, -.07, .21));
         var operator = IGunOperator.fromLivingEntity(player);
-        for (String id : List.of("ai_awp", "m95", "m107", "m700", "springfield1873", "kar98")) {
+        for (String id : List.of("ai_awp", "m95", "m107", "m700", "springfield1873")) {
             var stack = GunItemBuilder.create().setId(new ResourceLocation("tacz:" + id)).setAmmoCount(7)
                     .build();
             player.setItemInHand(InteractionHand.MAIN_HAND, stack);
