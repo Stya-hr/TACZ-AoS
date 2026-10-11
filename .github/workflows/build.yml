@@ -26,10 +26,19 @@ jobs:
         run: chmod +x gradlew
       - name: Build AoS
         run: ./gradlew build --stacktrace -Penable_voxy_runtime=false
-      - name: Upload JAR
-        if: success()
+      - name: Upload JAR (build artifact, game compatibility unverified)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tacz-aos-forge-1.20.1-tacz117
           path: build/libs/*.jar
-          if-no-files-found: error
+          if-no-files-found: warn
+      - name: Upload unit-test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tacz-aos-117-test-reports
+          path: |
+            build/test-results/test/**
+            build/reports/tests/test/**
+          if-no-files-found: warn
