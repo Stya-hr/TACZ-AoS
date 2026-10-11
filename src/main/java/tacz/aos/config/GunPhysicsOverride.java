@@ -10,8 +10,7 @@ public record GunPhysicsOverride(Float speed, Float friction) {
             "tacz:ai_awp|speed=905|friction=0.023833333",
             "tacz:m95|speed=858|friction=0.014333333",
             "tacz:m107|speed=858|friction=0.014333333",
-            "tacz:m700|speed=822.96|friction=0.030666667",
-            "tacz:kar98|speed=780|friction=0.0275");
+            "tacz:m700|speed=822.96|friction=0.030666667");
 
     public GunPhysicsOverride {
         if (speed == null && friction == null)
