@@ -17,6 +17,18 @@ sourceSets {
     main.resources { srcDir 'src/generated/resources'; exclude '**/*.bbmodel', '**/.cache/**' }
     gameTest { compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath; runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath }
 }
+// NeoVoxy is optional. The upstream Forge source contains a mixin that directly
+// imports NeoVoxy classes; exclude it and its mixin entry for builds without
+// the author's separately supplied optional JAR.
+if (!file("libs/${voxy_jar}").isFile()) {
+    sourceSets.main.java.exclude 'tacz/aos/mixin/VoxyDepthMixin.java'
+    tasks.named('processResources', ProcessResources).configure {
+        filesMatching('tacz_aos.mixins.json') {
+            filter { line -> line.contains('"VoxyDepthMixin"') ? '' : line }
+        }
+    }
+}
+
 configurations {
     gameTestImplementation.extendsFrom implementation
     gameTestCompileOnly.extendsFrom compileOnly
