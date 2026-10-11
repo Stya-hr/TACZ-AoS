@@ -42,3 +42,16 @@ jobs:
             build/test-results/test/**
             build/reports/tests/test/**
           if-no-files-found: warn
+      - name: Run Forge dedicated-server GameTests
+        if: success()
+        timeout-minutes: 15
+        run: ./gradlew runGameTestServer --stacktrace -Penable_voxy_runtime=false
+      - name: Upload Forge GameTest logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tacz-aos-117-server-gametest-logs
+          path: |
+            build/gametest-forge/logs/**
+            build/gametest-forge/crash-reports/**
+          if-no-files-found: warn
