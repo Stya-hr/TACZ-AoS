@@ -141,8 +141,12 @@ dependencies {
     compileOnly files(fileTree(layout.buildDirectory.dir('tacz-lua-api-forge')) { include '**/*.jar' }).builtBy(extractTaczLuaApi)
     // Loom removes jar-in-jar metadata when remapping mods. Supply TACZ's original bundled libraries in dev runs.
     modImplementation files(taczBedrockLibrary)
+    // TaCZ 1.1.7 does not always bundle SimpleBedrockModel at this path.
+    // Keep the nested runtime libraries optional rather than calling singleFile on an empty collection.
     forgeRuntimeLibrary files(taczBedrockLibrary.map { libraries ->
-        zipTree(libraries.singleFile).matching { include 'META-INF/jarjar/*.jar' }
+        libraries.files.collectMany { library ->
+            zipTree(library).matching { include 'META-INF/jarjar/*.jar' }.files.toList()
+        }
     })
     forgeRuntimeLibrary files(taczBundledContents.map { contents ->
         contents.matching {
