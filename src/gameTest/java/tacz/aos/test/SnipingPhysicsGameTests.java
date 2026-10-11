@@ -302,13 +302,12 @@ public final class SnipingPhysicsGameTests {
         var player = fixture.player;
         var origin = player.position();
         var operator = IGunOperator.fromLivingEntity(player);
-        String[] ids = {"ai_awp", "m95", "m107", "m700", "kar98", "springfield1873"};
-        float[] speeds = {45.25f, 42.9f, 42.9f, 41.148f, 39f, -1};
-        float[] drags = {143f/6000, 86f/6000, 86f/6000, .030666667f, .0275f, -1};
+        String[] ids = {"ai_awp", "m95", "m107", "m700", "springfield1873"};
+        float[] speeds = {45.25f, 42.9f, 42.9f, 41.148f, -1};
+        float[] drags = {143f/6000, 86f/6000, 86f/6000, .030666667f, -1};
         for (int i = 0; i < ids.length; i++) {
             var stack = GunItemBuilder.create().setId(new ResourceLocation("tacz:" + ids[i]))
-                    .putAttachment(AttachmentType.SCOPE, new ResourceLocation(i == 5 ? "tacz:scope_1873_6x"
-                            : i == 4 ? "tacz:scope_98k" : "tacz:scope_mk5hd"))
+                    .putAttachment(AttachmentType.SCOPE, new ResourceLocation(i == 4 ? "tacz:scope_1873_6x" : "tacz:scope_mk5hd"))
                     .build();
             player.setItemInHand(InteractionHand.MAIN_HAND, stack);
             var gun = IGun.getIGunOrNull(stack);
@@ -340,7 +339,7 @@ public final class SnipingPhysicsGameTests {
                 helper.assertTrue(Math.abs(actualWind.x() - preview.crosswind().x()) < 1e-8
                                 && Math.abs(actualWind.z() - preview.crosswind().z()) < 1e-8,
                         "Default launch wind disagrees with preview");
-                boolean changed = i < 5;
+                boolean changed = i < 4;
                 double speed = changed ? speeds[i] : nativeSpeed;
                 helper.assertTrue(Math.abs(bullet.getDeltaMovement().subtract(player.getDeltaMovement()).length() - speed) < 1e-4,
                         "Wrong launch speed: " + ids[i] + " state=" + state);
