@@ -75,7 +75,9 @@ dependencies {
     forge "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
     modImplementation("maven.modrinth:timeless-and-classics-zero:${tacz_version}") { transitive = false }
     taczBundledApi("maven.modrinth:timeless-and-classics-zero:${tacz_version}") { transitive = false }
-    modCompileOnly files("libs/${voxy_jar}")
+    if (file("libs/${voxy_jar}").isFile()) {
+        modCompileOnly files("libs/${voxy_jar}")
+    }
     modCompileOnly("maven.modrinth:oculus:${oculus_version}") { transitive = false }
     modCompileOnly("maven.modrinth:curios:${curios_version}") { transitive = false }
     modCompileOnly("maven.modrinth:lightmans-currency:${lightmans_currency_version}") { transitive = false }
