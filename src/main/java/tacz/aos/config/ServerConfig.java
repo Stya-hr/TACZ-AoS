@@ -163,7 +163,7 @@ public final class ServerConfig {
         ENABLED = builder.comment("Allow qualified shots to use the enabled sniping features.")
                 .define("enabled", true);
         GUNS = builder.comment("Allowed TACZ gun IDs (namespace:path). Empty means no guns are allowed.",
-                        "Defaults: official TACZ Forge 1.20.1 snipers AWP, M95, M107, M700, Kar98 and Springfield 1873.",
+                        "Defaults: bundled TACZ 1.1.7 snipers AWP, M95, M107, M700 and Springfield 1873.",
                         "Also grants zero spread while TACZ or optional ParCool crawling, without needing a scope, ADS or rangefinder.",
                         "Prone zero spread follows eligibility.enabled; standing and non-player shots retain native spread.")
                 .defineListAllowEmpty("guns", EligibilityPolicy.DEFAULT_GUNS, value -> value instanceof String);
