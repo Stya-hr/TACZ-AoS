@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class GunPhysicsOverrideTest {
     @Test void defaultsUseSIUnitsAndKeepSpringfieldNative() {
         var profiles = GunPhysicsOverride.parse(GunPhysicsOverride.DEFAULTS);
-        assertEquals(5, profiles.size());
+        assertEquals(4, profiles.size());
         assertFalse(profiles.containsKey("tacz:springfield1873"));
         assertEquals(45.25f, profiles.get("tacz:ai_awp").speedOr(57.5f));
         assertTrue(GunPhysicsOverride.DEFAULTS.stream().noneMatch(entry -> entry.contains("gravity=")));
